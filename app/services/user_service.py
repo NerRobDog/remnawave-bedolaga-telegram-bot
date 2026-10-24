@@ -1228,6 +1228,7 @@ class UserService:
             # ForeignKeyViolationError (например, rollypay_payments_transaction_id_fkey).
             from app.database.models import (
                 AnorePayment,
+                AntarcticPayment,
                 AntilopayPayment,
                 AppleTransaction,
                 AuraPayPayment,
@@ -1261,6 +1262,7 @@ class UserService:
                 TabPayPayment,
                 ParityPayPayment,
                 CasheraPayment,
+                AntarcticPayment,
             )
             for model in extra_payment_models:
                 try:

@@ -314,6 +314,13 @@ def _get_method_defaults() -> dict:
             'default_max': settings.CASHERA_MAX_AMOUNT_KOPEKS,
             'available_sub_options': _get_cashera_sub_options(),
         },
+        'antarctic': {
+            'default_display_name': settings.get_antarctic_display_name(),
+            'is_configured': settings.is_antarctic_enabled(),
+            'default_min': settings.ANTARCTIC_MIN_AMOUNT_KOPEKS,
+            'default_max': settings.ANTARCTIC_MAX_AMOUNT_KOPEKS,
+            'default_description': settings.ANTARCTIC_DESCRIPTION,
+        },
     }
 
 
@@ -390,6 +397,7 @@ DEFAULT_METHOD_ORDER = [
     'tabpay',
     'paritypay',
     'cashera',
+    'antarctic',
 ]
 
 
@@ -714,7 +722,7 @@ async def get_enabled_methods_for_user(
             {
                 'id': method_id,
                 'name': display_name,
-                'description': config.description,
+                'description': config.description or method_def.get('default_description'),
                 'min_amount_kopeks': min_amount,
                 'max_amount_kopeks': max_amount,
                 'options': options,
