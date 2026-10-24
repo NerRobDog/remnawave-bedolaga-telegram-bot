@@ -236,6 +236,13 @@ async def route_payment_by_method(
             await process_cashera_payment_amount(message, db_user, db, amount_kopeks, state)
         return True
 
+    if payment_method == 'antarctic':
+        from .antarctic import process_antarctic_payment_amount
+
+        async with AsyncSessionLocal() as db:
+            await process_antarctic_payment_amount(message, db_user, db, amount_kopeks, state)
+        return True
+
     if payment_method in ('cispay', 'cispay_card', 'cispay_sbp', 'cispay_crypto'):
         from .cispay import process_cispay_payment_amount
 
@@ -938,6 +945,10 @@ def register_balance_handlers(dp: Dispatcher):
     dp.callback_query.register(handle_cashera_method_selection, F.data.startswith('cashera_method_'))
     dp.callback_query.register(start_cashera_direct_method, F.data.startswith('topup_cashera_m_'))
 
+    from .antarctic import start_antarctic_payment
+
+    dp.callback_query.register(start_antarctic_payment, F.data == 'topup_antarctic')
+
     from .cispay import start_cispay_card_topup, start_cispay_crypto_topup, start_cispay_sbp_topup, start_cispay_topup
 
     dp.callback_query.register(start_cispay_crypto_topup, F.data == 'topup_cispay_crypto')
@@ -985,6 +996,10 @@ def register_balance_handlers(dp: Dispatcher):
     from .cashera import check_cashera_payment_status
 
     dp.callback_query.register(check_cashera_payment_status, F.data.startswith('check_cashera_'))
+
+    from .antarctic import check_antarctic_payment_status
+
+    dp.callback_query.register(check_antarctic_payment_status, F.data.startswith('check_antarctic_'))
 
     dp.callback_query.register(handle_payment_methods_unavailable, F.data == 'payment_methods_unavailable')
 

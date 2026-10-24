@@ -2304,6 +2304,18 @@ def get_payment_methods_keyboard(amount_kopeks: int, language: str = DEFAULT_LAN
             )
         has_direct_payment_methods = True
 
+    if settings.is_antarctic_enabled():
+        antarctic_name = settings.get_antarctic_display_name()
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text=texts.t('PAYMENT_ANTARCTIC', '🐧 {name}').format(name=antarctic_name),
+                    callback_data=_build_callback('antarctic'),
+                )
+            ]
+        )
+        has_direct_payment_methods = True
+
     if settings.is_tabpay_card_enabled():
         tabpay_card_name = settings.get_tabpay_card_display_name()
         keyboard.append(
