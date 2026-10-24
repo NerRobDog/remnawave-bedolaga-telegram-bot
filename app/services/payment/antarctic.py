@@ -144,6 +144,19 @@ def _failure_reason(raw: Any) -> str | None:
     return None
 
 
+def _own_intent_amount(payment: Any, intent: Any) -> str:
+    """Сумма интента для сверки в наших собственных запросах (сессия и сверка через API).
+
+    Оба раза мы сами шлём в AW upsert с тем же ``reference_id``, ``type`` и ``data`` из строки
+    платежа. Если AW не вернул ``data.amount``, сверяем с суммой нашего запроса: это не чужой
+    ввод, а эхо того, что мы отправили. Вебхук так не делается — его тело пришло снаружи.
+    """
+    if intent.amount is not None:
+        return intent.amount
+    logger.info('Antarctic: AW не вернул сумму интента, сверяем с суммой нашего запроса', payment_id=payment.id)
+    return payment.amount_usd
+
+
 def _payment_state(payment: Any) -> dict[str, Any]:
     return {'payment': payment, 'status': payment.status or 'pending', 'is_paid': bool(payment.is_paid)}
 
@@ -265,6 +278,7 @@ class AntarcticPaymentMixin:
         antarctic_crud = import_module('app.database.crud.antarctic')
         found = await antarctic_crud.get_antarctic_payment_by_token(db, token)
         if found is None:
+            await db.rollback()
             raise AntarcticSessionError('not_found')
         payment_id = found.id
 
@@ -374,7 +388,7 @@ class AntarcticPaymentMixin:
                         locked,
                         status=intent.status,
                         operation_id=intent.operation_id,
-                        amount=intent.amount,
+                        amount=_own_intent_amount(locked, intent),
                         source='session',
                         raw=intent.raw,
                     )
@@ -455,7 +469,7 @@ class AntarcticPaymentMixin:
                 locked,
                 status=intent.status,
                 operation_id=intent.operation_id,
-                amount=intent.amount,
+                amount=_own_intent_amount(locked, intent),
                 source='api_check',
                 raw=intent.raw,
             )
@@ -535,14 +549,18 @@ class AntarcticPaymentMixin:
                 logger.warning('Antarctic webhook: платеж не найден', operation_id=operation_id)
                 return True
 
+            status = _clean_str(data.get('status')) or _WEBHOOK_EVENT_STATUS[event]
+            inner = data.get('data')
+            amount = inner.get('amount') if isinstance(inner, dict) else None
+
+            if status.lower() == 'approved' and _clean_str(amount) is None:
+                # Зачислять по вебхуку без подтверждённой суммы нельзя — сверяем с AW своим запросом.
+                return await self._settle_amountless_antarctic_webhook(db, payment, operation_id)
+
             locked = await antarctic_crud.get_antarctic_payment_by_id_for_update(db, payment.id)
             if locked is None:
                 logger.error('Antarctic: не удалось заблокировать платёж', payment_id=payment.id)
                 return False
-
-            status = _clean_str(data.get('status')) or _WEBHOOK_EVENT_STATUS[event]
-            inner = data.get('data')
-            amount = inner.get('amount') if isinstance(inner, dict) else None
 
             result = await self._apply_antarctic_intent(
                 db,
@@ -563,6 +581,40 @@ class AntarcticPaymentMixin:
             except Exception as rollback_error:
                 logger.error('Antarctic webhook: не удалось откатить транзакцию', error=rollback_error)
             return False
+
+    async def _settle_amountless_antarctic_webhook(
+        self,
+        db: AsyncSession,
+        payment: Any,
+        operation_id: str | None,
+    ) -> bool:
+        """``approved`` без ``data.amount``: вебхук сам ничего не зачисляет, итог берём из запроса к AW.
+
+        Запрос к AW идёт без блокировки строки (``refresh_antarctic_payment`` берёт ``FOR UPDATE``
+        только для записи результата). True — платёж закрыт (оплачен или финально неуспешен),
+        False — AW повторит доставку: интент ещё не подтверждён или страницу не открывали.
+        """
+        payment_id = payment.id
+        stored_operation_id = payment.operation_id
+        if stored_operation_id and operation_id and stored_operation_id != operation_id:
+            alert_logger.error(
+                'Antarctic: событие по другой операции, платёж не тронут — разобрать вручную',
+                payment_id=payment_id,
+                stored_operation_id=stored_operation_id,
+                received_operation_id=operation_id,
+                aw_status='approved',
+                source='webhook',
+            )
+            return True
+
+        logger.warning('Antarctic webhook: approved без суммы, сверяем через API', payment_id=payment_id)
+        refreshed = await self.refresh_antarctic_payment(db, payment_id)
+        if refreshed is None:
+            return False
+        settled = bool(refreshed['is_paid']) or refreshed['status'] in ANTARCTIC_TERMINAL_FAILURES
+        # Блокировку держать нечем, но чтение могло оставить транзакцию открытой.
+        await db.commit()
+        return settled
 
     # ------------------------------------------------------------------ применение статуса
 
@@ -590,13 +642,22 @@ class AntarcticPaymentMixin:
             return True
 
         if payment.status in ANTARCTIC_TERMINAL_FAILURES:
-            logger.warning(
-                'Antarctic: платёж в финальном неуспешном статусе, событие игнорируется',
-                payment_id=payment.id,
-                current_status=payment.status,
-                aw_status=incoming,
-                source=source,
-            )
+            if incoming == 'approved':
+                # Платёж у нас закрыт как неуспешный, а AW говорит «оплачено»: деньги могли уйти.
+                alert_logger.error(
+                    'Antarctic: approved по платежу в финальном неуспешном статусе — зачисление не сделано, разобрать вручную',
+                    payment_id=payment.id,
+                    current_status=payment.status,
+                    source=source,
+                )
+            else:
+                logger.warning(
+                    'Antarctic: платёж в финальном неуспешном статусе, событие игнорируется',
+                    payment_id=payment.id,
+                    current_status=payment.status,
+                    aw_status=incoming,
+                    source=source,
+                )
             return True
 
         if payment.operation_id and incoming_operation_id and payment.operation_id != incoming_operation_id:
@@ -639,8 +700,8 @@ class AntarcticPaymentMixin:
 
         if is_paid:
             if amount_text is None:
-                # Без подтверждённой суммы не зачисляем; статус не финальный — повтор или
-                # сверка через API ещё могут закрыть платёж.
+                # Страховка для прямых вызовов: вебхук без суммы сюда не попадает (его сверяют через
+                # API), а наши запросы подставляют сумму запроса. Без суммы не зачисляем.
                 logger.error('Antarctic: approved без суммы, зачисление отменено', payment_id=payment.id, source=source)
                 return False
 

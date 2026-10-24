@@ -424,7 +424,9 @@ async def test_session_unknown_token_is_not_found(monkeypatch):
         await _create(db, monkeypatch, stub)
         with pytest.raises(AntarcticSessionError) as exc:
             await _open(_service(), db, 'no-such-token')
+        in_transaction = db.in_transaction()
 
+    assert not in_transaction
     assert exc.value.code == 'not_found'
     assert exc.value.http_status == 404
     assert stub.calls == []
@@ -845,9 +847,10 @@ async def test_amount_mismatch_through_session_not_credited(monkeypatch):
 @pytest.mark.asyncio
 @pytest.mark.parametrize('missing', [None, '', '   '])
 async def test_approved_without_amount_asks_for_retry(monkeypatch, missing):
-    """Без подтверждённой суммы не зачисляем и просим повтор; повтор с суммой закрывает платёж."""
+    """Вебхук approved без суммы: сверяем с AW; пока интент там pending — не зачисляем и просим повтор."""
+    stub = StubAW()
     async with memory_session(monkeypatch, TABLES) as db:
-        user_id, result = await _create(db, monkeypatch)
+        user_id, result = await _create(db, monkeypatch, stub)
         service = _service()
         await _open(service, db, result['token'])
 
@@ -855,9 +858,141 @@ async def test_approved_without_amount_asks_for_retry(monkeypatch, missing):
         row = await _row(db)
         assert (row.status, row.is_paid) == ('pending', False)
         assert await _balance(db, user_id) == 0
+        # сессия + сверка с AW; саму сумму вебхук не подставляет
+        assert len(stub.calls) == 2
 
+        # повтор доставки уже с суммой закрывает платёж
         assert await service.process_antarctic_webhook(db, _event(result['token'])) is True
         assert await _balance(db, user_id) == 10000
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('aw_amount', [_SAME, None], ids=['aw-echoes-amount', 'aw-omits-amount'])
+async def test_webhook_without_amount_is_settled_through_the_api(monkeypatch, aw_amount):
+    """approved без суммы в вебхуке: платёж закрывает запрос к AW, вебхук отвечает 2xx."""
+    stub = StubAW(amount=aw_amount)
+    async with memory_session(monkeypatch, TABLES) as db:
+        user_id, result = await _create(db, monkeypatch, stub)
+        service = _service()
+        await _open(service, db, result['token'])
+
+        stub.status = 'approved'
+        assert await service.process_antarctic_webhook(db, _event(result['token'], amount=None)) is True
+        row = await _row(db)
+        assert (row.status, row.is_paid) == ('success', True)
+        assert row.callback_payload['source'] == 'api_check'
+        assert await _balance(db, user_id) == 10000
+        assert await _deposits(db) == 1
+
+        # повторная доставка: платёж закрыт, лишнего запроса к AW и второго зачисления нет
+        calls_before = len(stub.calls)
+        assert await service.process_antarctic_webhook(db, _event(result['token'], amount=None)) is True
+        assert len(stub.calls) == calls_before
+        assert await _balance(db, user_id) == 10000
+        assert await _deposits(db) == 1
+
+
+@pytest.mark.asyncio
+async def test_webhook_without_amount_for_unopened_payment_asks_for_retry(monkeypatch):
+    """Страницу никто не открывал: проверять нечем (логина нет), зачислять нельзя — AW повторит."""
+    stub = StubAW(status='approved')
+    async with memory_session(monkeypatch, TABLES) as db:
+        user_id, result = await _create(db, monkeypatch, stub)
+
+        assert await _service().process_antarctic_webhook(db, _event(result['token'], amount=None)) is False
+        assert stub.calls == []
+        assert (await _row(db)).is_paid is False
+        assert await _balance(db, user_id) == 0
+
+
+@pytest.mark.asyncio
+async def test_webhook_without_amount_on_a_closed_payment_is_acknowledged(monkeypatch):
+    stub = StubAW()
+    async with memory_session(monkeypatch, TABLES) as db:
+        user_id, result = await _create(db, monkeypatch, stub)
+        service = _service()
+        await _open(service, db, result['token'])
+        rejected = _event(result['token'], event='intent.rejected', status='rejected', amount=None)
+        assert await service.process_antarctic_webhook(db, rejected) is True
+        calls_before = len(stub.calls)
+
+        assert await service.process_antarctic_webhook(db, _event(result['token'], amount=None)) is True
+        assert len(stub.calls) == calls_before
+        assert await _balance(db, user_id) == 0
+
+
+@pytest.mark.asyncio
+async def test_webhook_without_amount_for_another_operation_is_ignored(monkeypatch):
+    alerts: list[dict[str, Any]] = []
+    monkeypatch.setattr(aw_module.alert_logger, 'error', lambda *_args, **kwargs: alerts.append(kwargs))
+    stub = StubAW()
+    async with memory_session(monkeypatch, TABLES) as db:
+        user_id, result = await _create(db, monkeypatch, stub)
+        service = _service()
+        await _open(service, db, result['token'])
+        stub.status = 'approved'
+        calls_before = len(stub.calls)
+
+        foreign = _event(result['token'], amount=None, operation_id='op-OTHER')
+        assert await service.process_antarctic_webhook(db, foreign) is True
+        assert len(stub.calls) == calls_before
+        assert (await _row(db)).is_paid is False
+        assert await _balance(db, user_id) == 0
+
+    assert alerts and alerts[-1]['received_operation_id'] == 'op-OTHER'
+
+
+@pytest.mark.asyncio
+async def test_refresh_credits_when_aw_omits_the_amount(monkeypatch):
+    """Наш собственный upsert: если AW не вернул data.amount, сверяем с суммой запроса."""
+    stub = StubAW(amount=None)
+    async with memory_session(monkeypatch, TABLES) as db:
+        user_id, result = await _create(db, monkeypatch, stub)
+        service = _service()
+        await _open(service, db, result['token'])
+
+        stub.status = 'approved'
+        refreshed = await service.refresh_antarctic_payment(db, result['local_payment_id'])
+        assert (refreshed['status'], refreshed['is_paid']) == ('success', True)
+        assert await _balance(db, user_id) == 10000
+        assert await _deposits(db) == 1
+
+        again = await service.refresh_antarctic_payment(db, result['local_payment_id'])
+        assert again['is_paid'] is True
+        assert await _balance(db, user_id) == 10000
+        assert await _deposits(db) == 1
+
+
+@pytest.mark.asyncio
+async def test_session_credits_when_aw_omits_the_amount(monkeypatch):
+    stub = StubAW(status='approved', amount=None)
+    async with memory_session(monkeypatch, TABLES) as db:
+        user_id, result = await _create(db, monkeypatch, stub)
+        session = await _open(_service(), db, result['token'])
+
+        assert (session['status'], session['is_paid']) == ('success', True)
+        assert await _balance(db, user_id) == 10000
+        assert await _deposits(db) == 1
+
+
+@pytest.mark.asyncio
+async def test_apply_without_amount_never_credits(monkeypatch):
+    """Страховка прямого вызова: approved без суммы не зачисляется и ничего не меняет."""
+    async with memory_session(monkeypatch, TABLES) as db:
+        user_id, result = await _create(db, monkeypatch)
+        service = _service()
+        await _open(service, db, result['token'])
+        payment = await _row(db)
+
+        assert (
+            await service._apply_antarctic_intent(
+                db, payment, status='approved', operation_id='op-1', amount=None, source='webhook', raw={}
+            )
+            is False
+        )
+        await db.rollback()
+        assert (await _row(db)).is_paid is False
+        assert await _balance(db, user_id) == 0
 
 
 @pytest.mark.asyncio
@@ -877,6 +1012,28 @@ async def test_rejected_then_approved_ignored(monkeypatch):
         assert row.is_paid is False
         assert await _balance(db, user_id) == 0
         assert await _deposits(db) == 0
+
+
+@pytest.mark.asyncio
+async def test_approved_on_a_terminal_payment_raises_an_alert(monkeypatch):
+    """AW говорит «оплачено», а у нас платёж закрыт как неуспешный: деньги могли уйти — зовём человека."""
+    alerts: list[dict[str, Any]] = []
+    monkeypatch.setattr(aw_module.alert_logger, 'error', lambda *_args, **kwargs: alerts.append(kwargs))
+    async with memory_session(monkeypatch, TABLES) as db:
+        user_id, result = await _create(db, monkeypatch)
+        service = _service()
+        await _open(service, db, result['token'])
+
+        rejected = _event(result['token'], event='intent.rejected', status='rejected', amount=None)
+        assert await service.process_antarctic_webhook(db, rejected) is True
+        assert alerts == []  # повторный неуспех — не повод для тревоги
+
+        assert await service.process_antarctic_webhook(db, _event(result['token'])) is True
+        assert await _balance(db, user_id) == 0
+
+    assert len(alerts) == 1
+    assert alerts[0]['current_status'] == 'rejected'
+    assert alerts[0]['source'] == 'webhook'
 
 
 @pytest.mark.asyncio
