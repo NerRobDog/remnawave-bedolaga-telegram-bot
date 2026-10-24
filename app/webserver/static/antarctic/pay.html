@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex, nofollow">
+<title>Оплата через Antarctic Wallet</title>
+<style>
+  :root {
+    --bg: #f1f4f9;
+    --surface: #ffffff;
+    --text: #0f172a;
+    --muted: #475569;
+    --border: #cbd3df;
+    --control-border: #8693a8;
+    --primary: #1d4ed8;
+    --on-primary: #ffffff;
+    --ok: #0f7a3d;
+    --warn: #9a4a00;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1020;
+      --surface: #141b2e;
+      --text: #e8ecf5;
+      --muted: #a9b4ca;
+      --border: #2a3550;
+      --control-border: #5a6a8c;
+      --primary: #2f5fd0;
+      --on-primary: #ffffff;
+      --ok: #4ade80;
+      --warn: #fbbf24;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  main {
+    width: 100%;
+    max-width: 420px;
+    padding: 28px 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+  }
+  .eyebrow {
+    margin: 0 0 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  h1 {
+    margin: 0 0 8px;
+    font-size: 22px;
+    line-height: 1.25;
+    font-weight: 700;
+  }
+  p { margin: 0 0 16px; }
+  .muted { color: var(--muted); }
+  .amount { margin: 0 0 4px; font-size: 40px; line-height: 1.1; font-weight: 700; letter-spacing: -0.01em; }
+  .credit { margin: 0 0 20px; color: var(--muted); }
+  .desc { margin: 0 0 20px; color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+  .status-ok { color: var(--ok); }
+  .status-warn { color: var(--warn); }
+  .btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 48px;
+    padding: 12px 16px;
+    border-radius: 12px;
+    border: 1px solid transparent;
+    font: inherit;
+    font-weight: 600;
+    text-align: center;
+    text-decoration: none;
+  }
+  .btn-primary { background: var(--primary); color: var(--on-primary); }
+  .btn-secondary { background: transparent; color: var(--text); border-color: var(--control-border); }
+  .btn:focus-visible { outline: 3px solid var(--text); outline-offset: 2px; }
+  .aside {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+  .aside p { margin-bottom: 12px; }
+  .note { margin: 20px 0 0; font-size: 14px; color: var(--muted); text-align: center; }
+</style>
+</head>
+<body>
+<main>
+<!--if:pending-->
+  <p class="eyebrow">Antarctic Wallet</p>
+  <h1>Оплата через Antarctic Wallet</h1>
+  <p class="muted">К оплате</p>
+  <p class="amount">${{AMOUNT_USD}}</p>
+  <p class="credit">Баланс пополнится на {{AMOUNT_RUB}}</p>
+<!--if:description-->
+  <p class="desc">{{DESCRIPTION}}</p>
+<!--endif:description-->
+  <a class="btn btn-primary" href="{{APP_LINK}}" rel="noopener">Оплатить в Antarctic Wallet</a>
+<!--if:referral-->
+  <section class="aside" aria-label="Нет кошелька">
+    <p>Нет кошелька? Создайте за минуту — пополнение по СБП</p>
+    <a class="btn btn-secondary" href="{{REFERRAL_URL}}" rel="noopener noreferrer">Создать кошелёк</a>
+  </section>
+<!--endif:referral-->
+  <p class="note">Ссылка действует {{TTL_TEXT}}</p>
+<!--endif:pending-->
+<!--if:paid-->
+  <p class="eyebrow">Antarctic Wallet</p>
+  <h1 class="status-ok">Оплачено</h1>
+  <p class="muted">Баланс пополнен. Можно вернуться в бот.</p>
+<!--endif:paid-->
+<!--if:stale-->
+  <p class="eyebrow">Antarctic Wallet</p>
+  <h1 class="status-warn">Ссылка устарела, создайте платёж заново</h1>
+  <p class="muted">Вернитесь в бот и выберите пополнение через Antarctic Wallet ещё раз.</p>
+<!--endif:stale-->
+<!--if:notfound-->
+  <p class="eyebrow">Antarctic Wallet</p>
+  <h1 class="status-warn">Платёж не найден</h1>
+  <p class="muted">Проверьте ссылку или создайте платёж заново в боте.</p>
+<!--endif:notfound-->
+</main>
+</body>
+</html>
