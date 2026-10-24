@@ -299,6 +299,25 @@ async def test_create_returns_links(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'template',
+    ['https://t.me/bot/app?startapp={unknown}_{token}', 'https://t.me/bot/app?startapp={0}', 'https://t.me/{app_id'],
+    ids=['unknown-field', 'positional-field', 'unbalanced-brace'],
+)
+async def test_create_with_malformed_link_template_leaves_no_row(monkeypatch, template):
+    """Ссылка собирается до записи в БД: опечатка в шаблоне не оставляет висящий pending-платёж."""
+    _enable(monkeypatch, ANTARCTIC_APP_LINK_TEMPLATE=template)
+    _install(monkeypatch, StubAW())
+    async with memory_session(monkeypatch, TABLES) as db:
+        user_id = await _seed_user(db)
+
+        assert await _service().create_antarctic_payment(db, user_id=user_id, amount_kopeks=10000) is None
+
+        await db.rollback()
+        assert (await db.execute(select(func.count()).select_from(AntarcticPayment))).scalar_one() == 0
+
+
+@pytest.mark.asyncio
 async def test_create_applies_markup(monkeypatch):
     async with memory_session(monkeypatch, TABLES) as db:
         _user_id, result = await _create(db, monkeypatch, ANTARCTIC_MARKUP_PERCENT=5.0)

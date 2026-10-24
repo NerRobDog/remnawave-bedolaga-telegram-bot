@@ -186,7 +186,7 @@ class AntarcticPaymentMixin:
     ) -> dict[str, Any] | None:
         """Создаёт платёж Antarctic Wallet (pending) и ссылки для пользователя.
 
-        ``None`` — способ выключен, сумма вне лимитов, пользователя нет или курс недоступен.
+        ``None`` — способ выключен, сумма вне лимитов, пользователя нет, курс недоступен или не собираются ссылки.
         Сумма в USD фиксируется сейчас (курс сохраняется в строке) и не пересчитывается.
         """
         if not settings.is_antarctic_enabled():
@@ -219,6 +219,17 @@ class AntarcticPaymentMixin:
             return None
 
         token = secrets.token_urlsafe(24)
+        # Ссылки собираем до записи в БД: опечатка в ANTARCTIC_APP_LINK_TEMPLATE не должна оставлять
+        # висящий pending-платёж, у которого нет ссылки для пользователя.
+        try:
+            app_link = settings.get_antarctic_app_link(token)
+            pay_page_url = settings.get_antarctic_pay_page_url(token)
+        except Exception as error:
+            logger.error(
+                'Antarctic: не удалось собрать ссылки платежа, проверьте ANTARCTIC_APP_LINK_TEMPLATE',
+                error=type(error).__name__,
+            )
+            return None
         expires_at = datetime.now(UTC) + timedelta(minutes=settings.ANTARCTIC_PAYMENT_TTL_MINUTES)
         metadata = {
             'user_id': user_id,
@@ -255,8 +266,8 @@ class AntarcticPaymentMixin:
             'token': token,
             'amount_kopeks': amount_kopeks,
             'amount_usd': payment.amount_usd,
-            'app_link': settings.get_antarctic_app_link(token),
-            'pay_page_url': settings.get_antarctic_pay_page_url(token),
+            'app_link': app_link,
+            'pay_page_url': pay_page_url,
             'referral_url': settings.get_antarctic_referral_url(),
             'expires_at': expires_at.isoformat(),
         }
