@@ -222,13 +222,21 @@ def test_miniapp_page_served_with_app_id_and_frame_policy(env) -> None:
     assert response.headers['content-type'].startswith('text/html')
     assert APP_ID in response.text
     assert 'aw-sdk.js' in response.text
-    assert (
-        response.headers['content-security-policy']
-        == 'frame-ancestors https://antarcticwallet.com https://*.antarcticwallet.com'
+    assert response.headers['content-security-policy'] == (
+        'frame-ancestors https://antarcticwallet.com https://*.antarcticwallet.com https://web.telegram.org'
     )
     assert response.headers['cache-control'] == 'no-store'
     assert 'x-frame-options' not in response.headers
     assert '{{' not in response.text
+
+
+def test_miniapp_frame_policy_allows_telegram_web(env) -> None:
+    """Кошелёк открывается и в Telegram Web: без его origin в frame-ancestors страница не встраивается."""
+    policy = env.http.get('/antarctic/app').headers['content-security-policy']
+
+    assert policy.startswith('frame-ancestors ')
+    assert 'https://web.telegram.org' in policy.split()
+    assert '*' not in policy.split()
 
 
 def test_miniapp_page_has_no_external_scripts_and_the_agreed_copy(env) -> None:

@@ -41,8 +41,8 @@ logger = structlog.get_logger(__name__)
 
 STATIC_DIR = Path(__file__).resolve().parent / 'static' / 'antarctic'
 
-# Кому разрешено встраивать страницу мини-приложения: только сам кошелёк.
-MINIAPP_CSP = 'frame-ancestors https://antarcticwallet.com https://*.antarcticwallet.com'
+# Кому разрешено встраивать страницу мини-приложения: сам кошелёк и Telegram Web, где он открывается.
+MINIAPP_CSP = 'frame-ancestors https://antarcticwallet.com https://*.antarcticwallet.com https://web.telegram.org'
 # Страница оплаты — обычная страница в браузере: скриптов нет, встраивать её никуда не нужно.
 PAY_PAGE_CSP = (
     "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; "
