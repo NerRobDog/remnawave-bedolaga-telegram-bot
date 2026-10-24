@@ -893,6 +893,9 @@
 
 ### app/external
 
+- `app/external/antarctic.py` — Python-модуль
+  Классы: `AntarcticAPIError` (1 методов), `AntarcticTokenError`, `AntarcticIntent`, `AntarcticClient` (10 методов)
+  Функции: `get_antarctic_client` — Shared client for the configured AW app; rebuilt when app id, secret or API base change.
 - `app/external/apple_iap.py` — Python-модуль
   Классы: `AppleIAPConfigurationError`, `AppleIAPService` (10 методов)
   Функции: `parse_apple_timestamp` — Convert Apple millisecond timestamps or ISO strings to aware UTC datetimes.
@@ -4192,6 +4195,9 @@
 - `tests/external/__init__.py` — Python-модуль
   Классы: нет
   Функции: нет
+- `tests/external/test_antarctic_client.py` — Python-модуль
+  Классы: `JwksServer` (2 методов)
+  Функции: `rsa_key`, `other_rsa_key`, `test_upsert_sends_contract`, `test_upsert_parses_snake_case_response`, `test_upsert_parses_camel_case_failure_reason_without_data`, `test_intent_is_hashable_and_hides_raw_in_repr`, `test_upsert_error_raises_with_code`, `test_upsert_error_without_json_body_has_no_code`, `test_upsert_missing_operation_id_raises`, `test_upsert_malformed_success_body_raises`, `test_upsert_network_error_becomes_api_error_without_secret`, `test_client_repr_does_not_expose_secret`, `test_id_token_valid_returns_sub`, `test_id_token_accepts_audience_list`, `test_id_token_wrong_aud`, `test_id_token_missing_aud`, `test_id_token_wrong_iss`, `test_id_token_missing_iss`, `test_id_token_expired`, `test_id_token_missing_exp`, `test_id_token_missing_or_empty_sub`, `test_id_token_hs256_signed_with_secret`, `test_id_token_hs256_signed_with_public_key_pem` — Classic algorithm-confusion attack: HMAC keyed with the (public) PEM., `test_id_token_alg_none`, `test_id_token_alg_differs_from_jwk_alg` — Token says RS384 while the JWK declares RS256: the JWK wins, token rejected., `test_id_token_jwk_declaring_hmac_alg_is_ignored`, `test_id_token_oct_jwk_with_hmac_alg_is_rejected` — Even a symmetric JWK that matches an HS256 token must never verify anything., `test_id_token_jwk_without_alg_is_rejected`, `test_id_token_encryption_key_is_not_used_for_signatures`, `test_id_token_jwk_key_type_mismatch` — JWK is an EC key but declares RS256: key family must match the algorithm., `test_id_token_es256_key_is_accepted`, `test_id_token_signed_by_other_key_with_known_kid`, `test_id_token_without_kid_is_rejected_without_fetching`, `test_id_token_malformed`, `test_id_token_error_does_not_leak_token_or_secret`, `test_jwks_fetch_failure_is_a_token_error`, `test_jwks_malformed_document_is_a_token_error`, `test_jwks_request_carries_no_credentials`, `test_jwks_cached_and_refetched_on_unknown_kid`, `test_unknown_kid_refetches_exactly_once_then_fails`, `test_jwks_refetched_after_ttl`, `test_webhook_signature`, `test_webhook_signature_known_vector` — Fixed vector so that a regression in the signed message format is caught., `test_webhook_signature_wrong_secret_or_timestamp_binding`, `test_webhook_rejects_malformed_timestamp`, `test_webhook_rejects_garbage_signature_without_raising`, `test_webhook_default_now_is_wall_clock`, `reset_factory`, `test_get_client_none_when_not_configured`, `test_get_client_cached_and_rebuilt_on_change`
 - `tests/external/test_apple_iap.py` — Python-модуль
   Классы: `TestAppleDependency` (1 методов), `TestSettings` (8 методов), `TestTransactionValidation` (3 методов), `TestAdapter` (2 методов), `TestSchemas` (4 методов), `TestTimestampParsing` (2 методов), `TestCabinetAppleIAPRoutes` (8 методов), `TestFulfillmentService` (6 методов), `TestAdapterFallback` (1 методов), `TestNotificationService` (7 методов), `TestAppleIAPRouting` (3 методов)
   Функции: `anyio_backend`
