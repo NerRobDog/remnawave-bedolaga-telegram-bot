@@ -106,6 +106,32 @@ def format_days_declension(days: int, language: str = 'ru') -> str:
     return f'{days} дней'
 
 
+_PERSIAN_DIGITS = str.maketrans('0123456789', '۰۱۲۳۴۵۶۷۸۹')
+
+
+def format_minutes_declension(minutes: int, language: str | None = 'ru') -> str:
+    """«30 минут» / «1 минуту» / «30 minutes»: число минут с единицей на языке пользователя."""
+    minutes = max(int(minutes), 1)
+    language_code = (language or 'ru').split('-')[0].lower()
+
+    if language_code in {'ru', 'ua', 'uk'}:
+        if 11 <= minutes % 100 <= 14:
+            form = 2
+        elif minutes % 10 == 1:
+            form = 0
+        elif 2 <= minutes % 10 <= 4:
+            form = 1
+        else:
+            form = 2
+        words = ('минуту', 'минуты', 'минут') if language_code == 'ru' else ('хвилину', 'хвилини', 'хвилин')
+        return f'{minutes} {words[form]}'
+    if language_code == 'zh':
+        return f'{minutes} 分钟'
+    if language_code == 'fa':
+        return f'{minutes} دقیقه'.translate(_PERSIAN_DIGITS)
+    return f'{minutes} minute{"s" if minutes != 1 else ""}'
+
+
 def format_duration(seconds: int) -> str:
     if seconds < 60:
         return f'{seconds} сек.'

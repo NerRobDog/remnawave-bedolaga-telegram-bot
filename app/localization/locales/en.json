@@ -2322,7 +2322,7 @@
   "CASHERA_RECURRING_CANCELLED": "✅ Cashera auto-renewal turned off",
   "PAYMENT_ANTARCTIC": "🐧 {name}",
   "ANTARCTIC_ENTER_AMOUNT": "🐧 <b>Payment via {name}</b>\n\nEnter the top-up amount from {min_amount} to {max_amount}. Charged in US dollars at the Central Bank rate, 0% fee.",
-  "ANTARCTIC_PAYMENT_CREATED": "🐧 <b>Payment via {name}</b>\n\nTop-up: <b>{amount}</b>\nTo pay: <b>${amount_usd}</b>\n\nTap “Pay” to open Antarctic Wallet. The link is valid for 30 minutes and your balance is topped up automatically.",
+  "ANTARCTIC_PAYMENT_CREATED": "🐧 <b>Payment via {name}</b>\n\nTop-up: <b>{amount}</b>\nTo pay: <b>${amount_usd}</b>\n\nTap “Pay” to open Antarctic Wallet. The link is valid for {ttl} and your balance is topped up automatically.",
   "ANTARCTIC_REFERRAL_HINT": "No wallet yet? Create one in a minute, top up via SBP.",
   "ANTARCTIC_PAY_BUTTON": "💳 Pay in Antarctic Wallet",
   "ANTARCTIC_REFERRAL_BUTTON": "🆕 No wallet? Create one",
