@@ -906,6 +906,89 @@ async def test_webhook_without_amount_for_unopened_payment_asks_for_retry(monkey
 
 
 @pytest.mark.asyncio
+async def test_amountless_webhook_for_unbound_row_past_ttl_is_not_expired(monkeypatch):
+    """AW уже говорит «оплачено», а у нас нет логина кошелька: гасить строку по TTL нельзя.
+
+    Сверка через API здесь выглядела бы как «страницу не открывали» и закрыла бы платёж как
+    expired, а вебхук ответил бы 2xx — деньги ушли бы без следа. Вместо этого: тревога и 5xx,
+    чтобы AW повторил доставку.
+    """
+    alerts: list[dict[str, Any]] = []
+    monkeypatch.setattr(aw_module.alert_logger, 'error', lambda *_args, **kwargs: alerts.append(kwargs))
+    stub = StubAW(status='approved')
+    async with memory_session(monkeypatch, TABLES) as db:
+        user_id, result = await _create(db, monkeypatch, stub)
+        await _set_expires(db, datetime.now(UTC) - timedelta(minutes=5))
+
+        assert await _service().process_antarctic_webhook(db, _event(result['token'], amount=None)) is False
+
+        row = await _row(db)
+        assert (row.status, row.is_paid) == ('pending', False)
+        assert stub.calls == []
+        assert await _balance(db, user_id) == 0
+
+    assert len(alerts) == 1
+    assert alerts[0]['payment_id'] == result['local_payment_id']
+    assert alerts[0]['source'] == 'webhook'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('how', ['rejected', 'expired_unopened'])
+async def test_amountless_webhook_on_a_terminal_payment_raises_an_alert(monkeypatch, how):
+    """approved без суммы по платежу, уже закрытому как неуспешный: деньги могли уйти — зовём человека."""
+    alerts: list[dict[str, Any]] = []
+    monkeypatch.setattr(aw_module.alert_logger, 'error', lambda *_args, **kwargs: alerts.append(kwargs))
+    stub = StubAW()
+    async with memory_session(monkeypatch, TABLES) as db:
+        user_id, result = await _create(db, monkeypatch, stub)
+        service = _service()
+        if how == 'rejected':
+            await _open(service, db, result['token'])
+            rejected = _event(result['token'], event='intent.rejected', status='rejected', amount=None)
+            assert await service.process_antarctic_webhook(db, rejected) is True
+            expected_status = 'rejected'
+        else:
+            await _set_expires(db, datetime.now(UTC) - timedelta(minutes=5))
+            await service.refresh_antarctic_payment(db, result['local_payment_id'])
+            expected_status = 'expired'
+        assert (await _row(db)).status == expected_status
+        assert alerts == []  # закрытие без approved — не повод для тревоги
+        calls_before = len(stub.calls)
+
+        assert await service.process_antarctic_webhook(db, _event(result['token'], amount=None)) is True
+
+        assert len(stub.calls) == calls_before
+        row = await _row(db)
+        assert (row.status, row.is_paid) == (expected_status, False)
+        assert await _balance(db, user_id) == 0
+
+    assert len(alerts) == 1
+    assert alerts[0]['current_status'] == expected_status
+    assert alerts[0]['source'] == 'webhook'
+
+
+@pytest.mark.asyncio
+async def test_amountless_webhook_closing_as_amount_mismatch_alerts_once(monkeypatch):
+    """Сверка через API нашла чужую сумму: тревога уже поднята при применении статуса, дубля нет."""
+    alerts: list[dict[str, Any]] = []
+    monkeypatch.setattr(aw_module.alert_logger, 'error', lambda *_args, **kwargs: alerts.append(kwargs))
+    stub = StubAW()
+    async with memory_session(monkeypatch, TABLES) as db:
+        user_id, result = await _create(db, monkeypatch, stub)
+        service = _service()
+        await _open(service, db, result['token'])
+        stub.status = 'approved'
+        stub.amount = '0.01'
+
+        assert await service.process_antarctic_webhook(db, _event(result['token'], amount=None)) is True
+
+        assert (await _row(db)).status == 'amount_mismatch'
+        assert await _balance(db, user_id) == 0
+
+    assert len(alerts) == 1
+
+
+@pytest.mark.asyncio
 async def test_webhook_without_amount_on_a_closed_payment_is_acknowledged(monkeypatch):
     stub = StubAW()
     async with memory_session(monkeypatch, TABLES) as db:
