@@ -20,7 +20,7 @@ TABLES = list(Base.metadata.sorted_tables)
 
 def _enable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, 'ANTARCTIC_ENABLED', True, raising=False)
-    monkeypatch.setattr(settings, 'ANTARCTIC_APP_ID', '68019113', raising=False)
+    monkeypatch.setattr(settings, 'ANTARCTIC_APP_ID', '10000001', raising=False)
     monkeypatch.setattr(settings, 'ANTARCTIC_APP_SECRET', 'sk_test', raising=False)
 
 

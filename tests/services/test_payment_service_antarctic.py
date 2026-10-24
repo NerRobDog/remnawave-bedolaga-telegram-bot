@@ -34,7 +34,7 @@ from tests.services.user_reminders.test_import_cycle import _graph, _path
 TABLES = list(Base.metadata.sorted_tables)
 
 RATE = 95.5
-APP_ID = '68019113'
+APP_ID = '10000001'
 _SAME = object()
 
 
