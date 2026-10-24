@@ -32,6 +32,7 @@ from app.services.payment import (
     YooKassaPaymentMixin,
 )
 from app.services.payment.anore import AnorePaymentMixin
+from app.services.payment.antarctic import AntarcticPaymentMixin
 from app.services.payment.antilopay import AntilopayPaymentMixin
 from app.services.payment.aurapay import AuraPayPaymentMixin
 from app.services.payment.cashera import CasheraPaymentMixin
@@ -703,6 +704,36 @@ async def link_cashera_payment_to_transaction(*args, **kwargs):
     return await cashera_crud.link_cashera_payment_to_transaction(*args, **kwargs)
 
 
+async def create_antarctic_payment(*args, **kwargs):
+    antarctic_crud = import_module('app.database.crud.antarctic')
+    return await antarctic_crud.create_antarctic_payment(*args, **kwargs)
+
+
+async def get_antarctic_payment_by_token(*args, **kwargs):
+    antarctic_crud = import_module('app.database.crud.antarctic')
+    return await antarctic_crud.get_antarctic_payment_by_token(*args, **kwargs)
+
+
+async def get_antarctic_payment_by_id(*args, **kwargs):
+    antarctic_crud = import_module('app.database.crud.antarctic')
+    return await antarctic_crud.get_antarctic_payment_by_id(*args, **kwargs)
+
+
+async def get_antarctic_payment_by_id_for_update(*args, **kwargs):
+    antarctic_crud = import_module('app.database.crud.antarctic')
+    return await antarctic_crud.get_antarctic_payment_by_id_for_update(*args, **kwargs)
+
+
+async def get_antarctic_payment_by_operation_id(*args, **kwargs):
+    antarctic_crud = import_module('app.database.crud.antarctic')
+    return await antarctic_crud.get_antarctic_payment_by_operation_id(*args, **kwargs)
+
+
+async def link_antarctic_payment_to_transaction(*args, **kwargs):
+    antarctic_crud = import_module('app.database.crud.antarctic')
+    return await antarctic_crud.link_antarctic_payment_to_transaction(*args, **kwargs)
+
+
 async def create_tabpay_payment(*args, **kwargs):
     tabpay_crud = import_module('app.database.crud.tabpay')
     return await tabpay_crud.create_tabpay_payment(*args, **kwargs)
@@ -831,6 +862,7 @@ class PaymentService(
     AnorePaymentMixin,
     ParityPayPaymentMixin,
     CasheraPaymentMixin,
+    AntarcticPaymentMixin,
 ):
     """Основной интерфейс платежей, делегирующий работу специализированным mixin-ам."""
 
