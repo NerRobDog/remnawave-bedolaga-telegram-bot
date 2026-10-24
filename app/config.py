@@ -3361,7 +3361,9 @@ class Settings(BaseSettings):
     def get_antarctic_pay_page_url(self, token: str) -> str | None:
         if not self.WEBHOOK_URL:
             return None
-        return f'{self.WEBHOOK_URL.rstrip("/")}{self.ANTARCTIC_PAY_PAGE_PATH}/{token}'
+        # Тот же вид пути, что у роутера (app.webserver.antarctic._normalize_path): ведущий слэш, без хвостового.
+        page_path = '/' + (self.ANTARCTIC_PAY_PAGE_PATH or '').strip().strip('/')
+        return f'{self.WEBHOOK_URL.rstrip("/")}{page_path}/{token}'
 
     def is_cashera_configured(self) -> bool:
         """Есть ли учётные данные провайдера — без учёта флага включения."""
