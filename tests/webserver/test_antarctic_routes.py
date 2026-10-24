@@ -31,7 +31,7 @@ from app.webserver.antarctic import create_antarctic_router
 from app.webserver.payments import create_payment_router
 
 
-APP_ID = '68019113'
+APP_ID = '10000001'
 APP_SECRET = 'sk_antarctic_test_secret'
 TOKEN = 'Ab3_-' + 'x' * 27  # как secrets.token_urlsafe(24): 32 символа [A-Za-z0-9_-]
 ID_TOKEN = 'eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.id-token-signature-marker'

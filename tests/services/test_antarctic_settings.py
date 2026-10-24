@@ -45,10 +45,10 @@ def test_display_name_falls_back(monkeypatch):
 
 
 def test_app_link_formats_template(monkeypatch):
-    monkeypatch.setattr(settings, 'ANTARCTIC_APP_ID', '68019113')
+    monkeypatch.setattr(settings, 'ANTARCTIC_APP_ID', '10000001')
     assert (
         settings.get_antarctic_app_link('abc_DEF-1')
-        == 'https://t.me/antarctic_wallet_bot/app?startapp=app_68019113_abc_DEF-1'
+        == 'https://t.me/antarctic_wallet_bot/app?startapp=app_10000001_abc_DEF-1'
     )
 
 
