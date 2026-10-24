@@ -592,7 +592,10 @@ class AntarcticPaymentMixin:
 
         Запрос к AW идёт без блокировки строки (``refresh_antarctic_payment`` берёт ``FOR UPDATE``
         только для записи результата). True — платёж закрыт (оплачен или финально неуспешен),
-        False — AW повторит доставку: интент ещё не подтверждён или страницу не открывали.
+        False — AW повторит доставку: интент ещё не подтверждён или логин кошелька не сохранён.
+
+        Любой ``approved``, после которого строка осталась неоплаченной и закрытой, — повод
+        для человека: AW считает платёж оплаченным.
         """
         payment_id = payment.id
         stored_operation_id = payment.operation_id
@@ -607,14 +610,49 @@ class AntarcticPaymentMixin:
             )
             return True
 
+        if payment.is_paid:
+            return True
+
+        status_before = payment.status
+        if status_before in ANTARCTIC_TERMINAL_FAILURES:
+            # Сверка здесь ничего не изменит (платёж закрыт), а AW считает его оплаченным.
+            self._alert_antarctic_approved_without_credit(payment_id, status_before)
+            return True
+
+        if not payment.user_app_login:
+            # Без логина кошелька сверка через API невозможна, а ``refresh`` принял бы строку за
+            # «страницу не открывали» и по TTL погасил бы её как expired — платёж, который AW
+            # уже подтвердил. Строку не трогаем, пусть AW повторит доставку.
+            alert_logger.error(
+                'Antarctic: approved от AW по платежу без привязанного кошелька — сверка невозможна, разобрать вручную',
+                payment_id=payment_id,
+                operation_id=operation_id,
+                current_status=status_before,
+                source='webhook',
+            )
+            return False
+
         logger.warning('Antarctic webhook: approved без суммы, сверяем через API', payment_id=payment_id)
         refreshed = await self.refresh_antarctic_payment(db, payment_id)
         if refreshed is None:
             return False
         settled = bool(refreshed['is_paid']) or refreshed['status'] in ANTARCTIC_TERMINAL_FAILURES
+        if not refreshed['is_paid'] and refreshed['status'] in ANTARCTIC_TERMINAL_FAILURES:
+            # Расхождение суммы уже подняло тревогу при применении статуса; остальные причины закрытия — нет.
+            if refreshed['status'] != 'amount_mismatch':
+                self._alert_antarctic_approved_without_credit(payment_id, refreshed['status'])
         # Блокировку держать нечем, но чтение могло оставить транзакцию открытой.
         await db.commit()
         return settled
+
+    @staticmethod
+    def _alert_antarctic_approved_without_credit(payment_id: int, current_status: str) -> None:
+        alert_logger.error(
+            'Antarctic: approved по платежу в финальном неуспешном статусе — зачисление не сделано, разобрать вручную',
+            payment_id=payment_id,
+            current_status=current_status,
+            source='webhook',
+        )
 
     # ------------------------------------------------------------------ применение статуса
 
