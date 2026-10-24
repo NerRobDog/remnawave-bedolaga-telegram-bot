@@ -4,16 +4,19 @@
 
 * кошелёк подтверждается подписанным ``idToken`` (``sub`` — логин кошелька), а не данными из тела запроса;
 * подпись вебхука считается по сырым байтам тела и проверяется до разбора JSON;
-* ``/session`` и ``/status`` ограничены по IP, а размер тел — по байтам, ещё до разбора;
+* ``/session`` и ``/status`` ограничены по IP (до чтения тела) и по токену платежа (после разбора),
+  а размер тел — по байтам, ещё до разбора;
 * значения, попавшие на страницы, экранируются, в логи не идут ни ``idToken``, ни секрет, ни подпись,
   а тела ошибок несут только короткие коды.
 """
 
 from __future__ import annotations
 
+import hashlib
 import html
 import json
 import re
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from functools import cache
 from pathlib import Path
@@ -46,8 +49,12 @@ PAY_PAGE_CSP = (
     "form-action 'none'; frame-ancestors 'none'"
 )
 
-# 30 запросов в минуту с одного адреса на /session и /status вместе: платёж занимает около шести.
-RATE_LIMIT_REQUESTS = 30
+# Лимиты общие для /session и /status. Платёж занимает около шести запросов.
+# По IP: потолок на один адрес (NAT и общий IP прокси держат много людей, поэтому щедро).
+# По токену платежа: один платёж не нужен больше двадцати запросов в минуту, а перебор или
+# накрутка запросов к AW по одному токену упирается именно сюда, с какого бы адреса ни шёл.
+RATE_LIMIT_IP_REQUESTS = 120
+RATE_LIMIT_TOKEN_REQUESTS = 20
 RATE_LIMIT_WINDOW_SECONDS = 60
 
 # Тело /session и /status — idToken (до 8 КиБ) и токен платежа; вебхук AW — небольшой JSON.
@@ -118,7 +125,7 @@ def _error(code: str) -> JSONResponse:
 async def _read_body(request: Request, limit: int) -> bytes:
     """Читает тело не больше ``limit`` байт; больше — ``_BodyTooLarge`` без чтения остатка."""
     declared = request.headers.get('content-length')
-    if declared is not None and declared.isdigit() and int(declared) > limit:
+    if declared is not None and declared.isascii() and declared.isdigit() and int(declared) > limit:
         raise _BodyTooLarge
     chunks: list[bytes] = []
     size = 0
@@ -151,32 +158,72 @@ def _credentials(payload: Any) -> tuple[str, str] | None:
     return id_token, token
 
 
-async def _is_rate_limited(request: Request) -> bool:
+async def _fail_open(check: Callable[[], Awaitable[bool]], what: str) -> bool:
+    """Результат лимитера; его сбой не должен останавливать оплату, если Redis недоступен."""
+    try:
+        return bool(await check())
+    except Exception as error:
+        logger.warning('Antarctic: лимитер недоступен, запрос пропущен', limiter=what, error=type(error).__name__)
+        return False
+
+
+async def _is_ip_rate_limited(request: Request) -> bool:
     try:
         client_ip = get_client_ip(request)
     except HTTPException:
         client_ip = 'unknown'
+    return await _fail_open(
+        lambda: RateLimitCache.is_rate_limited(
+            0,
+            f'antarctic:{client_ip}',
+            limit=RATE_LIMIT_IP_REQUESTS,
+            window=RATE_LIMIT_WINDOW_SECONDS,
+        ),
+        'ip',
+    )
+
+
+async def _is_token_rate_limited(token: str) -> bool:
+    # Ключ лежит в Redis и в его логах, а токен платежа — это ссылка на оплату: кладём только отпечаток.
+    digest = hashlib.sha256(token.encode('ascii')).hexdigest()
+    return await _fail_open(
+        lambda: RateLimitCache.is_subject_rate_limited(
+            digest,
+            'antarctic_token',
+            limit=RATE_LIMIT_TOKEN_REQUESTS,
+            window=RATE_LIMIT_WINDOW_SECONDS,
+        ),
+        'token',
+    )
+
+
+async def _read_credentials(request: Request) -> tuple[str, str] | JSONResponse:
+    """Общее начало ``/session`` и ``/status``: лимиты, ограниченное чтение тела, разбор.
+
+    Возвращает ``(idToken, token)`` либо готовый ответ с ошибкой. Порядок важен: лимит по IP стоит до
+    чтения тела, лимит по токену — после разбора (мусорные тела и токены чужой формы в Redis не попадают),
+    а проверка ``idToken`` — после обоих.
+    """
+    if await _is_ip_rate_limited(request):
+        return _json({'error': 'rate_limited'}, status.HTTP_429_TOO_MANY_REQUESTS)
     try:
-        return bool(
-            await RateLimitCache.is_rate_limited(
-                0,
-                f'antarctic:{client_ip}',
-                limit=RATE_LIMIT_REQUESTS,
-                window=RATE_LIMIT_WINDOW_SECONDS,
-            )
-        )
-    except Exception as error:
-        # Лимитер защищает от перебора, но не должен останавливать оплату, если Redis недоступен.
-        logger.warning('Antarctic: лимитер недоступен, запрос пропущен', error=type(error).__name__)
-        return False
+        raw = await _read_body(request, MAX_JSON_BODY_BYTES)
+    except _BodyTooLarge:
+        return _json({'error': 'payload_too_large'}, status.HTTP_413_CONTENT_TOO_LARGE)
+    credentials = _credentials(_parse_json(raw))
+    if credentials is None:
+        return _json({'error': 'bad_request'}, status.HTTP_400_BAD_REQUEST)
+    if await _is_token_rate_limited(credentials[1]):
+        return _json({'error': 'rate_limited'}, status.HTTP_429_TOO_MANY_REQUESTS)
+    return credentials
 
 
 def _format_rub(amount_kopeks: int) -> str:
     rubles, kopeks = divmod(int(amount_kopeks), 100)
-    text = f'{rubles:,}'.replace(',', ' ')
+    text = f'{rubles:,}'.replace(',', '\u00a0')
     if kopeks:
         text = f'{text},{kopeks:02d}'
-    return f'{text} ₽'
+    return f'{text}\u00a0₽'
 
 
 def _amount_rub_string(amount_kopeks: int) -> str:
@@ -232,6 +279,11 @@ def create_antarctic_router(payment_service: PaymentService) -> APIRouter:
     """Страницы, JSON-эндпоинты и вебхук Antarctic Wallet; пути берутся из настроек на момент монтирования."""
     router = APIRouter()
 
+    if settings.is_antarctic_configured() and not settings.get_cabinet_trusted_proxies():
+        # Без списка доверенных прокси get_client_ip отдаёт адрес самого прокси: лимит по IP
+        # тогда общий на всех пользователей.
+        logger.warning('Antarctic: rate limits are per proxy IP until CABINET_TRUSTED_PROXIES is set')
+
     miniapp_path = _normalize_path(settings.ANTARCTIC_MINIAPP_PATH)
     pay_page_path = _normalize_path(settings.ANTARCTIC_PAY_PAGE_PATH)
     webhook_path = _normalize_path(settings.ANTARCTIC_WEBHOOK_PATH)
@@ -246,15 +298,9 @@ def create_antarctic_router(payment_service: PaymentService) -> APIRouter:
 
     @router.post(f'{miniapp_path}/session', include_in_schema=False)
     async def antarctic_session(request: Request) -> JSONResponse:
-        if await _is_rate_limited(request):
-            return _json({'error': 'rate_limited'}, status.HTTP_429_TOO_MANY_REQUESTS)
-        try:
-            raw = await _read_body(request, MAX_JSON_BODY_BYTES)
-        except _BodyTooLarge:
-            return _json({'error': 'payload_too_large'}, status.HTTP_413_CONTENT_TOO_LARGE)
-        credentials = _credentials(_parse_json(raw))
-        if credentials is None:
-            return _json({'error': 'bad_request'}, status.HTTP_400_BAD_REQUEST)
+        credentials = await _read_credentials(request)
+        if isinstance(credentials, JSONResponse):
+            return credentials
         id_token, token = credentials
 
         try:
@@ -279,15 +325,9 @@ def create_antarctic_router(payment_service: PaymentService) -> APIRouter:
 
     @router.post(f'{miniapp_path}/status', include_in_schema=False)
     async def antarctic_status(request: Request) -> JSONResponse:
-        if await _is_rate_limited(request):
-            return _json({'error': 'rate_limited'}, status.HTTP_429_TOO_MANY_REQUESTS)
-        try:
-            raw = await _read_body(request, MAX_JSON_BODY_BYTES)
-        except _BodyTooLarge:
-            return _json({'error': 'payload_too_large'}, status.HTTP_413_CONTENT_TOO_LARGE)
-        credentials = _credentials(_parse_json(raw))
-        if credentials is None:
-            return _json({'error': 'bad_request'}, status.HTTP_400_BAD_REQUEST)
+        credentials = await _read_credentials(request)
+        if isinstance(credentials, JSONResponse):
+            return credentials
         id_token, token = credentials
 
         client = get_antarctic_client()
