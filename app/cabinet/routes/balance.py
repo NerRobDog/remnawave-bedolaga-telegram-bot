@@ -2,6 +2,7 @@
 
 import math
 import time
+from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 import structlog
@@ -1591,8 +1592,25 @@ def _get_payment_url(record: PendingPayment) -> str | None:
         PaymentMethod.RIOPAY,
     ):
         payment_url = getattr(payment, 'payment_url', None) or payment_url
+    elif record.method == PaymentMethod.ANTARCTIC:
+        # Своей ссылки у платежа нет: оплата идёт со страницы бота, адрес собираем из токена.
+        # Истёкший или закрытый платёж ведёт на пустую страницу, поэтому ссылку не отдаём.
+        payment_url = _antarctic_pay_page_url(record)
 
     return payment_url
+
+
+def _antarctic_pay_page_url(record: PendingPayment) -> str | None:
+    if record.is_paid or (record.status or '').lower() != 'pending':
+        return None
+    expires_at = record.expires_at
+    if expires_at is not None:
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        if expires_at <= datetime.now(UTC):
+            return None
+    token = getattr(record.payment, 'token', None)
+    return settings.get_antarctic_pay_page_url(token) if token else None
 
 
 def _record_to_response(record: PendingPayment) -> PendingPaymentResponse:
