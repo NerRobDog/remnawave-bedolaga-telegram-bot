@@ -1889,6 +1889,7 @@ class AdminNotificationService:
             'cispay': f'💳 {settings.get_cispay_display_name()}',
             'cashera': f'💳 {settings.get_cashera_display_name()}',
             'anore': f'💳 {settings.get_anore_display_name()}',
+            'antarctic': f'🐧 {settings.get_antarctic_display_name()}',
             'tabpay': f'💳 {settings.get_tabpay_display_name()}',
             'paritypay': f'💳 {settings.get_paritypay_display_name()}',
             'manual': '🛠️ Вручную (админ)',

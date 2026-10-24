@@ -387,6 +387,17 @@ def get_available_payment_methods() -> list[dict[str, str]]:
                 }
             )
 
+    if settings.is_antarctic_enabled():
+        methods.append(
+            {
+                'id': 'antarctic',
+                'name': settings.get_antarctic_display_name(),
+                'icon': '🐧',
+                'description': settings.ANTARCTIC_DESCRIPTION,
+                'callback': 'topup_antarctic',
+            }
+        )
+
     if settings.is_tabpay_sbp_enabled():
         sbp_name = settings.get_tabpay_sbp_display_name()
         methods.append(
@@ -703,6 +714,8 @@ def is_payment_method_available(method_id: str) -> bool:
         return settings.is_lava_card_enabled()
     if method_id == 'cispay':
         return settings.is_cispay_enabled()
+    if method_id == 'antarctic':
+        return settings.is_antarctic_enabled()
     if method_id == 'cashera':
         return settings.is_cashera_enabled()
     if method_id.startswith('cashera_m_'):
