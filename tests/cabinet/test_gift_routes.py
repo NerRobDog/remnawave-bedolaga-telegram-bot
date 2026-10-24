@@ -209,6 +209,38 @@ async def test_gift_config_personalized_quote_fields(monkeypatch):
         assert period.discount_percent == 20
 
 
+@pytest.mark.asyncio
+async def test_gift_config_hides_methods_without_guest_payment_support(monkeypatch):
+    """Подарок оплачивается как гостевая покупка; у Antarctic Wallet гостевой оплаты нет — в списке его быть не должно."""
+    methods = [
+        {'id': 'yookassa', 'name': 'YooKassa', 'min_amount_kopeks': 100, 'max_amount_kopeks': 1000000},
+        {'id': 'antarctic', 'name': 'Antarctic Wallet', 'min_amount_kopeks': 10000, 'max_amount_kopeks': 10000000},
+        {'id': 'cryptobot', 'name': 'CryptoBot'},
+    ]
+    monkeypatch.setattr(gift_routes, 'get_enabled_methods_for_user', AsyncMock(return_value=methods))
+    async with memory_session(monkeypatch, _TABLES) as db:
+        db.add(SystemSetting(key=GIFT_ENABLED_KEY, value='true'))
+        user = User(id=10, balance_kopeks=0, username='buyer')
+        db.add(user)
+        db.add(
+            Tariff(
+                id=1,
+                name='Standard',
+                is_active=True,
+                show_in_gift=True,
+                display_order=1,
+                period_prices={'30': 10000},
+                device_limit=1,
+                traffic_limit_gb=30,
+            )
+        )
+        await db.commit()
+
+        config = await gift_routes.get_gift_config(user=user, db=db)
+
+    assert [method.method_id for method in config.payment_methods] == ['yookassa', 'cryptobot']
+
+
 # ── Step 3: /gift/purchase Balance Mode Tests ──────────────────────────────
 
 

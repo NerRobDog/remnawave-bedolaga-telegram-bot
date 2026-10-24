@@ -75,6 +75,9 @@ logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix='/gift', tags=['Cabinet Gift'])
 
+# Подарок оплачивается как гостевая покупка (create_guest_payment); у этих способов гостевой оплаты нет.
+_METHODS_WITHOUT_GUEST_PAYMENT = frozenset({'antarctic'})
+
 _EMAIL_RE = re.compile(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$')
 _TELEGRAM_RE = re.compile(r'^@?[a-zA-Z][a-zA-Z0-9_]{4,31}$')
 
@@ -151,6 +154,8 @@ async def get_gift_config(
     enabled_methods = await get_enabled_methods_for_user(db, user=user)
     payment_methods: list[GiftConfigPaymentMethod] = []
     for method_data in enabled_methods:
+        if method_data['id'] in _METHODS_WITHOUT_GUEST_PAYMENT:
+            continue
         sub_options = None
         raw_options = method_data.get('options')
         if raw_options:
