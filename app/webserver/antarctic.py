@@ -292,7 +292,12 @@ def create_antarctic_router(payment_service: PaymentService) -> APIRouter:
     async def antarctic_miniapp() -> HTMLResponse:
         content = _render(
             _template('app.html'),
-            {'APP_ID': settings.ANTARCTIC_APP_ID or '', 'BASE': miniapp_path},
+            {
+                'APP_ID': settings.ANTARCTIC_APP_ID or '',
+                'BASE': miniapp_path,
+                # Страница должна считать финальными те же статусы, что и сервер.
+                'FAILED_STATUSES': ','.join(sorted(ANTARCTIC_TERMINAL_FAILURES)),
+            },
         )
         return HTMLResponse(content, headers={**_PAGE_HEADERS, 'Content-Security-Policy': MINIAPP_CSP})
 
