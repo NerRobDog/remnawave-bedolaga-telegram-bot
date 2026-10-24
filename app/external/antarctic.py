@@ -39,6 +39,10 @@ _MAX_ID_TOKEN_LENGTH = 8192
 # Tolerated clock drift between AW and this host for exp / nbf / iat.
 _ID_TOKEN_LEEWAY_SECONDS = 10
 _JWKS_TTL_SECONDS = 3600.0
+# Unscheduled JWKS fetches (an unknown kid in a fresh cache, or a retry after a failed fetch) are
+# throttled to one per interval: the endpoint that feeds us idTokens is unauthenticated, so
+# without this anybody could make us call AW once per request.
+_JWKS_UNSCHEDULED_FETCH_INTERVAL_SECONDS = 30.0
 # Only asymmetric algorithms may ever verify an idToken: HS* would let anybody who knows the
 # (public) key material forge tokens, `none` is no signature at all.
 _ALLOWED_ID_TOKEN_ALGORITHMS = frozenset(
@@ -131,6 +135,9 @@ class AntarcticClient:
         self._transport = transport
         self._jwks: dict[str, dict[str, Any]] | None = None
         self._jwks_fetched_at = 0.0
+        self._jwks_last_forced_at: float | None = None
+        self._jwks_last_failure_at: float | None = None
+        # Guards refreshes only; cache hits never touch it.
         self._jwks_lock = asyncio.Lock()
 
     def __repr__(self) -> str:
@@ -213,8 +220,9 @@ class AntarcticClient:
             raise
         except Exception as exc:
             # Fail closed: whatever went wrong (bad signature, bad claims, JWKS outage, odd key
-            # material) the token is not trusted. Class name only, never the token itself.
-            logger.warning('Antarctic idToken rejected', reason=type(exc).__name__)
+            # material) the token is not trusted. Class name only, never the token itself. Debug level:
+            # anybody can submit garbage tokens, that must not flood the warning log.
+            logger.debug('Antarctic idToken rejected', reason=type(exc).__name__)
             raise AntarcticTokenError(f'idToken verification failed: {type(exc).__name__}') from None
 
     async def _verify_id_token(self, id_token: str) -> str:
@@ -252,18 +260,55 @@ class AntarcticClient:
             raise AntarcticTokenError('idToken has no subject')
         return subject
 
+    def _cached_jwk(self, kid: str, now: float) -> dict[str, Any] | None:
+        """JWK for ``kid`` from a cache that is still within its TTL, else ``None``."""
+        if self._jwks is None or now - self._jwks_fetched_at >= _JWKS_TTL_SECONDS:
+            return None
+        return self._jwks.get(kid)
+
     async def _get_jwk(self, kid: str) -> dict[str, Any] | None:
-        """Return the signing JWK for ``kid`` from cache, refetching at most once per call."""
+        """Return the signing JWK for ``kid``; refreshes the JWKS at most once per call and rate-limited."""
+        # Fast path without the lock: a valid login never queues behind somebody else's refresh.
+        jwk = self._cached_jwk(kid, time.monotonic())
+        if jwk is not None:
+            return jwk
+
         async with self._jwks_lock:
-            if self._jwks is not None and time.monotonic() - self._jwks_fetched_at < _JWKS_TTL_SECONDS:
-                jwk = self._jwks.get(kid)
-                if jwk is not None:
-                    return jwk
-            # Cache is empty, stale, or the kid is new (key rotation): one refetch, no loops.
+            now = time.monotonic()
+            # Somebody may have refreshed while we waited for the lock.
+            jwk = self._cached_jwk(kid, now)
+            if jwk is not None:
+                return jwk
+
+            if self._jwks is not None and now - self._jwks_fetched_at < _JWKS_TTL_SECONDS:
+                # Fresh cache, unknown kid: key rotation or garbage. One refresh per interval.
+                if (
+                    self._jwks_last_forced_at is not None
+                    and now - self._jwks_last_forced_at < _JWKS_UNSCHEDULED_FETCH_INTERVAL_SECONDS
+                ):
+                    return None
+                self._jwks_last_forced_at = now
+            elif (
+                self._jwks_last_failure_at is not None
+                and now - self._jwks_last_failure_at < _JWKS_UNSCHEDULED_FETCH_INTERVAL_SECONDS
+            ):
+                # Empty / expired cache and the last fetch just failed: do not stack 15 s timeouts.
+                raise AntarcticTokenError('JWKS is unavailable')
+
             await self._refresh_jwks()
             return self._jwks.get(kid) if self._jwks is not None else None
 
     async def _refresh_jwks(self) -> None:
+        try:
+            keys = await self._fetch_jwks()
+        except AntarcticTokenError:
+            self._jwks_last_failure_at = time.monotonic()
+            raise
+        self._jwks = keys
+        self._jwks_fetched_at = time.monotonic()
+        self._jwks_last_failure_at = None
+
+    async def _fetch_jwks(self) -> dict[str, dict[str, Any]]:
         try:
             async with self._http() as http:
                 response = await http.get(f'{self.api_base}{_JWKS_PATH}', headers={'Accept': 'application/json'})
@@ -291,8 +336,7 @@ class AntarcticClient:
                 continue
             keys[kid] = raw_key
 
-        self._jwks = keys
-        self._jwks_fetched_at = time.monotonic()
+        return keys
 
     # ------------------------------------------------------------------ webhook
 
