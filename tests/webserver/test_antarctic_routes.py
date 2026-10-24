@@ -25,7 +25,7 @@ from starlette.requests import Request
 
 from app.config import settings
 from app.external.antarctic import AntarcticClient, AntarcticTokenError
-from app.services.payment.antarctic import AntarcticSessionError
+from app.services.payment.antarctic import ANTARCTIC_TERMINAL_FAILURES, AntarcticSessionError
 from app.webserver import antarctic as antarctic_module, payments as payments_module
 from app.webserver.antarctic import create_antarctic_router
 from app.webserver.payments import create_payment_router
@@ -237,6 +237,41 @@ def test_miniapp_frame_policy_allows_telegram_web(env) -> None:
     assert policy.startswith('frame-ancestors ')
     assert 'https://web.telegram.org' in policy.split()
     assert '*' not in policy.split()
+
+
+def test_miniapp_page_takes_failed_statuses_from_the_server(env) -> None:
+    """Набор финальных неуспехов один и тот же у сервера и у страницы: он приходит в атрибуте <html>."""
+    text = env.http.get('/antarctic/app').text
+
+    match = re.search(r'<html[^>]*\sdata-failed-statuses="([^"]*)"', text)
+    assert match is not None
+    assert set(match.group(1).split(',')) == set(ANTARCTIC_TERMINAL_FAILURES)
+    assert 'dataset.failedStatuses' in text
+
+
+def _script_function(text: str, name: str) -> str:
+    match = re.search(rf'(?:async )?function {name}\(.*?\n  \}}\n', text, re.DOTALL)
+    assert match is not None, name
+    return match.group(0)
+
+
+def test_miniapp_script_stops_on_a_failed_session(env) -> None:
+    """Сессия вернула rejected/failed/expired/amount_mismatch: кнопку «Оплатить» не показываем.
+
+    JS-раннера в тестах нет, поэтому проверяем сам текст сценария: проверка финальных статусов
+    стоит в ``openSession`` до того, как он разрешит показать оплату.
+    """
+    text = env.http.get('/antarctic/app').text
+
+    body = _script_function(text, 'openSession')
+    assert 'FAILED_STATUSES.has(session.status)' in body
+    assert 'showFailed()' in body
+    assert body.index('FAILED_STATUSES.has(session.status)') < body.index('return true')
+
+    failed = _script_function(text, 'showFailed')
+    assert 'Платёж не прошёл' in failed
+    # тот же экран, что после проверки статуса при оплате
+    assert 'showFailed()' in _script_function(text, 'pay')
 
 
 def test_miniapp_page_has_no_external_scripts_and_the_agreed_copy(env) -> None:
