@@ -2,6 +2,8 @@
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from app.utils import formatters
 from tests.fixtures.local_day import reset_local_timezone_cache, use_timezone  # noqa: F401
 
@@ -162,3 +164,31 @@ def test_admin_dates_are_shown_in_operator_zone(monkeypatch, reset_local_timezon
     assert formatters.format_datetime(end_date.replace(tzinfo=None)) == '18.09.2026 14:17'
     assert formatters.format_datetime('2026-09-18T11:17:00Z') == '18.09.2026 14:17'
     assert formatters.format_date(datetime(2026, 9, 18, 22, 30, tzinfo=UTC)) == '19.09.2026'
+
+
+@pytest.mark.parametrize(
+    ('minutes', 'language', 'expected'),
+    [
+        (1, 'ru', '1 минуту'),
+        (2, 'ru', '2 минуты'),
+        (5, 'ru', '5 минут'),
+        (11, 'ru', '11 минут'),
+        (21, 'ru', '21 минуту'),
+        (30, 'ru', '30 минут'),
+        (1, 'ua', '1 хвилину'),
+        (3, 'ua', '3 хвилини'),
+        (30, 'ua', '30 хвилин'),
+        (12, 'uk', '12 хвилин'),
+        (1, 'en', '1 minute'),
+        (30, 'en', '30 minutes'),
+        (30, 'zh', '30 分钟'),
+        (30, 'fa', '۳۰ دقیقه'),
+        (30, 'ru-RU', '30 минут'),
+        (30, None, '30 минут'),
+        (30, 'xx', '30 minutes'),
+        (0, 'ru', '1 минуту'),
+    ],
+)
+def test_format_minutes_declension(minutes: int, language: str | None, expected: str) -> None:
+    """Срок действия ссылки пишем с правильным склонением на языке пользователя."""
+    assert formatters.format_minutes_declension(minutes, language) == expected

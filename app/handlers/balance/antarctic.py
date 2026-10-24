@@ -15,6 +15,7 @@ from app.localization.texts import get_texts
 from app.services.payment_service import PaymentService
 from app.states import BalanceStates
 from app.utils.decorators import error_handler
+from app.utils.formatters import format_minutes_declension
 from app.utils.topup_retry import format_topup_amount_retry
 
 
@@ -169,12 +170,13 @@ async def process_antarctic_payment_amount(
         '🐧 <b>Оплата через {name}</b>\n\n'
         'К пополнению: <b>{amount}</b>\n'
         'К оплате: <b>${amount_usd}</b>\n\n'
-        'Нажмите «Оплатить» — откроется Antarctic Wallet. Ссылка действует 30 минут, '
+        'Нажмите «Оплатить» — откроется Antarctic Wallet. Ссылка действует {ttl}, '
         'баланс пополнится автоматически.',
     ).format(
         name=settings.get_antarctic_display_name_html(),
         amount=settings.format_price(amount_kopeks),
         amount_usd=result.get('amount_usd'),
+        ttl=format_minutes_declension(settings.ANTARCTIC_PAYMENT_TTL_MINUTES, db_user.language),
     )
     if referral_url:
         text += '\n\n' + texts.t('ANTARCTIC_REFERRAL_HINT', 'Нет кошелька? Создайте за минуту, пополнение по СБП.')

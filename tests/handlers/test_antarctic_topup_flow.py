@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -155,6 +157,38 @@ async def test_invoice_has_pay_button_then_referral_then_check(monkeypatch):
     assert rows[1][0].url == REFERRAL
     assert rows[2][0].callback_data == 'check_antarctic_7'
     assert rows[3][0].callback_data == 'balance_topup'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('minutes', 'phrase'),
+    [(30, 'Ссылка действует 30 минут'), (1, 'Ссылка действует 1 минуту'), (45, 'Ссылка действует 45 минут')],
+)
+async def test_invoice_shows_the_configured_link_lifetime(monkeypatch, minutes, phrase):
+    monkeypatch.setattr(settings, 'ANTARCTIC_PAYMENT_TTL_MINUTES', minutes, raising=False)
+    monkeypatch.setattr(antarctic_handlers, 'PaymentService', _service(_result()))
+    message = _amount_message()
+
+    await antarctic_handlers.process_antarctic_payment_amount(message, _user(), object(), 10000, _state())
+
+    text = message.answer.call_args.args[0]
+    assert phrase in text
+    assert '{' not in text
+
+
+_LOCALES = Path(antarctic_handlers.__file__).resolve().parents[2] / 'localization' / 'locales'
+
+
+@pytest.mark.parametrize('language', ['ru', 'en', 'ua', 'zh', 'fa'])
+def test_every_locale_takes_the_link_lifetime_from_a_placeholder(language):
+    """Срок жизни ссылки задаёт ANTARCTIC_PAYMENT_TTL_MINUTES, а не цифра в тексте перевода."""
+    template = json.loads((_LOCALES / f'{language}.json').read_text(encoding='utf-8'))['ANTARCTIC_PAYMENT_CREATED']
+
+    assert '{ttl}' in template
+    assert '30' not in template
+    assert '۳۰' not in template
+    rendered = template.format(name='AW', amount='100 ₽', amount_usd='1.05', ttl='TTL-MARK')
+    assert 'TTL-MARK' in rendered
 
 
 @pytest.mark.asyncio
