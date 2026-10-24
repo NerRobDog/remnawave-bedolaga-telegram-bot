@@ -173,9 +173,9 @@ async def _is_ip_rate_limited(request: Request) -> bool:
     except HTTPException:
         client_ip = 'unknown'
     return await _fail_open(
-        lambda: RateLimitCache.is_rate_limited(
-            0,
-            f'antarctic:{client_ip}',
+        lambda: RateLimitCache.is_ip_rate_limited(
+            client_ip,
+            'antarctic',
             limit=RATE_LIMIT_IP_REQUESTS,
             window=RATE_LIMIT_WINDOW_SECONDS,
         ),
