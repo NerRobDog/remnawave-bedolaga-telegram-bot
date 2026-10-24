@@ -184,6 +184,7 @@ class PaymentMethod(Enum):
     DONUT = 'donut'
     LAVA = 'lava'
     CASHERA = 'cashera'
+    ANTARCTIC = 'antarctic'
     MANUAL = 'manual'
     BALANCE = 'balance'
 
@@ -1848,6 +1849,61 @@ class AnorePayment(Base):
     @property
     def is_failed(self) -> bool:
         return self.status == 'expired'
+
+
+class AntarcticPayment(Base):
+    """Платежи через Antarctic Wallet: пользователь платит USD в кошельке, баланс пополняется в RUB."""
+
+    __tablename__ = 'antarctic_payments'
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True)
+
+    # token: start_param мини-приложения, reference_id в AW и external_id транзакции
+    token = Column(String(64), unique=True, nullable=False, index=True)
+    operation_id = Column(String(64), unique=True, nullable=True, index=True)
+    user_app_login = Column(String(64), nullable=True)
+
+    amount_kopeks = Column(Integer, nullable=False)
+    amount_usd_cents = Column(Integer, nullable=False)
+    usd_rub_rate = Column(Numeric(12, 4), nullable=False)
+
+    status = Column(String(32), nullable=False, default='pending')
+    aw_status = Column(String(32), nullable=True)
+    is_paid = Column(Boolean, default=False)
+    failure_reason = Column(Text, nullable=True)
+    description = Column(Text, nullable=True)
+
+    metadata_json = Column(JSON, nullable=True)
+    callback_payload = Column(JSON, nullable=True)
+
+    paid_at = Column(AwareDateTime(), nullable=True)
+    expires_at = Column(AwareDateTime(), nullable=True)
+    created_at = Column(AwareDateTime(), default=func.now())
+    updated_at = Column(AwareDateTime(), default=func.now(), onupdate=func.now())
+
+    transaction_id = Column(Integer, ForeignKey('transactions.id'), nullable=True)
+
+    user = relationship('User', backref='antarctic_payments')
+    transaction = relationship('Transaction', backref='antarctic_payment')
+
+    @property
+    def amount_rubles(self) -> float:
+        return self.amount_kopeks / 100
+
+    @property
+    def amount_usd(self) -> str:
+        cents = self.amount_usd_cents
+        return f'{cents // 100}.{cents % 100:02d}'
+
+    @property
+    def is_pending(self) -> bool:
+        return self.status == 'pending'
+
+    def __repr__(self) -> str:  # pragma: no cover - debug helper
+        return (
+            f'<AntarcticPayment(id={self.id}, token={self.token}, amount={self.amount_rubles}₽, status={self.status})>'
+        )
 
 
 class TabPayPayment(Base):
