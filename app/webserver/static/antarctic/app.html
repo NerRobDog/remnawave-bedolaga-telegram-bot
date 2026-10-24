@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="ru" data-app-id="{{APP_ID}}" data-base="{{BASE}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex, nofollow">
+<title>Оплата через Antarctic Wallet</title>
+<style>
+  :root {
+    --bg: #f1f4f9;
+    --surface: #ffffff;
+    --text: #0f172a;
+    --muted: #475569;
+    --border: #cbd3df;
+    --primary: #1d4ed8;
+    --on-primary: #ffffff;
+    --ok: #0f7a3d;
+    --warn: #9a4a00;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0b1020;
+      --surface: #141b2e;
+      --text: #e8ecf5;
+      --muted: #a9b4ca;
+      --border: #2a3550;
+      --primary: #2f5fd0;
+      --on-primary: #ffffff;
+      --ok: #4ade80;
+      --warn: #fbbf24;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b1020;
+    --surface: #141b2e;
+    --text: #e8ecf5;
+    --muted: #a9b4ca;
+    --border: #2a3550;
+    --primary: #2f5fd0;
+    --on-primary: #ffffff;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  main {
+    width: 100%;
+    max-width: 420px;
+    padding: 28px 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+  }
+  .eyebrow { margin: 0 0 8px; font-size: 14px; font-weight: 600; color: var(--muted); }
+  h1 { margin: 0 0 16px; font-size: 22px; line-height: 1.25; font-weight: 700; overflow-wrap: anywhere; }
+  h1.ok { color: var(--ok); }
+  h1.warn { color: var(--warn); }
+  #text { margin: -8px 0 20px; color: var(--muted); overflow-wrap: anywhere; }
+  #text:empty { display: none; }
+  .btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 48px;
+    padding: 12px 16px;
+    border-radius: 12px;
+    border: 1px solid transparent;
+    background: var(--primary);
+    color: var(--on-primary);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn[hidden] { display: none; }
+  .btn:disabled { opacity: 0.6; cursor: progress; }
+  .btn:focus-visible { outline: 3px solid var(--text); outline-offset: 2px; }
+  @media (prefers-reduced-motion: no-preference) {
+    .spinner { display: inline-block; width: 18px; height: 18px; margin-right: 10px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  }
+  .spinner[hidden] { display: none; }
+</style>
+</head>
+<body>
+<main aria-live="polite">
+  <p class="eyebrow">Antarctic Wallet</p>
+  <h1 id="title">Загрузка…</h1>
+  <p id="text"></p>
+  <button id="action" class="btn" type="button" hidden><span id="spinner" class="spinner" hidden></span><span id="action-label"></span></button>
+</main>
+<noscript><p style="text-align:center">Для оплаты нужен JavaScript. Откройте страницу в Antarctic Wallet.</p></noscript>
+<script type="module">
+// Страница мини-приложения внутри Antarctic Wallet. Все данные платежа приходят с нашего сервера
+// и выводятся только через textContent. Идентификатор приложения и базовый путь берутся
+// из атрибутов <html>, рендер сервера их экранирует.
+const ROOT = document.documentElement;
+const APP_ID = ROOT.dataset.appId;
+const BASE = ROOT.dataset.base;
+const TOKEN_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const FAILED_STATUSES = new Set(['rejected', 'failed', 'expired', 'amount_mismatch']);
+const STATUS_ATTEMPTS = 5;
+const STATUS_INTERVAL_MS = 2000;
+
+const titleEl = document.getElementById('title');
+const textEl = document.getElementById('text');
+const actionEl = document.getElementById('action');
+const actionLabelEl = document.getElementById('action-label');
+const spinnerEl = document.getElementById('spinner');
+
+let onAction = null;
+
+function show({ title, text = '', tone = '', button = '', handler = null, busy = false }) {
+  titleEl.textContent = title;
+  titleEl.className = tone;
+  textEl.textContent = text;
+  onAction = handler;
+  actionEl.hidden = !button;
+  actionLabelEl.textContent = button;
+  actionEl.disabled = busy;
+  spinnerEl.hidden = !busy;
+}
+
+actionEl.addEventListener('click', () => {
+  if (onAction && !actionEl.disabled) onAction();
+});
+
+const STALE = {
+  title: 'Ссылка устарела — вернитесь в бот и создайте платёж заново',
+  tone: 'warn',
+};
+
+// Кошелёк открывает страницу в iframe и передаёт ?parentOrigin=. Берём origin только если это
+// https и сам Antarctic Wallet: SDK шлёт сообщения именно туда.
+function allowedOrigin(value) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.port !== '') return null;
+    const host = url.hostname.toLowerCase();
+    if (host === 'antarcticwallet.com' || host.endsWith('.antarcticwallet.com')) return url.origin;
+  } catch (error) {
+    return null;
+  }
+  return null;
+}
+
+function resolveParentOrigin() {
+  const fromQuery = new URLSearchParams(location.search).get('parentOrigin');
+  return allowedOrigin(fromQuery) || allowedOrigin(document.referrer);
+}
+
+class ApiError extends Error {
+  constructor(code, status) {
+    super(code);
+    this.code = code;
+    this.status = status;
+  }
+}
+
+function formatUsd(value) {
+  return '$' + String(value);
+}
+
+function formatRub(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return String(value);
+  // Целые рубли без копеек, иначе всегда две цифры: «1 234,50», а не «1 234,5».
+  const fraction = Math.round(number * 100) % 100 !== 0 ? 2 : 0;
+  return new Intl.NumberFormat('ru-RU', { minimumFractionDigits: fraction, maximumFractionDigits: 2 }).format(number);
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function main() {
+  const parentOrigin = resolveParentOrigin();
+  if (!parentOrigin) {
+    show({
+      title: 'Откройте страницу в Antarctic Wallet',
+      text: 'Оплата работает только внутри приложения Antarctic Wallet.',
+      tone: 'warn',
+    });
+    return;
+  }
+
+  let sdkModule;
+  try {
+    sdkModule = await import(`${BASE}/aw-sdk.js`);
+  } catch (error) {
+    show({
+      title: 'Не удалось загрузить страницу',
+      text: 'Закройте её и откройте снова из бота.',
+      tone: 'warn',
+    });
+    return;
+  }
+  const { AWSDK, AWScope, AWOperationError } = sdkModule;
+
+  const sdk = new AWSDK({ appId: APP_ID, scopes: [AWScope.PAY], parentOrigin });
+  let sdkDead = false;
+
+  const applyTheme = () => {
+    const scheme = sdk.colorScheme;
+    if (scheme === 'light' || scheme === 'dark') ROOT.dataset.theme = scheme;
+  };
+
+  // Подписки до init(): sdk.ready приходит во время него.
+  sdk.events.on('sdk.ready', applyTheme);
+  sdk.events.on('themeChanged', applyTheme);
+  sdk.events.on('sdk.error', () => {
+    sdkDead = true;
+    show({
+      title: 'Нет связи с кошельком',
+      text: 'Закройте приложение и откройте его снова из бота.',
+      tone: 'warn',
+    });
+  });
+  sdk.events.on('session.expired', () => {
+    sdkDead = true;
+    show({
+      title: 'Сессия истекла',
+      text: 'Закройте приложение и откройте его снова из бота.',
+      tone: 'warn',
+    });
+  });
+  window.addEventListener('pagehide', () => sdk.destroy());
+
+  show({ title: 'Подключаемся к кошельку…', busy: false });
+  try {
+    await sdk.init();
+  } catch (error) {
+    if (!sdkDead) {
+      show({
+        title: 'Не удалось подключиться к кошельку',
+        text: 'Закройте приложение и откройте его снова из бота.',
+        tone: 'warn',
+      });
+    }
+    return;
+  }
+  applyTheme();
+
+  // start_param приходит от кошелька; на случай, если он отдаёт его вместе с префиксом из ссылки,
+  // убираем «app_<id>_».
+  let token = sdk.startParam || '';
+  const prefix = `app_${APP_ID}_`;
+  if (token.startsWith(prefix)) token = token.slice(prefix.length);
+  if (!TOKEN_RE.test(token)) {
+    show(STALE);
+    return;
+  }
+
+  // Всегда свежий idToken: SDK сам обновляет сессию, читаем его в момент запроса.
+  async function freshIdToken() {
+    let idToken = sdk.idToken;
+    if (!idToken) {
+      try {
+        await sdk.refreshSession();
+      } catch (error) {
+        /* ответим ошибкой ниже */
+      }
+      idToken = sdk.idToken;
+    }
+    return idToken;
+  }
+
+  async function api(path) {
+    const idToken = await freshIdToken();
+    if (!idToken) throw new ApiError('invalid_token', 401);
+    let response;
+    try {
+      response = await fetch(`${BASE}/${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken, token }),
+        credentials: 'omit',
+        cache: 'no-store',
+      });
+    } catch (error) {
+      throw new ApiError('network', 0);
+    }
+    let data = null;
+    try {
+      data = await response.json();
+    } catch (error) {
+      data = null;
+    }
+    if (!response.ok) {
+      throw new ApiError((data && typeof data.error === 'string' && data.error) || 'server_error', response.status);
+    }
+    return data;
+  }
+
+  let session = null;
+  let needsFreshSession = false;
+  let busy = false;
+
+  function showPaid() {
+    show({ title: 'Оплачено, баланс пополнен', tone: 'ok' });
+  }
+
+  function showPayable(heading, text = '') {
+    const due = `К оплате ${formatUsd(session.amountUsd)} (${formatRub(session.amountRub)}\u00a0₽)`;
+    show({
+      title: heading || due,
+      text: heading ? `${text} ${due}.` : text,
+      button: 'Оплатить',
+      handler: pay,
+    });
+  }
+
+  function showApiError(error) {
+    const code = error instanceof ApiError ? error.code : 'server_error';
+    if (code === 'not_found' || code === 'expired' || code === 'bad_request') {
+      show(STALE);
+    } else if (code === 'invalid_token') {
+      show({
+        title: 'Не удалось подтвердить кошелёк',
+        text: 'Закройте приложение и откройте его снова из бота.',
+        tone: 'warn',
+      });
+    } else if (code === 'login_mismatch') {
+      show({
+        title: 'Платёж открыт в другом кошельке',
+        text: 'Создайте платёж заново в боте и откройте его из этого кошелька.',
+        tone: 'warn',
+      });
+    } else if (code === 'rate_limited') {
+      show({
+        title: 'Слишком много запросов',
+        text: 'Подождите минуту и попробуйте снова.',
+        tone: 'warn',
+        button: 'Повторить',
+        handler: start,
+      });
+    } else {
+      show({
+        title: code === 'provider_error' ? 'Antarctic Wallet временно недоступен' : 'Не удалось выполнить запрос',
+        text: 'Попробуйте ещё раз через минуту.',
+        tone: 'warn',
+        button: 'Повторить',
+        handler: start,
+      });
+    }
+  }
+
+  async function openSession() {
+    session = await api('session');
+    needsFreshSession = false;
+    if (session.isPaid) {
+      showPaid();
+      return false;
+    }
+    return true;
+  }
+
+  async function start() {
+    show({ title: 'Готовим платёж…', busy: false });
+    try {
+      if (await openSession()) showPayable();
+    } catch (error) {
+      showApiError(error);
+    }
+  }
+
+  // Статус приходит вебхуком, но мы не ждём его вслепую: несколько проверок через API.
+  async function waitForPayment() {
+    for (let attempt = 0; attempt < STATUS_ATTEMPTS; attempt += 1) {
+      if (attempt > 0) await sleep(STATUS_INTERVAL_MS);
+      let state;
+      try {
+        state = await api('status');
+      } catch (error) {
+        if (error instanceof ApiError && [401, 404, 409, 410].includes(error.status)) break;
+        continue;
+      }
+      if (state.isPaid) return { kind: 'paid' };
+      if (FAILED_STATUSES.has(state.status)) return { kind: 'failed', status: state.status };
+    }
+    return { kind: 'processing' };
+  }
+
+  async function pay() {
+    if (busy) return;
+    busy = true;
+    try {
+      if (needsFreshSession) {
+        show({ title: 'Готовим платёж…', busy: false });
+        if (!(await openSession())) return;
+      }
+      show({ title: 'Подтвердите оплату в кошельке', button: 'Оплатить', busy: true });
+
+      let confirmed = false;
+      try {
+        await sdk.operations.requestConfirmation(session.operationId);
+        confirmed = true;
+      } catch (error) {
+        needsFreshSession = true;
+        const code = error instanceof AWOperationError ? error.errorCode : null;
+        if (code === 'user_rejected') {
+          showPayable('Оплата отменена', 'Можно попробовать ещё раз.');
+          return;
+        }
+        if (code === 'insufficient_balance') {
+          showPayable('Недостаточно средств в кошельке', 'Пополните кошелёк и попробуйте снова.');
+          return;
+        }
+        // Остальные сбои: подтверждение могло дойти, поэтому проверяем статус ниже.
+      }
+
+      show({ title: 'Проверяем оплату…', button: 'Проверяем…', busy: true });
+      const result = await waitForPayment();
+      if (result.kind === 'paid') {
+        showPaid();
+      } else if (result.kind === 'failed') {
+        show({
+          title: 'Платёж не прошёл',
+          text: 'Создайте платёж заново в боте. Если деньги списались, напишите в поддержку.',
+          tone: 'warn',
+        });
+      } else if (confirmed) {
+        show({ title: 'Платёж обрабатывается, баланс пополнится автоматически' });
+      } else {
+        showPayable(
+          'Не удалось подтвердить оплату',
+          'Если деньги списались, баланс пополнится автоматически. Иначе нажмите «Оплатить» ещё раз.',
+        );
+      }
+    } catch (error) {
+      showApiError(error);
+    } finally {
+      busy = false;
+    }
+  }
+
+  await start();
+}
+
+main().catch(() => {
+  show({
+    title: 'Что-то пошло не так',
+    text: 'Закройте приложение и откройте его снова из бота.',
+    tone: 'warn',
+  });
+});
+</script>
+</body>
+</html>

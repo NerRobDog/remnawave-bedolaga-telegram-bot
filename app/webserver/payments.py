@@ -2136,6 +2136,13 @@ def create_payment_router(bot: Bot, payment_service: PaymentService) -> APIRoute
 
         routes_registered = True
 
+    # Antarctic Wallet: мини-приложение внутри кошелька, страница оплаты и подписанный вебхук
+    if settings.is_antarctic_configured():
+        from app.webserver.antarctic import create_antarctic_router
+
+        router.include_router(create_antarctic_router(payment_service))
+        routes_registered = True
+
     if routes_registered:
 
         @router.get('/health/payment-webhooks')
@@ -2168,6 +2175,7 @@ def create_payment_router(bot: Bot, payment_service: PaymentService) -> APIRoute
                     'cispay_enabled': settings.is_cispay_enabled(),
                     'cashera_enabled': settings.is_cashera_enabled(),
                     'anore_enabled': settings.is_anore_enabled(),
+                    'antarctic_enabled': settings.is_antarctic_enabled(),
                     'tabpay_enabled': settings.is_tabpay_enabled(),
                     'paritypay_enabled': settings.is_paritypay_enabled(),
                 }
