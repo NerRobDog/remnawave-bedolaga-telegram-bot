@@ -67,6 +67,14 @@ def test_referral_url_only_https(monkeypatch, value, expected):
     assert settings.get_antarctic_referral_url() == expected
 
 
+@pytest.mark.parametrize('path', ['/antarctic/pay', 'antarctic/pay', '/antarctic/pay/', ' antarctic/pay// '])
+def test_pay_page_url_normalizes_the_path_like_the_router(monkeypatch, path):
+    """Роутер монтирует страницу на нормализованный путь; ссылка в чате/кабинете должна вести туда же."""
+    monkeypatch.setattr(settings, 'WEBHOOK_URL', 'https://hooks.example.com')
+    monkeypatch.setattr(settings, 'ANTARCTIC_PAY_PAGE_PATH', path)
+    assert settings.get_antarctic_pay_page_url('tok') == 'https://hooks.example.com/antarctic/pay/tok'
+
+
 def test_pay_page_url_needs_webhook_url(monkeypatch):
     monkeypatch.setattr(settings, 'WEBHOOK_URL', 'https://hooks.example.com/')
     assert settings.get_antarctic_pay_page_url('tok') == 'https://hooks.example.com/antarctic/pay/tok'
