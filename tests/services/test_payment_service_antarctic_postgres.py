@@ -16,6 +16,7 @@ from typing import Any
 
 import pytest
 from sqlalchemy import func, select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.crud.antarctic import get_antarctic_payment_by_id_for_update
@@ -160,6 +161,39 @@ async def test_concurrent_sessions_from_two_wallets_create_one_intent(postgres_d
         row = (await setup.execute(select(AntarcticPayment).execution_options(populate_existing=True))).scalar_one()
         assert row.user_app_login == stub.calls[0]['user_app_login']
         assert row.operation_id == 'op-1'
+
+
+async def test_amountless_webhook_talks_to_aw_without_holding_the_row_lock(postgres_database, monkeypatch) -> None:
+    """approved без суммы: запрос к AW идёт вне блокировки строки, закрывает платёж и вебхук отвечает 2xx."""
+    _enable(monkeypatch)
+    stub = StubAW()
+    _install(monkeypatch, stub)
+    async with postgres_sessions(postgres_database, TABLES, count=3) as (setup, hook, probe):
+        user_id, result = await _seed(setup, stub)
+        stub.status = 'approved'
+        original = stub.upsert_pay_intent
+        lock_free_during_http: list[bool] = []
+
+        async def upsert_probing_the_lock(**kwargs: Any):
+            # В момент «HTTP» чужая сессия обязана взять строку без ожидания.
+            try:
+                await probe.execute(
+                    text('SELECT id FROM antarctic_payments WHERE id = :id FOR UPDATE NOWAIT'),
+                    {'id': result['local_payment_id']},
+                )
+                lock_free_during_http.append(True)
+            except DBAPIError:
+                lock_free_during_http.append(False)
+            finally:
+                await probe.rollback()
+            return await original(**kwargs)
+
+        stub.upsert_pay_intent = upsert_probing_the_lock  # type: ignore[method-assign]
+
+        assert await _service().process_antarctic_webhook(hook, _event(result['token'], amount=None)) is True
+
+        assert lock_free_during_http == [True]
+        await _assert_credited_once(setup, user_id)
 
 
 async def test_column_limits_hold_on_postgres(postgres_database, monkeypatch) -> None:
