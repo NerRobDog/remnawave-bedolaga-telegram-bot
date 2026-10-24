@@ -5,6 +5,7 @@ No test touches the network: every HTTP call goes through ``httpx.MockTransport`
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -18,6 +19,7 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
+from structlog.testing import capture_logs
 
 from app.external import antarctic
 from app.external.antarctic import (
@@ -140,6 +142,8 @@ async def test_upsert_sends_contract() -> None:
         failure_reason=None,
         raw={'operationId': 'op-1', 'status': 'PENDING', 'data': {'amount': '1.05'}},
     )
+    # `raw` is excluded from dataclass equality, so check it explicitly.
+    assert intent.raw == {'operationId': 'op-1', 'status': 'PENDING', 'data': {'amount': '1.05'}}
 
 
 async def test_upsert_parses_snake_case_response() -> None:
@@ -516,6 +520,122 @@ async def test_jwks_refetched_after_ttl(rsa_key: rsa.RSAPrivateKey) -> None:
     client._jwks_fetched_at -= 2
     await client.verify_id_token(token)
     assert server.fetches == 2
+
+
+async def test_unknown_kids_within_cooldown_cause_one_extra_fetch(rsa_key: rsa.RSAPrivateKey) -> None:
+    server = JwksServer([_jwk_for(rsa_key)])
+    client = _client(server)
+    await client.verify_id_token(_sign(rsa_key, _claims()))
+    assert server.fetches == 1
+
+    for i in range(20):
+        with pytest.raises(AntarcticTokenError):
+            await client.verify_id_token(_sign(rsa_key, _claims(), kid=f'{i:064x}'))
+
+    # The first unknown kid may refresh the JWKS (key rotation), the other 19 are rejected unfetched.
+    assert server.fetches == 2
+
+
+async def test_concurrent_unknown_kids_cause_one_extra_fetch(rsa_key: rsa.RSAPrivateKey) -> None:
+    server = JwksServer([_jwk_for(rsa_key)])
+    client = _client(server)
+    await client.verify_id_token(_sign(rsa_key, _claims()))
+
+    results = await asyncio.gather(
+        *(client.verify_id_token(_sign(rsa_key, _claims(), kid=f'{i:064x}')) for i in range(20)),
+        return_exceptions=True,
+    )
+
+    assert all(isinstance(result, AntarcticTokenError) for result in results)
+    assert server.fetches == 2
+
+
+async def test_unknown_kid_fetches_again_after_cooldown(
+    rsa_key: rsa.RSAPrivateKey, other_rsa_key: rsa.RSAPrivateKey
+) -> None:
+    server = JwksServer([_jwk_for(rsa_key)])
+    client = _client(server)
+    await client.verify_id_token(_sign(rsa_key, _claims()))
+    rotated = _sign(other_rsa_key, _claims(), kid=OTHER_KID)
+
+    # AW has not published the new key yet: the forced refresh finds nothing.
+    with pytest.raises(AntarcticTokenError):
+        await client.verify_id_token(rotated)
+    assert server.fetches == 2
+
+    # The key appears, but we are inside the cooldown: rejected without a fetch.
+    server.keys = [_jwk_for(rsa_key), _jwk_for(other_rsa_key, kid=OTHER_KID)]
+    with pytest.raises(AntarcticTokenError):
+        await client.verify_id_token(rotated)
+    assert server.fetches == 2
+
+    # Cooldown elapsed: exactly one more fetch, and the rotated key is picked up.
+    client._jwks_last_forced_at -= 31
+    assert await client.verify_id_token(rotated) == 'user-42'
+    assert server.fetches == 3
+
+
+async def test_known_kid_does_not_wait_for_inflight_refresh(
+    rsa_key: rsa.RSAPrivateKey, other_rsa_key: rsa.RSAPrivateKey
+) -> None:
+    keys = [_jwk_for(rsa_key)]
+    gate_closed = False
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if gate_closed:
+            entered.set()
+            await release.wait()
+        return httpx.Response(200, json={'keys': keys})
+
+    client = _client(handler)
+    known = _sign(rsa_key, _claims())
+    await client.verify_id_token(known)
+
+    # A rotation refresh starts and stalls on the network while holding the refresh lock.
+    gate_closed = True
+    keys.append(_jwk_for(other_rsa_key, kid=OTHER_KID))
+    refresh = asyncio.create_task(client.verify_id_token(_sign(other_rsa_key, _claims(), kid=OTHER_KID)))
+    await asyncio.wait_for(entered.wait(), timeout=2)
+
+    # A login with a cached kid must complete right away instead of queueing behind it.
+    assert await asyncio.wait_for(client.verify_id_token(known), timeout=2) == 'user-42'
+    assert not refresh.done()
+
+    release.set()
+    assert await asyncio.wait_for(refresh, timeout=2) == 'user-42'
+
+
+async def test_failed_jwks_fetch_is_not_retried_within_cooldown(rsa_key: rsa.RSAPrivateKey) -> None:
+    server = JwksServer([_jwk_for(rsa_key)])
+    server.status = 503
+    client = _client(server)
+    token = _sign(rsa_key, _claims())
+
+    for _ in range(3):
+        with pytest.raises(AntarcticTokenError):
+            await client.verify_id_token(token)
+    assert server.fetches == 1
+
+    server.status = 200
+    client._jwks_last_failure_at -= 31
+    assert await client.verify_id_token(token) == 'user-42'
+    assert server.fetches == 2
+
+
+async def test_rejected_token_is_logged_at_debug_only(rsa_key: rsa.RSAPrivateKey) -> None:
+    server = JwksServer([_jwk_for(rsa_key)])
+    client = _client(server)
+
+    with capture_logs() as records:
+        with pytest.raises(AntarcticTokenError):
+            await client.verify_id_token(_sign(rsa_key, _claims(aud='another-app')))
+
+    rejected = [record for record in records if record['event'] == 'Antarctic idToken rejected']
+    assert rejected
+    assert all(record['log_level'] == 'debug' for record in rejected)
+    assert not [record for record in records if record['log_level'] in {'warning', 'error'}]
 
 
 # --------------------------------------------------------------------------- webhook
