@@ -126,7 +126,13 @@ const spinnerEl = document.getElementById('spinner');
 
 let onAction = null;
 
-function show({ title, text = '', tone = '', button = '', handler = null, busy = false }) {
+// Экран бывает 'live' (обычный ход дела), 'dead' (SDK перестал отвечать) и 'final' (исход платежа).
+// Из 'final' не выходим: поздний sdk.error или session.expired не должен затирать «Оплачено», а
+// после 'dead' обычные экраны (в том числе кнопка «Оплатить») не показываются. Исход платежа
+// (showFinal) перекрывает и 'dead': деньги важнее, чем сообщение о связи.
+let screen = 'live';
+
+function render({ title, text = '', tone = '', button = '', handler = null, busy = false }) {
   titleEl.textContent = title;
   titleEl.className = tone;
   textEl.textContent = text;
@@ -135,6 +141,21 @@ function show({ title, text = '', tone = '', button = '', handler = null, busy =
   actionLabelEl.textContent = button;
   actionEl.disabled = busy;
   spinnerEl.hidden = !busy;
+}
+
+function show(options) {
+  if (screen === 'live') render(options);
+}
+
+function showDead(options) {
+  if (screen !== 'live') return;
+  screen = 'dead';
+  render(options);
+}
+
+function showFinal(options) {
+  screen = 'final';
+  render(options);
 }
 
 actionEl.addEventListener('click', () => {
@@ -213,7 +234,6 @@ async function main() {
   const { AWSDK, AWScope, AWOperationError } = sdkModule;
 
   const sdk = new AWSDK({ appId: APP_ID, scopes: [AWScope.PAY], parentOrigin });
-  let sdkDead = false;
 
   const applyTheme = () => {
     const scheme = sdk.colorScheme;
@@ -224,16 +244,14 @@ async function main() {
   sdk.events.on('sdk.ready', applyTheme);
   sdk.events.on('themeChanged', applyTheme);
   sdk.events.on('sdk.error', () => {
-    sdkDead = true;
-    show({
+    showDead({
       title: 'Нет связи с кошельком',
       text: 'Закройте приложение и откройте его снова из бота.',
       tone: 'warn',
     });
   });
   sdk.events.on('session.expired', () => {
-    sdkDead = true;
-    show({
+    showDead({
       title: 'Сессия истекла',
       text: 'Закройте приложение и откройте его снова из бота.',
       tone: 'warn',
@@ -245,13 +263,12 @@ async function main() {
   try {
     await sdk.init();
   } catch (error) {
-    if (!sdkDead) {
-      show({
-        title: 'Не удалось подключиться к кошельку',
-        text: 'Закройте приложение и откройте его снова из бота.',
-        tone: 'warn',
-      });
-    }
+    // Если init() упал вместе с sdk.error, на экране уже сообщение о связи: show() его не затрёт.
+    show({
+      title: 'Не удалось подключиться к кошельку',
+      text: 'Закройте приложение и откройте его снова из бота.',
+      tone: 'warn',
+    });
     return;
   }
   applyTheme();
@@ -262,7 +279,7 @@ async function main() {
   const prefix = `app_${APP_ID}_`;
   if (token.startsWith(prefix)) token = token.slice(prefix.length);
   if (!TOKEN_RE.test(token)) {
-    show(STALE);
+    showFinal(STALE);
     return;
   }
 
@@ -312,7 +329,7 @@ async function main() {
   let busy = false;
 
   function showPaid() {
-    show({ title: 'Оплачено, баланс пополнен', tone: 'ok' });
+    showFinal({ title: 'Оплачено, баланс пополнен', tone: 'ok' });
   }
 
   function showPayable(heading, text = '') {
@@ -328,7 +345,7 @@ async function main() {
   function showApiError(error) {
     const code = error instanceof ApiError ? error.code : 'server_error';
     if (code === 'not_found' || code === 'expired' || code === 'bad_request') {
-      show(STALE);
+      showFinal(STALE);
     } else if (code === 'invalid_token') {
       show({
         title: 'Не удалось подтвердить кошелёк',
@@ -371,6 +388,7 @@ async function main() {
   }
 
   async function start() {
+    if (screen !== 'live') return;
     show({ title: 'Готовим платёж…', busy: false });
     try {
       if (await openSession()) showPayable();
@@ -397,13 +415,15 @@ async function main() {
   }
 
   async function pay() {
-    if (busy) return;
+    if (busy || screen !== 'live') return;
     busy = true;
     try {
       if (needsFreshSession) {
         show({ title: 'Готовим платёж…', busy: false });
         if (!(await openSession())) return;
       }
+      // SDK мог отвалиться, пока шёл запрос сессии: подтверждать в мёртвом SDK нечего.
+      if (screen !== 'live') return;
       show({ title: 'Подтвердите оплату в кошельке', button: 'Оплатить', busy: true });
 
       let confirmed = false;
@@ -429,13 +449,13 @@ async function main() {
       if (result.kind === 'paid') {
         showPaid();
       } else if (result.kind === 'failed') {
-        show({
+        showFinal({
           title: 'Платёж не прошёл',
           text: 'Создайте платёж заново в боте. Если деньги списались, напишите в поддержку.',
           tone: 'warn',
         });
       } else if (confirmed) {
-        show({ title: 'Платёж обрабатывается, баланс пополнится автоматически' });
+        showFinal({ title: 'Платёж обрабатывается, баланс пополнится автоматически' });
       } else {
         showPayable(
           'Не удалось подтвердить оплату',

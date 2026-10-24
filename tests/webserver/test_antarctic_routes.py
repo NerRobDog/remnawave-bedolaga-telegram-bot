@@ -21,6 +21,7 @@ import pytest
 import structlog
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 from app.config import settings
 from app.external.antarctic import AntarcticClient, AntarcticTokenError
@@ -131,7 +132,14 @@ def env(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     service = FakeService()
     payments: dict[str, SimpleNamespace] = {}
     lookups: list[str] = []
-    limiter = SimpleNamespace(calls=[], limited=False, error=None)
+    limiter = SimpleNamespace(
+        ip_calls=[],
+        token_calls=[],
+        counts={},
+        force_ip=False,
+        force_token=False,
+        error=None,
+    )
     callbacks: list[tuple[object, dict, str]] = []
     callback = SimpleNamespace(result=True, error=None)
 
@@ -143,11 +151,22 @@ def env(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         lookups.append(token)
         return payments.get(token)
 
+    def hit(key, limit: int) -> bool:
+        # Как настоящий счётчик: окно не истекает в тесте, лимит превышен с (limit + 1)-го вызова.
+        limiter.counts[key] = limiter.counts.get(key, 0) + 1
+        return limiter.counts[key] > limit
+
     async def fake_is_rate_limited(user_id, action, limit, window, **kwargs):
-        limiter.calls.append((user_id, action, limit, window))
+        limiter.ip_calls.append((user_id, action, limit, window))
         if limiter.error is not None:
             raise limiter.error
-        return limiter.limited
+        return limiter.force_ip or hit(('ip', user_id, action), limit)
+
+    async def fake_is_subject_rate_limited(subject, action, limit, window, **kwargs):
+        limiter.token_calls.append((subject, action, limit, window))
+        if limiter.error is not None:
+            raise limiter.error
+        return limiter.force_token or hit(('subject', subject, action), limit)
 
     async def fake_process_callback(payment_service, payload, method_name):
         callbacks.append((payment_service, payload, method_name))
@@ -159,6 +178,11 @@ def env(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     monkeypatch.setattr(antarctic_module, 'AsyncSessionLocal', fake_session_local)
     monkeypatch.setattr(antarctic_module.antarctic_crud, 'get_antarctic_payment_by_token', fake_get_by_token)
     monkeypatch.setattr(antarctic_module.RateLimitCache, 'is_rate_limited', staticmethod(fake_is_rate_limited))
+    monkeypatch.setattr(
+        antarctic_module.RateLimitCache,
+        'is_subject_rate_limited',
+        staticmethod(fake_is_subject_rate_limited),
+    )
     monkeypatch.setattr(payments_module, '_process_payment_service_callback', fake_process_callback)
 
     app = FastAPI()
@@ -462,18 +486,84 @@ def test_status_provider_hiccup_is_500_without_details(env) -> None:
 # ---------------------------------------------------------------- лимит запросов
 
 
+OTHER_TOKEN = 'Zz9_-' + 'y' * 27
+TOKEN_DIGEST = hashlib.sha256(TOKEN.encode()).hexdigest()
+
+
 @pytest.mark.parametrize('call', [_session, _status])
-def test_rate_limited_429(env, call) -> None:
-    env.limiter.limited = True
+def test_ip_rate_limited_429_before_the_body_is_read(env, call) -> None:
+    env.limiter.force_ip = True
 
     response = call(env, raw=b'garbage that is not even json')
 
     assert response.status_code == 429
     assert response.json() == {'error': 'rate_limited'}
-    assert env.limiter.calls == [(0, 'antarctic:testclient', 30, 60)]
+    assert env.limiter.ip_calls == [(0, 'antarctic:testclient', 120, 60)]
+    assert env.limiter.token_calls == []
     assert env.client.id_tokens == []
     assert env.service.session_calls == []
     assert env.lookups == []
+
+
+@pytest.mark.parametrize('call', [_session, _status])
+def test_token_rate_limited_429_before_the_id_token_is_verified(env, call) -> None:
+    env.limiter.force_token = True
+    env.payments[TOKEN] = make_payment(user_app_login=LOGIN)
+
+    response = call(env)
+
+    assert response.status_code == 429
+    assert response.json() == {'error': 'rate_limited'}
+    assert env.limiter.token_calls == [(TOKEN_DIGEST, 'antarctic_token', 20, 60)]
+    assert env.client.id_tokens == []
+    assert env.service.session_calls == []
+    assert env.service.refresh_calls == []
+    assert env.lookups == []
+
+
+def test_token_limit_triggers_at_the_21st_call_for_that_token_only(env) -> None:
+    for token in (TOKEN, OTHER_TOKEN):
+        env.payments[token] = make_payment(token=token, user_app_login=LOGIN)
+    env.service.refresh_result = {'payment': env.payments[TOKEN], 'status': 'pending', 'is_paid': False}
+
+    # /session и /status делят один бюджет на токен: десять и десять.
+    first_twenty = [(_session if i % 2 == 0 else _status)(env).status_code for i in range(20)]
+    assert first_twenty == [200] * 20
+
+    assert _session(env).status_code == 429
+    assert _status(env).status_code == 429
+
+    other = {'idToken': ID_TOKEN, 'token': OTHER_TOKEN}
+    assert _session(env, other).status_code == 200
+    assert _status(env, other).status_code == 200
+
+
+def test_ip_limit_triggers_at_the_121st_request(env) -> None:
+    """Токены разные, поэтому срабатывает только лимит по адресу."""
+    statuses = [_session(env, {'idToken': ID_TOKEN, 'token': f'tok{i:04d}'}).status_code for i in range(120)]
+    assert statuses == [200] * 120
+
+    blocked = _session(env, {'idToken': ID_TOKEN, 'token': 'tok9999'})
+    assert blocked.status_code == 429
+    assert blocked.json() == {'error': 'rate_limited'}
+    assert _status(env, {'idToken': ID_TOKEN, 'token': 'tok9998'}).status_code == 429
+    assert len(env.service.session_calls) == 120
+
+
+def test_token_limiter_key_is_a_digest_not_the_token(env) -> None:
+    _session(env)
+
+    assert [call[0] for call in env.limiter.token_calls] == [TOKEN_DIGEST]
+    assert TOKEN not in repr(env.limiter.token_calls)
+    assert TOKEN not in repr(env.limiter.ip_calls)
+
+
+@pytest.mark.parametrize('call', [_session, _status])
+def test_token_limiter_is_skipped_for_malformed_credentials(env, call) -> None:
+    response = call(env, {'idToken': ID_TOKEN, 'token': 'bad token!'})
+
+    assert response.status_code == 400
+    assert env.limiter.token_calls == []
 
 
 @pytest.mark.parametrize('call', [_session, _status])
@@ -485,6 +575,8 @@ def test_limiter_failure_does_not_block_payments(env, call) -> None:
     response = call(env)
 
     assert response.status_code == 200
+    assert env.limiter.ip_calls
+    assert env.limiter.token_calls
 
 
 def test_limiter_uses_the_client_address_from_trusted_headers_only(env) -> None:
@@ -497,7 +589,59 @@ def test_limiter_uses_the_client_address_from_trusted_headers_only(env) -> None:
         headers={'X-Forwarded-For': '198.51.100.9'},
     )
 
-    assert [call[1] for call in env.limiter.calls] == ['antarctic:testclient', 'antarctic:testclient']
+    assert [call[1] for call in env.limiter.ip_calls] == ['antarctic:testclient', 'antarctic:testclient']
+
+
+def _proxy_warnings(logs: list[dict]) -> list[dict]:
+    return [entry for entry in logs if entry['log_level'] == 'warning' and 'CABINET_TRUSTED_PROXIES' in entry['event']]
+
+
+def test_warns_once_at_mount_when_no_trusted_proxies_are_set(env) -> None:
+    env.monkeypatch.setattr(settings, 'CABINET_TRUSTED_PROXIES', '', raising=False)
+
+    with structlog.testing.capture_logs() as logs:
+        create_payment_router(DummyBot(), SimpleNamespace())
+
+    warnings = _proxy_warnings(logs)
+    assert len(warnings) == 1
+    assert 'per proxy IP' in warnings[0]['event']
+
+
+def test_no_proxy_warning_when_trusted_proxies_are_set(env) -> None:
+    env.monkeypatch.setattr(settings, 'CABINET_TRUSTED_PROXIES', '127.0.0.1,10.0.0.0/8', raising=False)
+
+    with structlog.testing.capture_logs() as logs:
+        create_payment_router(DummyBot(), SimpleNamespace())
+
+    assert _proxy_warnings(logs) == []
+
+
+def test_no_proxy_warning_when_antarctic_is_not_configured(env) -> None:
+    env.monkeypatch.setattr(settings, 'CABINET_TRUSTED_PROXIES', '', raising=False)
+    env.monkeypatch.setattr(settings, 'ANTARCTIC_APP_SECRET', None, raising=False)
+
+    with structlog.testing.capture_logs() as logs:
+        create_payment_router(DummyBot(), SimpleNamespace())
+
+    assert _proxy_warnings(logs) == []
+
+
+def test_content_length_with_non_ascii_digits_is_not_trusted() -> None:
+    """``'²'.isdigit()`` истинно, а ``int('²')`` падает: заголовок должен проверяться как ASCII."""
+    body = b'{"a": 1}'
+
+    async def receive() -> dict:
+        return {'type': 'http.request', 'body': body, 'more_body': False}
+
+    scope = {
+        'type': 'http',
+        'asgi': {'version': '3.0'},
+        'method': 'POST',
+        'path': '/antarctic/app/session',
+        'headers': [(b'content-length', '²'.encode('latin-1'))],
+    }
+
+    assert asyncio.run(antarctic_module._read_body(Request(scope, receive), 1024)) == body
 
 
 # ---------------------------------------------------------------- страница оплаты
