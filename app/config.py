@@ -1143,6 +1143,23 @@ class Settings(BaseSettings):
     CASHERA_RETURN_URL: str | None = None
     CASHERA_FAILED_URL: str | None = None
 
+    # Antarctic Wallet (пополнение долларами из кошелька; через мини-приложение внутри кошелька)
+    ANTARCTIC_ENABLED: bool = False
+    ANTARCTIC_APP_ID: str | None = None
+    ANTARCTIC_APP_SECRET: str | None = None
+    ANTARCTIC_API_BASE: str = 'https://app.antarcticwallet.com'
+    ANTARCTIC_DISPLAY_NAME: str = 'Antarctic Wallet · 0% комиссии'
+    ANTARCTIC_DESCRIPTION: str = 'Оплата долларами из кошелька. Нет кошелька? Создаётся за минуту, пополнение по СБП'
+    ANTARCTIC_MIN_AMOUNT_KOPEKS: int = 10000
+    ANTARCTIC_MAX_AMOUNT_KOPEKS: int = 10000000
+    ANTARCTIC_MARKUP_PERCENT: float = 0.0
+    ANTARCTIC_PAYMENT_TTL_MINUTES: int = 30
+    ANTARCTIC_MINIAPP_PATH: str = '/antarctic/app'
+    ANTARCTIC_PAY_PAGE_PATH: str = '/antarctic/pay'
+    ANTARCTIC_WEBHOOK_PATH: str = '/antarctic-webhook'
+    ANTARCTIC_APP_LINK_TEMPLATE: str = 'https://t.me/antarctic_wallet_bot/app?startapp=app_{app_id}_{token}'
+    ANTARCTIC_REFERRAL_URL: str | None = None
+
     # TabPay (tabpay.org, СБП и карты с 3-D Secure)
     TABPAY_ENABLED: bool = False
     # X-Api-Key магазина (tp_...). Показывается в кабинете один раз, перевыпуск отзывает старый.
@@ -3319,6 +3336,32 @@ class Settings(BaseSettings):
 
     def get_cispay_sbp_display_name_html(self) -> str:
         return html.escape(self.get_cispay_sbp_display_name())
+
+    def is_antarctic_configured(self) -> bool:
+        """Есть ли учётные данные провайдера — без учёта флага включения."""
+        return bool(self.ANTARCTIC_APP_ID and self.ANTARCTIC_APP_SECRET)
+
+    def is_antarctic_enabled(self) -> bool:
+        return bool(self.ANTARCTIC_ENABLED and self.is_antarctic_configured())
+
+    def get_antarctic_display_name(self) -> str:
+        name = (self.ANTARCTIC_DISPLAY_NAME or '').strip()
+        return name or 'Antarctic Wallet'
+
+    def get_antarctic_display_name_html(self) -> str:
+        return html.escape(self.get_antarctic_display_name())
+
+    def get_antarctic_app_link(self, token: str) -> str:
+        return self.ANTARCTIC_APP_LINK_TEMPLATE.format(app_id=self.ANTARCTIC_APP_ID, token=token)
+
+    def get_antarctic_referral_url(self) -> str | None:
+        url = (self.ANTARCTIC_REFERRAL_URL or '').strip()
+        return url if url.startswith('https://') else None
+
+    def get_antarctic_pay_page_url(self, token: str) -> str | None:
+        if not self.WEBHOOK_URL:
+            return None
+        return f'{self.WEBHOOK_URL.rstrip("/")}{self.ANTARCTIC_PAY_PAGE_PATH}/{token}'
 
     def is_cashera_configured(self) -> bool:
         """Есть ли учётные данные провайдера — без учёта флага включения."""
