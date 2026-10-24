@@ -177,7 +177,7 @@ Bedolaga поддерживает полный кросс-канальный ж�
 | 🌋 | **Lava Business** | Карты, СБП (gate.lava.ru) | RUB |
 | 💳 | **CisPay** | СБП, карты (api.cispay.app) | RUB |
 | 💳 | **Cashera** | СБП, карты, зарубежные карты, крипта, CryptoBot (api.cashera.cash) | RUB → USDT |
-| ❄️ | **Antarctic Wallet** | Оплата долларами из кошелька, мини-приложение (app.antarcticwallet.com) | RUB (из USD по курсу ЦБ) |
+| 🐧 | **Antarctic Wallet** | Оплата долларами из кошелька, мини-приложение (app.antarcticwallet.com) | RUB (из USD по курсу ЦБ) |
 | 💳 | **TabPay** | СБП, карты с 3-D Secure (tabpay.org) | RUB |
 | 💳 | **ParityPay** | СБП, карты (api.paritypay.net) | RUB |
 | 🍎 | **Apple In-App Purchase** | Покупки через iOS App Store | USD |
@@ -189,7 +189,7 @@ Bedolaga поддерживает полный кросс-канальный ж�
 >
 > Все провайдеры работают параллельно через единый веб-сервер на порту 8080. Подробная настройка — в [документации](https://docs.bedolagam.ru/bot/payments).
 >
-> ❄️ Antarctic Wallet: URL вебхука — `{WEBHOOK_URL}{ANTARCTIC_WEBHOOK_PATH}` (по умолчанию `/antarctic-webhook`), он необязателен — зачисление работает и по опросу статуса. Если бот стоит за обратным прокси, задайте `CABINET_TRUSTED_PROXIES`, иначе лимиты запросов к страницам мини-приложения по IP не различают клиентов; лимит на отдельный платёж работает в любом случае.
+> 🐧 Antarctic Wallet: URL вебхука — `{WEBHOOK_URL}{ANTARCTIC_WEBHOOK_PATH}` (по умолчанию `/antarctic-webhook`), он необязателен — зачисление работает и по опросу статуса. Если бот стоит за обратным прокси, задайте `CABINET_TRUSTED_PROXIES`, иначе лимиты запросов к страницам мини-приложения по IP не различают клиентов; лимит на отдельный платёж работает в любом случае.
 
 <div align="center">
 <table>
