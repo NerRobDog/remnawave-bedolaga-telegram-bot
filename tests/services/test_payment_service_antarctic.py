@@ -1151,6 +1151,61 @@ async def test_operation_id_mismatch_ignored(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_refresh_with_another_operation_alerts_once_and_stops_polling(monkeypatch):
+    """AW отвечает на наш reference_id чужой операцией: тревога один раз, дальше фоновая сверка молчит."""
+    alerts: list[dict[str, Any]] = []
+    monkeypatch.setattr(aw_module.alert_logger, 'error', lambda *_args, **kwargs: alerts.append(kwargs))
+    stub = StubAW()
+    async with memory_session(monkeypatch, TABLES) as db:
+        user_id, result = await _create(db, monkeypatch, stub)
+        service = _service()
+        await _open(service, db, result['token'])
+        stub.operation_id = 'op-2'
+
+        first = await service.refresh_antarctic_payment(db, result['local_payment_id'])
+        assert (first['status'], first['is_paid']) == ('pending', False)
+        assert len(alerts) == 1
+        assert alerts[0]['received_operation_id'] == 'op-2'
+        calls_after_first = len(stub.calls)
+
+        row = await _row(db)
+        assert row.operation_id == 'op-1'
+        assert row.metadata_json['operation_id_mismatch']['received_operation_id'] == 'op-2'
+        assert row.metadata_json['user_id'] == user_id  # остальные метаданные на месте
+
+        for _ in range(3):
+            again = await service.refresh_antarctic_payment(db, result['local_payment_id'])
+            assert (again['status'], again['is_paid']) == ('pending', False)
+
+        assert len(alerts) == 1
+        assert len(stub.calls) == calls_after_first
+        assert await _balance(db, user_id) == 0
+
+
+@pytest.mark.asyncio
+async def test_foreign_operation_webhook_does_not_stop_polling(monkeypatch):
+    """Вебхук по чужой операции может быть запоздалой доставкой: сверку нашей операции он не отключает."""
+    alerts: list[dict[str, Any]] = []
+    monkeypatch.setattr(aw_module.alert_logger, 'error', lambda *_args, **kwargs: alerts.append(kwargs))
+    stub = StubAW()
+    async with memory_session(monkeypatch, TABLES) as db:
+        user_id, result = await _create(db, monkeypatch, stub)
+        service = _service()
+        await _open(service, db, result['token'])
+
+        foreign = _event(result['token'], operation_id='op-OTHER')
+        assert await service.process_antarctic_webhook(db, foreign) is True
+        assert 'operation_id_mismatch' not in ((await _row(db)).metadata_json or {})
+
+        calls_before = len(stub.calls)
+        stub.status = 'approved'
+        refreshed = await service.refresh_antarctic_payment(db, result['local_payment_id'])
+        assert len(stub.calls) == calls_before + 1
+        assert refreshed['is_paid'] is True
+        assert await _balance(db, user_id) == 10000
+
+
+@pytest.mark.asyncio
 async def test_webhook_without_operation_id_on_open_payment_adopts_it(monkeypatch):
     """Строка не успела сохранить operation_id (сбой после ответа AW): подписанный вебхук всё равно зачисляет."""
     async with memory_session(monkeypatch, TABLES) as db:

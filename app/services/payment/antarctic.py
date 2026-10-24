@@ -157,6 +157,15 @@ def _own_intent_amount(payment: Any, intent: Any) -> str:
     return payment.amount_usd
 
 
+# Ключ в ``metadata_json``: платёж упёрся в чужой operation_id, сверка через API его больше не трогает.
+_OPERATION_MISMATCH_KEY = 'operation_id_mismatch'
+
+
+def _operation_mismatch_flagged(payment: Any) -> bool:
+    metadata = getattr(payment, 'metadata_json', None)
+    return isinstance(metadata, dict) and _OPERATION_MISMATCH_KEY in metadata
+
+
 def _payment_state(payment: Any) -> dict[str, Any]:
     return {'payment': payment, 'status': payment.status or 'pending', 'is_paid': bool(payment.is_paid)}
 
@@ -428,6 +437,10 @@ class AntarcticPaymentMixin:
             return _payment_state(payment)
 
         payment_id = payment.id
+        if _operation_mismatch_flagged(payment):
+            # Расхождение operation_id уже подняло тревогу и ждёт человека: повторный запрос к AW
+            # каждый цикл фоновой проверки дал бы тот же ответ и ту же тревогу.
+            return _payment_state(payment)
         if not payment.user_app_login:
             # Страницу никто не открывал: интента в AW нет, оплатить нечем. Гасим по TTL.
             if payment.expires_at is None or datetime.now(UTC) <= payment.expires_at:
@@ -707,6 +720,16 @@ class AntarcticPaymentMixin:
                 aw_status=incoming,
                 source=source,
             )
+            if source == 'api_check' and not _operation_mismatch_flagged(payment):
+                # Фоновая сверка приходит каждый цикл с тем же ответом: помечаем строку, чтобы тревога
+                # была одна. Вебхуки не помечаем — это может быть запоздавшая доставка старой операции.
+                payment.metadata_json = {
+                    **(payment.metadata_json if isinstance(payment.metadata_json, dict) else {}),
+                    _OPERATION_MISMATCH_KEY: {
+                        'received_operation_id': incoming_operation_id,
+                        'detected_at': datetime.now(UTC).isoformat(),
+                    },
+                }
             return True
 
         if incoming not in ANTARCTIC_STATUS_MAP:
