@@ -156,11 +156,15 @@ def env(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         limiter.counts[key] = limiter.counts.get(key, 0) + 1
         return limiter.counts[key] > limit
 
-    async def fake_is_rate_limited(user_id, action, limit, window, **kwargs):
-        limiter.ip_calls.append((user_id, action, limit, window))
+    async def fake_is_ip_rate_limited(ip, action, limit, window, **kwargs):
+        limiter.ip_calls.append((ip, action, limit, window))
         if limiter.error is not None:
             raise limiter.error
-        return limiter.force_ip or hit(('ip', user_id, action), limit)
+        return limiter.force_ip or hit(('ip', ip, action), limit)
+
+    async def forbidden_is_rate_limited(*args, **kwargs):
+        # Лимит по IP идёт через is_ip_rate_limited; пользовательский ключ 0 тут не нужен.
+        raise AssertionError('RateLimitCache.is_rate_limited must not be used for the Antarctic IP limit')
 
     async def fake_is_subject_rate_limited(subject, action, limit, window, **kwargs):
         limiter.token_calls.append((subject, action, limit, window))
@@ -177,7 +181,8 @@ def env(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     monkeypatch.setattr(antarctic_module, 'get_antarctic_client', lambda: client)
     monkeypatch.setattr(antarctic_module, 'AsyncSessionLocal', fake_session_local)
     monkeypatch.setattr(antarctic_module.antarctic_crud, 'get_antarctic_payment_by_token', fake_get_by_token)
-    monkeypatch.setattr(antarctic_module.RateLimitCache, 'is_rate_limited', staticmethod(fake_is_rate_limited))
+    monkeypatch.setattr(antarctic_module.RateLimitCache, 'is_ip_rate_limited', staticmethod(fake_is_ip_rate_limited))
+    monkeypatch.setattr(antarctic_module.RateLimitCache, 'is_rate_limited', staticmethod(forbidden_is_rate_limited))
     monkeypatch.setattr(
         antarctic_module.RateLimitCache,
         'is_subject_rate_limited',
@@ -541,7 +546,7 @@ def test_ip_rate_limited_429_before_the_body_is_read(env, call) -> None:
 
     assert response.status_code == 429
     assert response.json() == {'error': 'rate_limited'}
-    assert env.limiter.ip_calls == [(0, 'antarctic:testclient', 120, 60)]
+    assert env.limiter.ip_calls == [('testclient', 'antarctic', 120, 60)]
     assert env.limiter.token_calls == []
     assert env.client.id_tokens == []
     assert env.service.session_calls == []
@@ -632,7 +637,7 @@ def test_limiter_uses_the_client_address_from_trusted_headers_only(env) -> None:
         headers={'X-Forwarded-For': '198.51.100.9'},
     )
 
-    assert [call[1] for call in env.limiter.ip_calls] == ['antarctic:testclient', 'antarctic:testclient']
+    assert [call[0] for call in env.limiter.ip_calls] == ['testclient', 'testclient']
 
 
 def _proxy_warnings(logs: list[dict]) -> list[dict]:
