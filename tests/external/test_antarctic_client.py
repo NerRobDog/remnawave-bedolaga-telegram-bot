@@ -196,6 +196,21 @@ async def test_upsert_error_raises_with_code() -> None:
     assert APP_SECRET not in repr(exc_info.value)
 
 
+async def test_upsert_error_reads_code_from_errors_list() -> None:
+    # The shape AW actually returns (observed live, 2026-10-26).
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            404,
+            json={'data': None, 'errors': ['USER_NOT_FOUND'], 'message': 'USER_NOT_FOUND', 'status': 'not_found'},
+        )
+
+    with pytest.raises(AntarcticAPIError) as exc_info:
+        await _client(handler).upsert_pay_intent(user_app_login='u', reference_id='r', amount_usd='1.00')
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.code == 'USER_NOT_FOUND'
+
+
 async def test_upsert_error_without_json_body_has_no_code() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(502, text='<html>bad gateway</html>')
