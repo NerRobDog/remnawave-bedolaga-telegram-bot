@@ -215,6 +215,7 @@ def test_session_error_codes_map_to_http_status():
         'expired': 410,
         'login_mismatch': 409,
         'provider_error': 502,
+        'insufficient_balance': 422,
     }
     for code, http_status in expected.items():
         error = AntarcticSessionError(code)
@@ -470,6 +471,23 @@ async def test_session_provider_error(monkeypatch):
     assert exc.value.http_status == 502
     assert after_error == (None, None, 'pending')
     assert session['operation_id'] == 'op-1'
+
+
+@pytest.mark.asyncio
+async def test_session_insufficient_balance_reports_amount(monkeypatch):
+    stub = StubAW()
+    stub.error = AntarcticAPIError('INSUFFICIENT_BALANCE', status_code=422, code='INSUFFICIENT_BALANCE')
+    async with memory_session(monkeypatch, TABLES) as db:
+        _user_id, result = await _create(db, monkeypatch, stub)
+        with pytest.raises(AntarcticSessionError) as exc:
+            await _open(_service(), db, result['token'])
+        row = await _row(db)
+        after_error = (row.operation_id, row.user_app_login, row.status)
+
+    assert exc.value.code == 'insufficient_balance'
+    assert exc.value.http_status == 422
+    assert exc.value.amount_usd == result['amount_usd']
+    assert after_error == (None, None, 'pending')
 
 
 @pytest.mark.asyncio

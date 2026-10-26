@@ -69,18 +69,21 @@ _SESSION_HTTP_STATUS = {
     'expired': 410,
     'login_mismatch': 409,
     'provider_error': 502,
+    'insufficient_balance': 422,
 }
 
 
 class AntarcticSessionError(Exception):
     """Сессия мини-приложения не состоялась; ``code`` и ``http_status`` отдаются странице как есть."""
 
-    def __init__(self, code: str) -> None:
+    def __init__(self, code: str, *, amount_usd: str | None = None) -> None:
         if code not in _SESSION_HTTP_STATUS:
             raise ValueError(f'unknown Antarctic session error code: {code}')
         super().__init__(code)
         self.code = code
         self.http_status = _SESSION_HTTP_STATUS[code]
+        # Сумма платежа для insufficient_balance: странице нужно сказать, сколько пополнить.
+        self.amount_usd = amount_usd
 
 
 def _to_decimal(value: Decimal | float | str) -> Decimal:
@@ -349,11 +352,13 @@ class AntarcticPaymentMixin:
             logger.info('Antarctic: срок платежа вышел до открытия страницы', payment_id=payment_id)
             raise AntarcticSessionError('expired')
 
+        # rollback ниже сбрасывает объект: сумму для сообщения об ошибке берём заранее.
+        amount_usd = payment.amount_usd
         try:
             intent = await client.upsert_pay_intent(
                 user_app_login=login,
                 reference_id=payment.token,
-                amount_usd=payment.amount_usd,
+                amount_usd=amount_usd,
             )
         except AntarcticAPIError as error:
             await db.rollback()
@@ -363,6 +368,9 @@ class AntarcticPaymentMixin:
                 status_code=error.status_code,
                 code=error.code,
             )
+            if error.code == 'INSUFFICIENT_BALANCE':
+                # AW сверяет баланс счёта уже при создании интента; это не сбой, а пустой кошелёк.
+                raise AntarcticSessionError('insufficient_balance', amount_usd=amount_usd) from None
             raise AntarcticSessionError('provider_error') from None
 
         stored_operation_id = payment.operation_id

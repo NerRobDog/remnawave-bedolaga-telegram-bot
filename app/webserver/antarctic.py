@@ -312,7 +312,10 @@ def create_antarctic_router(payment_service: PaymentService) -> APIRouter:
             async with AsyncSessionLocal() as db:
                 result = await payment_service.start_antarctic_session(db, token=token, id_token=id_token)
         except AntarcticSessionError as error:
-            return _json({'error': error.code}, error.http_status)
+            body = {'error': error.code}
+            if error.amount_usd is not None:
+                body['amountUsd'] = error.amount_usd
+            return _json(body, error.http_status)
         except Exception as error:
             # Только имя класса: в тексте исключения может оказаться что угодно из запроса.
             logger.error('Antarctic: сбой сессии мини-приложения', error=type(error).__name__)
