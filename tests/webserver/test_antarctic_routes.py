@@ -367,6 +367,15 @@ def test_session_maps_errors(env, code: str, http_status: int) -> None:
     assert response.json() == {'error': code}
 
 
+def test_session_insufficient_balance_returns_amount(env) -> None:
+    env.service.session_error = AntarcticSessionError('insufficient_balance', amount_usd='1.24')
+
+    response = _session(env)
+
+    assert response.status_code == 422
+    assert response.json() == {'error': 'insufficient_balance', 'amountUsd': '1.24'}
+
+
 def test_session_success_returns_camel_case_body(env) -> None:
     response = _session(env)
 

@@ -189,10 +189,11 @@ function resolveParentOrigin() {
 }
 
 class ApiError extends Error {
-  constructor(code, status) {
+  constructor(code, status, amountUsd = null) {
     super(code);
     this.code = code;
     this.status = status;
+    this.amountUsd = amountUsd;
   }
 }
 
@@ -320,7 +321,11 @@ async function main() {
       data = null;
     }
     if (!response.ok) {
-      throw new ApiError((data && typeof data.error === 'string' && data.error) || 'server_error', response.status);
+      throw new ApiError(
+        (data && typeof data.error === 'string' && data.error) || 'server_error',
+        response.status,
+        data && typeof data.amountUsd === 'string' ? data.amountUsd : null,
+      );
     }
     return data;
   }
@@ -366,6 +371,16 @@ async function main() {
         title: 'Платёж открыт в другом кошельке',
         text: 'Создайте платёж заново в боте и откройте его из этого кошелька.',
         tone: 'warn',
+      });
+    } else if (code === 'insufficient_balance') {
+      // AW платит только со счёта (Assets and wallets); деньги на платёжной карте не считаются.
+      const amount = error.amountUsd ? ` не меньше ${formatUsd(error.amountUsd)}` : '';
+      show({
+        title: 'Недостаточно средств на счёте',
+        text: `Оплата идёт со счёта Antarctic Wallet, не с карты. Пополните счёт или переведите на него с карты${amount} и нажмите «Повторить».`,
+        tone: 'warn',
+        button: 'Повторить',
+        handler: start,
       });
     } else if (code === 'rate_limited') {
       show({
