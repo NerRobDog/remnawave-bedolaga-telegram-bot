@@ -113,6 +113,11 @@ def _extract_error_code(body: Any) -> str | None:
     code = body.get('code') or body.get('errorCode') or body.get('error_code')
     if code is None and isinstance(body.get('error'), dict):
         code = body['error'].get('code')
+    # AW's actual shape: {"errors": ["USER_NOT_FOUND"], "message": "USER_NOT_FOUND", ...}
+    if code is None and isinstance(body.get('errors'), list) and body['errors']:
+        code = body['errors'][0]
+    if code is None:
+        code = body.get('message')
     return code if isinstance(code, str) and code else None
 
 
