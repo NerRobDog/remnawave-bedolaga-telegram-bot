@@ -22,6 +22,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Table,
@@ -4582,6 +4583,38 @@ class CabinetRefreshToken(Base):
     def __repr__(self) -> str:
         status = 'valid' if self.is_valid else ('revoked' if self.is_revoked else 'expired')
         return f'<CabinetRefreshToken id={self.id} user_id={self.user_id} status={status}>'
+
+
+class UserPasskey(Base):
+    """Passkey (WebAuthn credential) пользователя кабинета.
+
+    ``credential_id`` уникален глобально: вход по discoverable credential ищет
+    ключ именно по нему. ``public_key`` — COSE-ключ как его отдаёт аутентификатор;
+    приватной части у сервера нет.
+    """
+
+    __tablename__ = 'user_passkeys'
+    __table_args__ = (
+        UniqueConstraint('credential_id', name='uq_user_passkeys_credential_id'),
+        Index('ix_user_passkeys_user_id', 'user_id'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    credential_id = Column(LargeBinary, nullable=False)
+    public_key = Column(LargeBinary, nullable=False)
+    sign_count = Column(BigInteger, nullable=False, default=0, server_default='0')
+    device_type = Column(String(32), nullable=False)
+    backed_up = Column(Boolean, nullable=False, default=False, server_default=text('false'))
+    transports = Column(String(255), nullable=True)
+    name = Column(String(100), nullable=False)
+    created_at = Column(AwareDateTime(), default=func.now(), nullable=False)
+    last_used_at = Column(AwareDateTime(), nullable=True)
+
+    user = relationship('User', backref=backref('passkeys', cascade='all, delete-orphan', passive_deletes=True))
+
+    def __repr__(self) -> str:
+        return f'<UserPasskey id={self.id} user_id={self.user_id} name={self.name!r}>'
 
 
 # ==================== FORTUNE WHEEL ====================
