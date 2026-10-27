@@ -1,7 +1,7 @@
 """passkey (WebAuthn) в кабинете: таблицы user_passkeys и user_recovery_codes
 
-Revision ID: 0128
-Revises: 0127
+Revision ID: 0138
+Revises: 0137
 Create Date: 2026-10-27
 
 Один пользователь — до нескольких ключей. ``credential_id`` уникален глобально:
@@ -13,10 +13,10 @@ Create Date: 2026-10-27
 passkey (id пользователя на момент регистрации ещё нет); у остальных NULL.
 
 ``user_recovery_codes`` — одноразовые коды входа для аккаунта без почты и Telegram.
-Хранится только sha256 кода с перцем, открытый код — никогда.
+Хранится только HMAC-SHA256 кода под перцем, открытый код — никогда.
 
 Миграция не выкатывалась в прод, поэтому дополнена на месте. Каждый шаг идемпотентен:
-стенд, где успела пройти первая версия 0128, догоняется недостающим.
+стенд, где успела пройти первая версия этой миграции, догоняется недостающим.
 """
 
 from typing import Sequence, Union
@@ -25,8 +25,8 @@ import sqlalchemy as sa
 from alembic import op
 
 
-revision: str = '0128'
-down_revision: Union[str, None] = '0127'
+revision: str = '0138'
+down_revision: Union[str, None] = '0137'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
