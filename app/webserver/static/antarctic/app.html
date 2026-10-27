@@ -311,11 +311,8 @@ async function main() {
   }
   applyTheme();
 
-  // start_param приходит от кошелька; на случай, если он отдаёт его вместе с префиксом из ссылки,
-  // убираем «app_<id>_».
-  let token = sdk.startParam || '';
-  const prefix = `app_${APP_ID}_`;
-  if (token.startsWith(prefix)) token = token.slice(prefix.length);
+  // Токен платежа приходит от кошелька как start_param ссылки aw.me/app/<id>?start_param=<token>.
+  const token = sdk.startParam || '';
   if (!TOKEN_RE.test(token)) {
     showFinal(STALE);
     return;

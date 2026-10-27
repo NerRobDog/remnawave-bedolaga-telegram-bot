@@ -19,7 +19,7 @@ from app.keyboards.topup_amounts import resolve_config_method_id
 from app.states import BalanceStates
 
 
-APP_LINK = 'https://t.me/antarctic_wallet_bot/app?startapp=app_1_tok'
+APP_LINK = 'https://aw.me/app/1?start_param=tok'
 REFERRAL = 'https://antarcticwallet.com/ref/abc'
 
 
