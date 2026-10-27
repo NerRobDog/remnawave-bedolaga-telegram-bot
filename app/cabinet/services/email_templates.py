@@ -82,6 +82,8 @@ class EmailNotificationTemplates:
             NotificationType.WITHDRAWAL_APPROVED: self._withdrawal_approved_template,
             NotificationType.WITHDRAWAL_REJECTED: self._withdrawal_rejected_template,
             NotificationType.TRAFFIC_RESET: self._traffic_reset_template,
+            NotificationType.TRAFFIC_WARNING: self._traffic_warning_template,
+            NotificationType.BALANCE_LOW: self._balance_low_template,
             NotificationType.PAYMENT_RECEIVED: self._payment_received_template,
             NotificationType.NALOGO_RECEIPT: self._nalogo_receipt_template,
             NotificationType.PROMO_OFFER: self._promo_offer_template,
@@ -1236,6 +1238,115 @@ class EmailNotificationTemplates:
                 <div class="highlight success">
                     <p>Your traffic has been reset. You can continue using the VPN.</p>
                 </div>
+                {self._get_cabinet_button(language)}
+            """,
+        }
+
+        return {
+            'subject': subjects.get(language, subjects['ru']),
+            'body_html': self._get_base_template(bodies.get(language, bodies['ru']), language),
+        }
+
+    def _traffic_warning_template(self, language: str, context: dict[str, Any]) -> dict[str, str]:
+        """Template for traffic usage warning (approaching the limit)."""
+        used = context.get('used_gb', '')
+        limit = context.get('limit_gb', '')
+        percent = context.get('percent', '')
+
+        subjects = {
+            'ru': 'Трафик почти исчерпан',
+            'en': 'Traffic Almost Used Up',
+            'zh': '流量即将用尽',
+            'ua': 'Трафік майже вичерпано',
+        }
+
+        bodies = {
+            'ru': f"""
+                <h2>Трафик почти исчерпан</h2>
+                <div class="highlight warning">
+                    <p>Использовано: <strong>{used} / {limit} ГБ</strong> ({percent}%)</p>
+                </div>
+                <p>Ваш лимит трафика почти исчерпан.</p>
+                {self._get_cabinet_button(language)}
+            """,
+            'en': f"""
+                <h2>Traffic Almost Used Up</h2>
+                <div class="highlight warning">
+                    <p>Used: <strong>{used} / {limit} GB</strong> ({percent}%)</p>
+                </div>
+                <p>Your traffic limit is almost exhausted.</p>
+                {self._get_cabinet_button(language)}
+            """,
+            'zh': f"""
+                <h2>流量即将用尽</h2>
+                <div class="highlight warning">
+                    <p>已使用: <strong>{used} / {limit} GB</strong> ({percent}%)</p>
+                </div>
+                <p>您的流量额度即将用尽。</p>
+                {self._get_cabinet_button(language)}
+            """,
+            'ua': f"""
+                <h2>Трафік майже вичерпано</h2>
+                <div class="highlight warning">
+                    <p>Використано: <strong>{used} / {limit} ГБ</strong> ({percent}%)</p>
+                </div>
+                <p>Ваш ліміт трафіку майже вичерпано.</p>
+                {self._get_cabinet_button(language)}
+            """,
+        }
+
+        return {
+            'subject': subjects.get(language, subjects['ru']),
+            'body_html': self._get_base_template(bodies.get(language, bodies['ru']), language),
+        }
+
+    def _balance_low_template(self, language: str, context: dict[str, Any]) -> dict[str, str]:
+        """Template for low balance alert (autopay about to run short)."""
+        balance = context.get('formatted_balance', '')
+        threshold = context.get('formatted_threshold', '')
+
+        subjects = {
+            'ru': 'Низкий баланс',
+            'en': 'Low Balance',
+            'zh': '余额不足提醒',
+            'ua': 'Низький баланс',
+        }
+
+        bodies = {
+            'ru': f"""
+                <h2>Низкий баланс</h2>
+                <div class="highlight warning">
+                    <p>Ваш баланс: <strong>{balance}</strong></p>
+                    <p>Порог уведомления: <strong>{threshold}</strong></p>
+                </div>
+                <p>Пополните баланс, чтобы автопродление подписки прошло успешно.</p>
+                {self._get_cabinet_button(language)}
+            """,
+            'en': f"""
+                <h2>Low Balance</h2>
+                <div class="highlight warning">
+                    <p>Your balance: <strong>{balance}</strong></p>
+                    <p>Alert threshold: <strong>{threshold}</strong></p>
+                </div>
+                <p>Top up your balance so the subscription auto-renewal succeeds.</p>
+                {self._get_cabinet_button(language)}
+            """,
+            'zh': f"""
+                <h2>余额不足提醒</h2>
+                <div class="highlight warning">
+                    <p>当前余额: <strong>{balance}</strong></p>
+                    <p>提醒阈值: <strong>{threshold}</strong></p>
+                </div>
+                <p>请充值余额，以确保订阅自动续订成功。</p>
+                {self._get_cabinet_button(language)}
+            """,
+            'ua': f"""
+                <h2>Низький баланс</h2>
+                <div class="highlight warning">
+                    <p>Ваш баланс: <strong>{balance}</strong></p>
+                    <p>Поріг сповіщення: <strong>{threshold}</strong></p>
+                </div>
+                <p>Поповніть баланс, щоб автопродовження підписки пройшло успішно.</p>
                 {self._get_cabinet_button(language)}
             """,
         }

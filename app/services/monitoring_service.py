@@ -2623,7 +2623,7 @@ class MonitoringService:
 
     async def _check_traffic_warnings(self, db: AsyncSession):
         """Check subscriptions approaching traffic limit and notify users."""
-        if not self.bot or not NotificationSettingsService.are_notifications_globally_enabled():
+        if not NotificationSettingsService.are_notifications_globally_enabled():
             return
 
         try:
@@ -2647,7 +2647,12 @@ class MonitoringService:
             sent_count = 0
             for subscription in subscriptions:
                 user = subscription.user
-                if not user or not user.telegram_id:
+                if not user:
+                    continue
+                if user.telegram_id:
+                    if not self.bot:
+                        continue
+                elif not (user.email and user.email_verified):
                     continue
 
                 if not is_traffic_warning_enabled(user):
@@ -2688,11 +2693,25 @@ class MonitoringService:
                         limit=traffic_limit,
                         percent=current_percent,
                     )
-                    await self.bot.send_message(
-                        user.telegram_id,
-                        message,
-                        parse_mode='HTML',
-                    )
+                    if user.telegram_id:
+                        await self.bot.send_message(
+                            user.telegram_id,
+                            message,
+                            parse_mode='HTML',
+                        )
+                    else:
+                        # Кабинетный пользователь без Telegram — письмо + WebSocket
+                        delivered = await notification_delivery_service.send_notification(
+                            user=user,
+                            notification_type=NotificationType.TRAFFIC_WARNING,
+                            context={
+                                'used_gb': f'{traffic_used:.1f}',
+                                'limit_gb': traffic_limit,
+                                'percent': f'{current_percent:.0f}',
+                            },
+                        )
+                        if not delivered:
+                            continue
                     try:
                         await cache.set(cache_key_str, '1', expire=86400)
                     except Exception:
@@ -2721,7 +2740,7 @@ class MonitoringService:
         - Quiet hours: skips sending between 22:00 and 09:00 server time
         - Rate-limited: max 1 alert per 24 hours per user
         """
-        if not self.bot or not NotificationSettingsService.are_notifications_globally_enabled():
+        if not NotificationSettingsService.are_notifications_globally_enabled():
             return
 
         try:
@@ -2750,7 +2769,10 @@ class MonitoringService:
                     Subscription.autopay_enabled.is_(True),
                     Subscription.end_date.isnot(None),
                     Subscription.end_date <= expiry_threshold,
-                    User.telegram_id.isnot(None),
+                    or_(
+                        User.telegram_id.isnot(None),
+                        and_(User.email.isnot(None), User.email_verified.is_(True)),
+                    ),
                 )
                 .distinct()
             )
@@ -2759,6 +2781,8 @@ class MonitoringService:
             sent_count = 0
             for user in users:
                 if not is_balance_low_enabled(user):
+                    continue
+                if user.telegram_id and not self.bot:
                     continue
 
                 threshold = get_balance_low_threshold(user)
@@ -2809,12 +2833,27 @@ class MonitoringService:
                             ]
                         )
 
-                    await self.bot.send_message(
-                        user.telegram_id,
-                        message,
-                        parse_mode='HTML',
-                        reply_markup=keyboard,
-                    )
+                    if user.telegram_id:
+                        await self.bot.send_message(
+                            user.telegram_id,
+                            message,
+                            parse_mode='HTML',
+                            reply_markup=keyboard,
+                        )
+                    else:
+                        # Кабинетный пользователь без Telegram — письмо + WebSocket
+                        delivered = await notification_delivery_service.send_notification(
+                            user=user,
+                            notification_type=NotificationType.BALANCE_LOW,
+                            context={
+                                'formatted_balance': settings.format_price(balance),
+                                'formatted_threshold': settings.format_price(threshold),
+                                'balance_kopeks': balance,
+                                'threshold_kopeks': threshold,
+                            },
+                        )
+                        if not delivered:
+                            continue
                     # Mark as sent for 24 hours
                     try:
                         await cache.set(cache_key_str, '1', expire=86400)
