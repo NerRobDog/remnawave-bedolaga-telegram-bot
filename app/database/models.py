@@ -4608,6 +4608,10 @@ class UserPasskey(Base):
     backed_up = Column(Boolean, nullable=False, default=False, server_default=text('false'))
     transports = Column(String(255), nullable=True)
     name = Column(String(100), nullable=False)
+    #: userHandle, который аккаунт, созданный самим passkey, отдал аутентификатору при регистрации:
+    #: id пользователя тогда ещё нет, поэтому handle случайный. У остальных ключей NULL — их handle
+    #: выводится из user_id (``user_handle_for``).
+    user_handle = Column(LargeBinary, nullable=True)
     created_at = Column(AwareDateTime(), default=func.now(), nullable=False)
     last_used_at = Column(AwareDateTime(), nullable=True)
 
@@ -4615,6 +4619,31 @@ class UserPasskey(Base):
 
     def __repr__(self) -> str:
         return f'<UserPasskey id={self.id} user_id={self.user_id} name={self.name!r}>'
+
+
+class UserRecoveryCode(Base):
+    """Одноразовый recovery-код входа для аккаунта без почты и Telegram.
+
+    Открытый код не хранится нигде: в таблице только ``sha256(pepper + код)`` в hex.
+    ``used_at`` проставляется атомарным ``UPDATE ... WHERE used_at IS NULL``.
+    """
+
+    __tablename__ = 'user_recovery_codes'
+    __table_args__ = (
+        UniqueConstraint('code_hash', name='uq_user_recovery_codes_code_hash'),
+        Index('ix_user_recovery_codes_user_id', 'user_id'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    code_hash = Column(String(64), nullable=False)
+    used_at = Column(AwareDateTime(), nullable=True)
+    created_at = Column(AwareDateTime(), default=func.now(), nullable=False)
+
+    user = relationship('User', backref=backref('recovery_codes', cascade='all, delete-orphan', passive_deletes=True))
+
+    def __repr__(self) -> str:
+        return f'<UserRecoveryCode id={self.id} user_id={self.user_id} used={self.used_at is not None}>'
 
 
 # ==================== FORTUNE WHEEL ====================
