@@ -87,7 +87,7 @@
   Функции: `create_bot` — Create a Bot instance with SOCKS5 proxy and/or custom Telegram API server.
 - `app/cabinet/`
 - `app/config.py` — Python-модуль
-  Классы: `Settings` (397 методов)
+  Классы: `Settings` (400 методов)
   Функции: `transliterate_cyrillic` — Заменяет кириллические буквы латинскими, сохраняя регистр («Шмель» → «Shmel»)., `set_period_prices_from_db` — Устанавливает периоды/цены из БД., `get_db_period_prices` — Возвращает периоды/цены из БД если они загружены., `clear_db_period_prices` — Очищает кеш цен из тарифов (при переключении в classic mode)., `refresh_period_prices` — Rebuild cached period price mapping., `refresh_classic_period_prices` — Rebuild CLASSIC_PERIOD_PRICES from current settings., `get_traffic_prices`, `refresh_traffic_prices`
 - `app/database/`
 - `app/external/`
@@ -154,6 +154,9 @@
 - `app/cabinet/auth/oauth_providers.py` — Python-модуль
   Классы: `OAuthProviderConfig`, `OAuthTokenResponse`, `GoogleUserInfoResponse`, `YandexUserInfoResponse`, `DiscordUserInfoResponse`, `VKIDUserData`, `VKIDUserInfoResponse`, `OAuthUserInfo`, `OAuthProvider` (5 методов), `GoogleProvider` (3 методов), `YandexProvider` (3 методов), `DiscordProvider` (3 методов), `VKProvider` (5 методов)
   Функции: `generate_oauth_state` — Generate a CSRF state token for OAuth flow., `validate_oauth_state` — Validate and consume a CSRF state token from Redis., `resolve_oauth_redirect_uri` — Pick the OAuth redirect_uri for the request's origin., `get_provider` — Get an OAuth provider instance if enabled.
+- `app/cabinet/auth/passkey.py` — Python-модуль
+  Классы: `PasskeyError`, `PasskeyChallengeError`, `PasskeyVerificationError`, `PasskeyUnavailableError`, `NewPasskey`, `VerifiedLogin`
+  Функции: `user_handle_for` — Непрозрачный стабильный идентификатор пользователя для аутентификатора., `consume_challenge` — Достать и ОДНОВРЕМЕННО уничтожить челлендж; вернуть его байты., `create_registration_options` — Options для ``navigator.credentials.create()``; ``existing`` — уже заведённые ключи пользователя., `create_login_options` — Options для ``navigator.credentials.get()`` без списка допустимых ключей (discoverable)., `credential_id_of` — credential id из ответа (rawId) — по нему вход находит ключ в БД., `verify_registration` — Проверить ответ ``navigator.credentials.create()`` (fmt=none обычно, остальное проверяет библиотека)., `verify_login` — Проверить подпись утверждения ``navigator.credentials.get()`` ключом пользователя.
 - `app/cabinet/auth/password_utils.py` — Python-модуль
   Классы: нет
   Функции: `hash_password` — Hash a password using bcrypt., `verify_password` — Verify a password against its hash.
@@ -355,6 +358,9 @@
 - `app/cabinet/routes/partner_application.py` — Python-модуль
   Классы: нет
   Функции: `get_partner_status` — Get partner status and latest application for current user., `get_campaign_stats` — Get detailed stats for a single campaign belonging to the current partner., `apply_for_partner` — Submit partner application.
+- `app/cabinet/routes/passkey.py` — Python-модуль
+  Классы: нет
+  Функции: `require_passkey_enabled`, `passkey_status` — Нужен фронту, чтобы показать или спрятать кнопку «Войти с passkey»., `passkey_login_options`, `passkey_login_verify`, `passkey_register_options`, `passkey_register_verify`, `passkey_list`, `passkey_rename`, `passkey_delete`
 - `app/cabinet/routes/polls.py` — Python-модуль
   Классы: `PollOptionResponse`, `PollQuestionResponse`, `PollInfo`, `PollStartResponse`, `AnswerRequest`, `AnswerResponse`, `PollsCountResponse`
   Функции: `get_polls_count` — Get count of polls available for the user., `get_available_polls` — Get list of polls available for the user., `get_poll_details` — Get details of a specific poll response., `start_poll` — Start or continue a poll., `answer_question` — Submit answer for a poll question.
@@ -506,6 +512,9 @@
 - `app/cabinet/schemas/partners.py` — Python-модуль
   Классы: `PartnerApplicationRequest`, `PartnerApplicationInfo`, `PartnerCampaignInfo`, `PartnerStatusResponse`, `DailyStatItem`, `PeriodStats`, `PeriodChange`, `PeriodComparison`, `CampaignReferralItem`, `PartnerCampaignDetailedStats`, `AdminPartnerApplicationItem`, `AdminPartnerApplicationsResponse`, `AdminApproveRequest`, `AdminRejectRequest`, `AdminPartnerItem`, `AdminPartnerListResponse`, `CampaignSummary`, `AdminPartnerDetailResponse`, `AdminUpdateCommissionRequest`
   Функции: нет
+- `app/cabinet/schemas/passkey.py` — Python-модуль
+  Классы: `PasskeyStatusResponse`, `PasskeyOptionsResponse`, `PasskeyVerifyRequest` (1 методов), `PasskeyRegisterVerifyRequest`, `PasskeyRenameRequest`, `PasskeyResponse`, `PasskeyListResponse`, `PasskeyDeleteResponse`
+  Функции: нет
 - `app/cabinet/schemas/pinned_messages.py` — Python-модуль
   Классы: `PinnedMessageMedia`, `PinnedMessageCreateRequest`, `PinnedMessageUpdateRequest`, `PinnedMessageSettingsRequest`, `PinnedMessageResponse`, `PinnedMessageBroadcastResponse`, `PinnedMessageUnpinResponse`, `PinnedMessageListResponse`
   Функции: нет
@@ -561,7 +570,7 @@
   Классы: нет
   Функции: `apply_legacy_aliases` — Возвращает копию контекста со старыми именами плейсхолдеров, если есть новые., `build_common_context` — Values for the type-independent placeholders., `substitute_context_vars` — Replace {var} placeholders in template text with context values., `get_template_override` — Get custom email template from the database., `get_all_overrides` — Get all custom template overrides from the database., `get_overrides_for_type` — Get all language overrides for a specific notification type., `save_template_override` — Save or update a custom email template in the database., `get_rendered_override` — Get a custom template override rendered with the base email template., `delete_template_override` — Delete a custom template override (revert to default).
 - `app/cabinet/services/email_templates.py` — Python-модуль
-  Классы: `EmailNotificationTemplates` (51 методов)
+  Классы: `EmailNotificationTemplates` (53 методов)
   Функции: нет
 - `app/cabinet/services/email_type_switch.py` — Python-модуль
   Классы: нет
@@ -622,7 +631,7 @@
   Классы: нет
   Функции: `run_alembic_upgrade` — Run ``alembic upgrade head``, handling fresh and legacy databases., `stamp_alembic_head` — Stamp the DB as being at head without running migrations (for existing DBs).
 - `app/database/models.py` — Python-модуль
-  Классы: `AwareDateTime` (2 методов), `UserStatus`, `SubscriptionStatus`, `TransactionType`, `PromoCodeType`, `PaymentMethod`, `MainMenuButtonActionType`, `MainMenuButtonVisibility`, `WheelPrizeType`, `WheelSpinPaymentType`, `YooKassaPayment` (6 методов), `SavedPaymentMethod` (1 методов), `CryptoBotPayment` (5 методов), `AppleTransaction` (2 методов), `AppleIAPAccount` (1 методов), `AppleNotification` (1 методов), `AppleIAPAbuseEvent` (1 методов), `HeleketPayment` (5 методов), `MulenPayPayment` (2 методов), `Pal24Payment` (3 методов), `WataPayment` (2 методов), `PlategaPayment` (2 методов), `PlategaSubscription` (1 методов), `LavaSubscription` (1 методов), `CloudPaymentsPayment` (5 методов), `FreekassaPayment` (5 методов), `KassaAiPayment` (5 методов), `RioPayPayment` (5 методов), `SeverPayPayment` (5 методов), `PayPearPayment` (5 методов), `RollyPayPayment` (5 методов), `OverpayPayment` (5 методов), `AuraPayPayment` (5 методов), `EtoplatezhiPayment` (5 методов), `AntilopayPayment` (5 методов), `JupiterPayment` (5 методов), `DonutPayment` (5 методов), `LavaPayment` (5 методов), `CisPayPayment` (5 методов), `TabPayPayment` (5 методов), `ParityPayPayment` (5 методов), `PromoGroup` (3 методов), `UserPromoGroup` (1 методов), `Tariff` (21 методов), `PartnerStatus`, `User` (12 методов), `Subscription` (15 методов), `GraceAccessSessionModel`, `TrafficPurchase` (1 методов), `Transaction` (1 методов), `SubscriptionConversion` (2 методов), `PromoCode` (2 методов), `PromoCodeUse`, `CouponStatus`, `CouponBatch` (2 методов), `Coupon` (1 методов), `ReferralRewardType`, `ReferralRewardTrigger`, `ReferralRewardMode`, `ReferralRewardLevel` (1 методов), `ReferralEarning` (1 методов), `WithdrawalRequestStatus`, `WithdrawalRequest` (1 методов), `PartnerApplication`, `ReferralContest` (1 методов), `ReferralContestEvent` (1 методов), `ReferralContestVirtualParticipant` (1 методов), `ContestTemplate`, `ContestRound`, `ContestAttempt`, `Squad` (1 методов), `ServiceRule`, `PrivacyPolicy`, `PublicOffer`, `LegalConsent`, `RecurrentPayments`, `FaqSetting`, `FaqPage`, `SystemSetting`, `EmailTemplate`, `MonitoringLog`, `SentNotification`, `SubscriptionEvent`, `DiscountOffer`, `PromoOfferTemplate`, `SubscriptionTemporaryAccess`, `PromoOfferLog`, `BroadcastHistory`, `Poll`, `PollQuestion`, `PollOption`, `PollResponse`, `PollAnswer`, `ServerSquad` (3 методов), `SubscriptionServer`, `SupportAuditLog`, `UserMessage` (1 методов), `WelcomeText`, `PinnedMessage`, `AdvertisingCampaign` (4 методов), `AdvertisingCampaignRegistration` (1 методов), `TicketStatus`, `Ticket` (8 методов), `TicketMessage` (3 методов), `WebApiToken` (1 методов), `MainMenuButton` (3 методов), `MenuLayoutHistory` (1 методов), `ButtonClickLog` (1 методов), `Webhook` (1 методов), `WebhookDelivery` (1 методов), `CabinetRefreshToken` (4 методов), `WheelConfig` (1 методов), `WheelPrize` (1 методов), `WheelSpin` (3 методов), `TicketNotification` (1 методов), `PaymentMethodConfig` (1 методов), `RequiredChannel` (1 методов), `UserChannelSubscription` (1 методов), `AdminRole` (1 методов), `UserRole` (1 методов), `AccessPolicy` (1 методов), `AdminAuditLog` (1 методов), `LandingPage` (1 методов), `GuestPurchaseStatus`, `GuestPurchase` (1 методов), `NewsArticle` (1 методов), `NewsCategory` (1 методов), `NewsTag` (1 методов), `YandexClientIdMap`, `InfoPage`, `UserDeviceAlias`, `SystemErrorEvent`, `EmailQueueItem`, `ReachabilityBatch`, `ReachabilityJob`, `ReachabilityLeg`, `ReachabilityTargetPref`, `UserReminder` (1 методов), `UserReminderState`
+  Классы: `AwareDateTime` (2 методов), `UserStatus`, `SubscriptionStatus`, `TransactionType`, `PromoCodeType`, `PaymentMethod`, `MainMenuButtonActionType`, `MainMenuButtonVisibility`, `WheelPrizeType`, `WheelSpinPaymentType`, `YooKassaPayment` (6 методов), `SavedPaymentMethod` (1 методов), `CryptoBotPayment` (5 методов), `AppleTransaction` (2 методов), `AppleIAPAccount` (1 методов), `AppleNotification` (1 методов), `AppleIAPAbuseEvent` (1 методов), `HeleketPayment` (5 методов), `MulenPayPayment` (2 методов), `Pal24Payment` (3 методов), `WataPayment` (2 методов), `PlategaPayment` (2 методов), `PlategaSubscription` (1 методов), `LavaSubscription` (1 методов), `CloudPaymentsPayment` (5 методов), `FreekassaPayment` (5 методов), `KassaAiPayment` (5 методов), `RioPayPayment` (5 методов), `SeverPayPayment` (5 методов), `PayPearPayment` (5 методов), `RollyPayPayment` (5 методов), `OverpayPayment` (5 методов), `AuraPayPayment` (5 методов), `EtoplatezhiPayment` (5 методов), `AntilopayPayment` (5 методов), `JupiterPayment` (5 методов), `DonutPayment` (5 методов), `LavaPayment` (5 методов), `CisPayPayment` (5 методов), `TabPayPayment` (5 методов), `ParityPayPayment` (5 методов), `PromoGroup` (3 методов), `UserPromoGroup` (1 методов), `Tariff` (21 методов), `PartnerStatus`, `User` (12 методов), `Subscription` (15 методов), `GraceAccessSessionModel`, `TrafficPurchase` (1 методов), `Transaction` (1 методов), `SubscriptionConversion` (2 методов), `PromoCode` (2 методов), `PromoCodeUse`, `CouponStatus`, `CouponBatch` (2 методов), `Coupon` (1 методов), `ReferralRewardType`, `ReferralRewardTrigger`, `ReferralRewardMode`, `ReferralRewardLevel` (1 методов), `ReferralEarning` (1 методов), `WithdrawalRequestStatus`, `WithdrawalRequest` (1 методов), `PartnerApplication`, `ReferralContest` (1 методов), `ReferralContestEvent` (1 методов), `ReferralContestVirtualParticipant` (1 методов), `ContestTemplate`, `ContestRound`, `ContestAttempt`, `Squad` (1 методов), `ServiceRule`, `PrivacyPolicy`, `PublicOffer`, `LegalConsent`, `RecurrentPayments`, `FaqSetting`, `FaqPage`, `SystemSetting`, `EmailTemplate`, `MonitoringLog`, `SentNotification`, `SubscriptionEvent`, `DiscountOffer`, `PromoOfferTemplate`, `SubscriptionTemporaryAccess`, `PromoOfferLog`, `BroadcastHistory`, `Poll`, `PollQuestion`, `PollOption`, `PollResponse`, `PollAnswer`, `ServerSquad` (3 методов), `SubscriptionServer`, `SupportAuditLog`, `UserMessage` (1 методов), `WelcomeText`, `PinnedMessage`, `AdvertisingCampaign` (4 методов), `AdvertisingCampaignRegistration` (1 методов), `TicketStatus`, `Ticket` (8 методов), `TicketMessage` (3 методов), `WebApiToken` (1 методов), `MainMenuButton` (3 методов), `MenuLayoutHistory` (1 методов), `ButtonClickLog` (1 методов), `Webhook` (1 методов), `WebhookDelivery` (1 методов), `CabinetRefreshToken` (4 методов), `UserPasskey` (1 методов), `WheelConfig` (1 методов), `WheelPrize` (1 методов), `WheelSpin` (3 методов), `TicketNotification` (1 методов), `PaymentMethodConfig` (1 методов), `RequiredChannel` (1 методов), `UserChannelSubscription` (1 методов), `AdminRole` (1 методов), `UserRole` (1 методов), `AccessPolicy` (1 методов), `AdminAuditLog` (1 методов), `LandingPage` (1 методов), `GuestPurchaseStatus`, `GuestPurchase` (1 методов), `NewsArticle` (1 методов), `NewsCategory` (1 методов), `NewsTag` (1 методов), `YandexClientIdMap`, `InfoPage`, `UserDeviceAlias`, `SystemErrorEvent`, `EmailQueueItem`, `ReachabilityBatch`, `ReachabilityJob`, `ReachabilityLeg`, `ReachabilityTargetPref`, `UserReminder` (1 методов), `UserReminderState`
   Функции: нет
 
 #### app/database/crud
@@ -834,6 +843,9 @@
 - `app/database/crud/user_message.py` — Python-модуль
   Классы: нет
   Функции: `create_user_message`, `get_user_message_by_id`, `get_active_user_messages`, `get_random_active_message`, `get_all_user_messages`, `get_user_messages_count`, `update_user_message`, `toggle_user_message_status`, `delete_user_message`, `get_user_messages_stats`
+- `app/database/crud/user_passkey.py` — Python-модуль
+  Классы: нет
+  Функции: `lock_user_row` — Сериализовать конкурентные изменения набора ключей одного пользователя., `list_user_passkeys`, `count_user_passkeys`, `get_user_passkey` — Ключ по id — только если он принадлежит пользователю (иначе None, как будто его нет)., `get_passkey_by_credential_id`, `record_assertion` — Записать успешный вход: счётчик, флаг резервной копии, время.
 - `app/database/crud/user_promo_group.py` — Python-модуль
   Классы: нет
   Функции: `sync_user_primary_promo_group` — Публичная обертка для синхронизации primary промогруппы пользователя., `add_user_to_promo_group` — Добавляет пользователю промогруппу., `remove_user_from_promo_group` — Удаляет промогруппу у пользователя., `get_user_promo_groups` — Получает все промогруппы пользователя, отсортированные по приоритету., `get_primary_user_promo_group` — Получает промогруппу пользователя с максимальным приоритетом., `has_user_promo_group` — Проверяет наличие промогруппы у пользователя., `count_user_promo_groups` — Подсчитывает количество промогрупп у пользователя., `replace_user_promo_groups` — Заменяет все промогруппы пользователя на новый список.
@@ -2964,6 +2976,9 @@
 - `migrations/alembic/versions/0127_user_reminders.py` — Python-модуль
   Классы: нет
   Функции: `upgrade`, `downgrade`
+- `migrations/alembic/versions/0128_user_passkeys.py` — Python-модуль
+  Классы: нет
+  Функции: `upgrade`, `downgrade`
 
 ## scripts
 
@@ -3122,6 +3137,12 @@
 - `tests/cabinet/__init__.py` — Python-модуль
   Классы: нет
   Функции: нет
+- `tests/cabinet/conftest.py` — Python-модуль
+  Классы: нет
+  Функции: `fake_redis` — Подключает ``cache`` и ``RateLimitCache`` к Redis в памяти (код приложения настоящий)., `passkey_settings` — Passkey включён для rp_id watchd0g.dev и одного origin кабинета.
+- `tests/cabinet/passkey_harness.py` — Python-модуль
+  Классы: `PasskeyHttp` (11 методов)
+  Функции: `new_authenticator`, `open_harness`
 - `tests/cabinet/test_admin_create_update_schema_parity.py` — Python-модуль
   Классы: нет
   Функции: `test_schema_pairs_are_discovered` — Пустой список сделал бы сторож ниже бессмысленно зелёным., `test_shared_fields_share_constraints`, `test_create_tariff_accepts_zero_as_no_highlight`, `test_create_tariff_keeps_marked_period`, `test_create_tariff_rejects_negative_highlight`, `test_pinned_message_can_be_media_only`, `test_news_update_enforces_same_lengths_as_create`, `test_update_tariff_zero_clears_highlight`, `test_update_tariff_moves_highlight_to_another_period`, `test_update_tariff_without_the_field_keeps_highlight`
@@ -3203,6 +3224,9 @@
 - `tests/cabinet/test_admin_users_multi_tariff_and_grace.py` — Python-модуль
   Классы: нет
   Функции: `test_expired_skips_anyone_who_still_has_a_live_tariff` — «Истекшие» — это кто остался без доступа, а не у кого нашлась старая истёкшая строка., `test_active_still_finds_anyone_with_a_live_tariff`, `test_limited_and_disabled_follow_the_same_rule` — Исчерпанный трафик и отключение — тоже «доступа нет», и тоже только без живых тарифов., `test_expired_tariff_of_a_live_person_still_found_by_tariff_filter` — Отбор по тарифу — про тариф, а не про доступ: истёкшая строка живого человека остаётся видна., `test_row_shows_the_tariff_that_got_the_person_into_the_view` — «Трафик на исходе»: в строке должен быть забитый тариф, а не пустой соседний., `test_row_shows_the_expired_tariff_in_the_expired_view`, `test_row_says_the_person_is_on_temporary_access` — Грейс: подписка истекла, но доступ ещё открыт — по списку это обязано быть видно., `test_closed_grace_leaves_no_mark` — Дата оверлея остаётся в подписке и после закрытия грейса — это не «временный доступ».
+- `tests/cabinet/test_alert_email_templates.py` — Python-модуль
+  Классы: нет
+  Функции: `test_traffic_warning_template_renders`, `test_balance_low_template_renders`
 - `tests/cabinet/test_autopay_cancels_sbp.py` — Python-модуль
   Классы: нет
   Функции: `test_enable_autopay_cancels_active_sbp_recurring`, `test_disable_autopay_does_not_cancel_sbp` — Disabling balance-autopay must NOT touch SBP — only the enable path, `test_enable_autopay_rejected_for_trial_does_not_cancel_sbp` — A rejected enable (trial subscription -> 400) must not fire the
@@ -3365,6 +3389,21 @@
 - `tests/cabinet/test_panel_user_id_single_mode_fallback.py` — Python-модуль
   Классы: нет
   Функции: `test_single_mode_falls_back_to_subscription_account`, `test_single_mode_prefers_user_account_when_present`, `test_multi_mode_never_falls_back_to_user_account`
+- `tests/cabinet/test_passkey_config.py` — Python-модуль
+  Классы: нет
+  Функции: `test_defaults_keep_passkey_off`, `test_enabled_with_rp_id_and_origin`, `test_incomplete_configuration_stays_disabled`, `test_origins_are_split_trimmed_and_stripped_of_trailing_slash`, `test_rp_id_is_trimmed_and_lowercased`
+- `tests/cabinet/test_passkey_core.py` — Python-модуль
+  Классы: нет
+  Функции: `test_registration_options_require_user_verification_and_ask_no_attestation`, `test_registration_options_exclude_existing_credentials`, `test_user_handle_is_stable_opaque_and_not_the_numeric_id`, `test_challenge_lives_in_redis_for_300_seconds_under_its_own_key`, `test_each_options_call_issues_a_fresh_challenge`, `test_challenge_is_single_use`, `test_expired_challenge_is_refused`, `test_unknown_challenge_is_refused`, `test_registration_challenge_belongs_to_the_user_who_asked_for_it`, `test_login_challenge_cannot_be_spent_on_registration`, `test_registration_challenge_cannot_be_spent_on_login`, `test_unavailable_redis_means_no_options_instead_of_unverifiable_ones`, `test_registration_verifies_a_real_attestation`, `test_registration_rejects_a_foreign_origin`, `test_registration_rejects_a_foreign_rp_id`, `test_registration_rejects_when_user_was_not_verified`, `test_registration_rejects_a_challenge_the_server_did_not_issue`, `test_registration_rejects_an_assertion_type_in_client_data`, `test_registration_rejects_cross_origin_client_data`, `test_registration_rejects_an_id_that_differs_from_the_attested_credential`, `test_registration_rejects_malformed_credentials`, `test_accepted_origins_are_exactly_the_configured_ones`, `test_login_options_use_discoverable_credentials_and_require_user_verification`, `test_login_verifies_a_real_assertion`, `test_credential_id_is_read_from_the_assertion`, `test_credential_id_of_rejects_malformed_input`, `test_login_rejects_a_signature_from_another_key`, `test_login_rejects_a_foreign_origin`, `test_login_rejects_a_foreign_rp_id`, `test_login_rejects_when_user_was_not_verified`, `test_login_rejects_a_challenge_the_server_did_not_issue`, `test_login_rejects_a_registration_type_in_client_data`, `test_login_sign_count_regression_is_refused`, `test_login_exposes_user_handle_for_the_caller_to_compare`
+- `tests/cabinet/test_passkey_login_http.py` — Python-модуль
+  Классы: нет
+  Функции: `test_login_options_need_no_session_and_expose_no_credential_list`, `test_login_issues_a_session_for_the_owner_of_the_key`, `test_session_from_passkey_login_opens_the_cabinet`, `test_device_without_a_counter_can_log_in_repeatedly`, `test_second_key_of_the_same_user_logs_in_to_the_same_account`, `test_a_signed_assertion_cannot_be_replayed`, `test_an_expired_challenge_cannot_log_in`, `test_a_registration_challenge_cannot_log_in`, `test_a_failed_attempt_burns_the_challenge`, `test_blocked_or_deleted_account_gets_the_same_401_as_an_unknown_key`, `test_unverifiable_assertions_get_the_generic_401`, `test_signature_from_another_key_under_a_known_credential_id_is_refused`, `test_assertion_claiming_another_accounts_user_handle_is_refused`, `test_authenticator_that_omits_user_handle_still_logs_in`, `test_garbage_assertions_never_crash`, `test_sign_count_that_does_not_advance_is_treated_as_a_cloned_key`, `test_counterless_key_that_suddenly_counts_is_still_accepted_forward`, `test_concurrent_login_with_a_stale_counter_loses`, `test_login_that_loses_the_counter_race_is_refused_and_keeps_the_winners_counter` — Между проверкой подписи и записью тот же ключ уже вошёл параллельным запросом., `test_login_options_are_rate_limited_per_ip`, `test_login_verify_is_rate_limited_per_ip`, `test_login_fails_closed_when_the_limiter_cannot_reach_redis`, `test_challenge_store_outage_after_the_limiter_is_a_503`
+- `tests/cabinet/test_passkey_management_http.py` — Python-модуль
+  Классы: нет
+  Функции: `test_list_shows_only_own_keys_without_key_material`, `test_management_endpoints_need_a_session`, `test_rename_own_key`, `test_rename_someone_elses_key_looks_like_a_missing_key`, `test_rename_rejects_unusable_names`, `test_delete_own_key_when_another_way_to_sign_in_remains`, `test_deleting_someone_elses_key_looks_like_a_missing_key_and_changes_nothing`, `test_the_only_way_to_sign_in_cannot_be_deleted`, `test_a_password_without_an_email_is_not_a_way_to_sign_in`, `test_any_other_login_method_allows_deleting_the_last_key`, `test_another_key_counts_as_a_login_method_until_it_is_the_last`, `test_deleted_key_can_no_longer_log_in`
+- `tests/cabinet/test_passkey_registration_http.py` — Python-модуль
+  Классы: нет
+  Функции: `test_status_reports_whether_passkey_is_configured`, `test_every_endpoint_answers_passkey_disabled_when_not_configured`, `test_registration_round_trip_stores_the_key_and_leaks_no_key_material`, `test_custom_name_is_trimmed_and_stored`, `test_unusable_names_are_refused`, `test_registration_endpoints_require_a_session`, `test_already_registered_keys_are_excluded_from_new_options`, `test_repeating_a_registration_of_the_same_credential_is_refused`, `test_credential_id_of_another_account_cannot_be_claimed` — Ключ жертвы нельзя «занять» своим публичным ключом под тем же credential id., `test_challenge_issued_to_another_user_is_refused_and_burned`, `test_a_challenge_works_once`, `test_an_expired_challenge_is_refused`, `test_a_login_challenge_cannot_register_a_key`, `test_unverifiable_attestations_store_nothing`, `test_attestation_for_a_different_challenge_is_refused`, `test_malformed_credentials_are_a_client_error_not_a_crash`, `test_oversized_credentials_are_refused_before_parsing`, `test_ten_keys_per_user_is_the_ceiling`, `test_ceiling_is_enforced_again_at_verify_time` — Options выданы при девяти ключах, десятый успел появиться — одиннадцатый не проходит., `test_registration_options_are_rate_limited_per_user`, `test_registration_fails_closed_when_the_rate_limiter_is_down`, `test_passkey_routes_are_mounted_on_the_cabinet_router`
 - `tests/cabinet/test_platega_recurrent_admin.py` — Python-модуль
   Классы: нет
   Функции: `test_async_builder_populates_sbp_status_when_gate_on`, `test_async_builder_leaves_sbp_status_none_without_active_record` — Gate on, but no active Platega subscription for this subscription_id., `test_async_builder_skips_query_when_gate_off`, `test_sync_builder_never_sets_sbp_fields` — The sync builder has no DB access and must leave both fields at their, `test_route_registered`, `test_cancel_sbp_recurring_owned_subscription_cancels_and_awaits_helper`, `test_cancel_sbp_recurring_wrong_owner_404_and_helper_not_called`, `test_cancel_sbp_recurring_missing_subscription_404` — Same 404 path for a subscription_id that doesn't exist at all.
@@ -3684,6 +3723,9 @@
 - `tests/database/test_user_panel_identity_backfill_postgres.py` — Python-модуль
   Классы: нет
   Функции: `test_migration_fills_user_account_only_when_unambiguous`
+- `tests/database/test_user_passkeys_schema_parity.py` — Python-модуль
+  Классы: нет
+  Функции: `both`, `test_columns_match`, `test_column_types_and_nullability_match`, `test_indexes_and_unique_constraints_match`, `test_foreign_key_cascades_with_user`, `test_downgrade_drops_table`, `test_upgrade_is_idempotent`
 - `tests/database/test_users_list_filter_sort_matrix_postgres.py` — Python-модуль
   Классы: нет
   Функции: `test_every_filter_works_with_every_sort`
@@ -3766,6 +3808,9 @@
 - `tests/fixtures/bschek_fixtures.py` — Python-модуль
   Классы: нет
   Функции: `load_bschek_fixture` — Возвращает фикстуру целиком: status, headers, request, idempotency_key, body., `iter_bschek_fixtures`
+- `tests/fixtures/fake_redis.py` — Python-модуль
+  Классы: `FakeRedis` (13 методов)
+  Функции: нет
 - `tests/fixtures/local_day.py` — Python-модуль
   Классы: нет
   Функции: `use_timezone` — Переключить settings.TIMEZONE на ``name`` и вернуть саму зону., `zone_where_local_date_differs_from_utc` — Зона, в которой прямо сейчас другая календарная дата, чем в UTC., `reset_local_timezone_cache` — Сбросить кэш зоны после теста, чтобы подмена не утекла в соседей.
@@ -3781,6 +3826,9 @@
 - `tests/fixtures/sqlite_memory.py` — Python-модуль
   Классы: нет
   Функции: `ensure_real_aiosqlite` — Снять заглушку sys.modules['aiosqlite'] из conftest перед созданием engine., `memory_session` — Сессия к :memory: БД, где созданы только переданные таблицы.
+- `tests/fixtures/webauthn_authenticator.py` — Python-модуль
+  Классы: `SoftwareAuthenticator` (6 методов)
+  Функции: `b64u`, `unb64u`
 
 #### tests/fixtures/bschek
 
@@ -4363,6 +4411,9 @@
 - `tests/services/test_miniapp_action_log.py` — Python-модуль
   Классы: нет
   Функции: `test_every_miniapp_route_is_classified` — Каждый маршрут Mini App отнесён либо к действиям, либо к чтениям., `test_classification_has_no_stale_paths` — В списках нет путей, которых у роутера больше нет., `test_actions_are_logged_and_reads_are_not` — Покупка — действие, просмотр подписки — нет., `test_path_normalization_keeps_prefix`, `test_authorize_writes_action_for_mutating_request` — Авторизация запроса Mini App пишет действие в тот же журнал., `test_authorize_writes_screen_for_reads` — Просмотр экрана — тоже след: пишется как экран, а не как действие., `test_timeline_shows_miniapp_actions` — Записанное действие Mini App видно в «Активности» и не смешано с ботом.
+- `tests/services/test_monitoring_emailless_notifications.py` — Python-модуль
+  Классы: нет
+  Функции: `test_traffic_warning_emails_user_without_telegram`, `test_traffic_warning_emailless_works_without_bot`, `test_traffic_warning_telegram_user_unchanged`, `test_traffic_warning_skips_user_without_any_channel`, `test_low_balance_query_does_not_require_telegram_and_emails`, `test_low_balance_telegram_user_unchanged`
 - `tests/services/test_monitoring_grace_race.py` — Python-модуль
   Классы: нет
   Функции: `test_grace_opened_while_monitoring_walked_its_list_is_not_imported`, `test_renewal_that_landed_while_monitoring_walked_its_list_is_not_expired` — Тот же устаревший список: подписку уже продлили — гасить её нельзя., `test_expiry_does_not_overwrite_a_renewal_committed_right_before_it` — Последнее окно: продление записано уже после перечитывания, но до гашения., `test_expiry_still_expires_a_subscription_that_is_due`, `test_grace_closed_early_between_snapshot_and_reread_is_not_imported` — Ревью 2026-09-15: снимок панели — ещё оверлей, а к перечитыванию грейс уже закрыт досрочно., `test_one_broken_subscription_does_not_stop_the_whole_pass` — Ревью: сбой на одной подписке (удалили во время прохода) прерывал гашение всех остальных.
@@ -4618,6 +4669,9 @@
 - `tests/services/test_settings_secret_masking.py` — Python-модуль
   Классы: нет
   Функции: `test_is_secret_key_matches_secret_names`, `test_is_secret_key_ignores_plain_names`, `test_string_secret_is_masked`, `test_unset_secret_is_not_masked`, `test_numeric_settings_with_secretish_names_are_not_masked`, `test_no_nonstring_definition_value_is_ever_masked` — Sweep every real setting definition: a masked value must always be a string.
+- `tests/services/test_severpay_emailless_user.py` — Python-модуль
+  Классы: нет
+  Функции: `anyio_backend`, `test_email_only_user_gets_internal_id_not_none`, `test_email_only_user_uses_own_email_when_available`, `test_telegram_user_keeps_telegram_identity`
 - `tests/services/test_shutdown_notification.py` — Python-модуль
   Классы: нет
   Функции: `test_docker_stop_is_a_planned_shutdown_with_a_hint`, `test_ctrl_c_is_named`, `test_unknown_signal_is_named_by_its_name`, `test_polling_crash_is_a_failure_with_the_error_and_advice`, `test_long_error_is_cut`, `test_without_start_time_there_is_no_uptime`, `test_uptime_format`, `admin_chat`, `test_planned_stop_goes_to_the_infrastructure_topic`, `test_crash_goes_to_the_errors_topic_with_a_contact_button`, `test_disabled_notifications_send_nothing`, `test_send_failure_does_not_raise`, `test_main_does_not_shadow_datetime_locally` — Локальный ``from datetime import datetime`` в ветке делает имя локальным для всей, `test_shutdown_notice_is_sent_before_services_are_stopped` — Docker даёт на остановку ~10 секунд: сообщение — первым делом, пока сессия жива.
