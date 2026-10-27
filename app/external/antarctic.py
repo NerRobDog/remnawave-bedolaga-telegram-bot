@@ -106,6 +106,17 @@ def _as_clean_str(value: Any) -> str | None:
     return text or None
 
 
+def _shape(value: Any, depth: int = 0) -> Any:
+    """Structure of a JSON value with every leaf replaced by its type name."""
+    if depth > 4:
+        return '...'
+    if isinstance(value, dict):
+        return {str(key): _shape(item, depth + 1) for key, item in list(value.items())[:30]}
+    if isinstance(value, list):
+        return [_shape(value[0], depth + 1)] if value else []
+    return type(value).__name__
+
+
 def _extract_error_code(body: Any) -> str | None:
     """Pull AW's machine-readable error code out of an error body, if there is one."""
     if not isinstance(body, dict):
@@ -198,8 +209,19 @@ class AntarcticClient:
         if not isinstance(body, dict):
             raise AntarcticAPIError('Antarctic API returned an unexpected response body', status_code=status_code)
 
+        # AW wraps every response as {data, errors, message, status} (errors carry the code on failure);
+        # on success the intent itself sits in data. A bare intent also has a data field (the amount),
+        # so the envelope is recognised by its errors key.
+        envelope = body
+        if 'errors' in body and isinstance(body.get('data'), dict):
+            body = body['data']
+
         operation_id = _as_clean_str(_first_present(body, 'operationId', 'operation_id'))
         if operation_id is None:
+            # Field names and types only, never values: enough to fix the parser without leaking data.
+            logger.warning(
+                'Antarctic intents response has no operation id', status_code=status_code, shape=_shape(envelope)
+            )
             raise AntarcticAPIError('Antarctic API response has no operation id', status_code=status_code)
 
         status = _as_clean_str(body.get('status'))
