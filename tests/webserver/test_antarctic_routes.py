@@ -725,6 +725,7 @@ def test_pay_page_renders_links_and_escapes(env) -> None:
     assert 'Нет кошелька? Создайте за минуту — пополнение по СБП' in text
     assert 'Создать кошелёк' in text
     assert 'Ссылка действует 30 минут' in text
+    assert 'Списание со счёта кошелька, а не с карты. Проверьте, что на счёте есть $5.43.' in text
     assert '<script' not in text.lower()
     assert '&lt;script&gt;alert(1)&lt;/script&gt; &amp; &quot;q&quot;' in text
 

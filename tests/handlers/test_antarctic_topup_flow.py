@@ -191,6 +191,15 @@ def test_every_locale_takes_the_link_lifetime_from_a_placeholder(language):
     assert 'TTL-MARK' in rendered
 
 
+@pytest.mark.parametrize('language', ['ru', 'en', 'ua', 'zh', 'fa'])
+def test_every_locale_warns_that_the_wallet_account_is_charged(language):
+    """AW платит только со счёта: сумма в предупреждении та же, что «К оплате»."""
+    template = json.loads((_LOCALES / f'{language}.json').read_text(encoding='utf-8'))['ANTARCTIC_PAYMENT_CREATED']
+
+    rendered = template.format(name='AW', amount='100 ₽', amount_usd='1.05', ttl='TTL')
+    assert rendered.count('$1.05') == 2
+
+
 @pytest.mark.asyncio
 async def test_invoice_without_referral_has_no_button_and_no_hint(monkeypatch):
     monkeypatch.setattr(antarctic_handlers, 'PaymentService', _service(_result(referral=None)))

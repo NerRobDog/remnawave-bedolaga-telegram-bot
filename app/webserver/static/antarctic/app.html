@@ -96,6 +96,14 @@
     @keyframes spin { to { transform: rotate(360deg); } }
   }
   .spinner[hidden] { display: none; }
+  #help { margin: -4px 0 20px; color: var(--muted); }
+  #help[hidden] { display: none; }
+  #help summary { cursor: pointer; font-weight: 600; color: var(--text); min-height: 32px; }
+  #help summary:focus-visible { outline: 3px solid var(--text); outline-offset: 2px; border-radius: 4px; }
+  #help ol { margin: 8px 0 0; padding-left: 22px; }
+  #help li + li { margin-top: 4px; }
+  #note { margin: 12px 0 0; font-size: 14px; color: var(--muted); text-align: center; }
+  #note:empty { display: none; }
 </style>
 </head>
 <body>
@@ -103,7 +111,9 @@
   <p class="eyebrow">Antarctic Wallet</p>
   <h1 id="title">Загрузка…</h1>
   <p id="text"></p>
+  <details id="help" hidden><summary id="help-title"></summary><ol id="help-steps"></ol></details>
   <button id="action" class="btn" type="button" hidden><span id="spinner" class="spinner" hidden></span><span id="action-label"></span></button>
+  <p id="note"></p>
 </main>
 <noscript><p style="text-align:center">Для оплаты нужен JavaScript. Откройте страницу в Antarctic Wallet.</p></noscript>
 <script type="module">
@@ -118,14 +128,25 @@ const TOKEN_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const FAILED_STATUSES = new Set((ROOT.dataset.failedStatuses || '').split(',').filter(Boolean));
 const STATUS_ATTEMPTS = 5;
 const STATUS_INTERVAL_MS = 2000;
+// Пока на экране «Недостаточно средств», тихо повторяем запрос: человек пополняет счёт и возвращается.
+const BALANCE_RETRY_INTERVAL_MS = 10000;
+const BALANCE_RETRY_WINDOW_MS = 5 * 60 * 1000;
+// Не чаще одного повтора за это время, сколько бы раз окно ни получало фокус (лимит сервера — 20 в минуту).
+const BALANCE_RETRY_MIN_GAP_MS = 3000;
 
 const titleEl = document.getElementById('title');
 const textEl = document.getElementById('text');
 const actionEl = document.getElementById('action');
 const actionLabelEl = document.getElementById('action-label');
 const spinnerEl = document.getElementById('spinner');
+const helpEl = document.getElementById('help');
+const helpTitleEl = document.getElementById('help-title');
+const helpStepsEl = document.getElementById('help-steps');
+const noteEl = document.getElementById('note');
 
 let onAction = null;
+// Вызывается при любой смене экрана: так фоновый повтор не переживает экран, для которого заведён.
+let onLeave = null;
 
 // Экран бывает 'live' (обычный ход дела), 'dead' (SDK перестал отвечать) и 'final' (исход платежа).
 // Из 'final' не выходим: поздний sdk.error или session.expired не должен затирать «Оплачено», а
@@ -133,7 +154,12 @@ let onAction = null;
 // (showFinal) перекрывает и 'dead': деньги важнее, чем сообщение о связи.
 let screen = 'live';
 
-function render({ title, text = '', tone = '', button = '', handler = null, busy = false }) {
+function render({ title, text = '', tone = '', button = '', handler = null, busy = false, help = null, note = '' }) {
+  if (onLeave) {
+    const leave = onLeave;
+    onLeave = null;
+    leave();
+  }
   titleEl.textContent = title;
   titleEl.className = tone;
   textEl.textContent = text;
@@ -142,6 +168,16 @@ function render({ title, text = '', tone = '', button = '', handler = null, busy
   actionLabelEl.textContent = button;
   actionEl.disabled = busy;
   spinnerEl.hidden = !busy;
+  helpEl.hidden = !help;
+  helpTitleEl.textContent = help ? help.title : '';
+  helpStepsEl.replaceChildren(
+    ...(help ? help.steps : []).map((step) => {
+      const item = document.createElement('li');
+      item.textContent = step;
+      return item;
+    }),
+  );
+  noteEl.textContent = note;
 }
 
 function show(options) {
@@ -373,15 +409,7 @@ async function main() {
         tone: 'warn',
       });
     } else if (code === 'insufficient_balance') {
-      // AW платит только со счёта (Assets and wallets); деньги на платёжной карте не считаются.
-      const amount = error.amountUsd ? ` не меньше ${formatUsd(error.amountUsd)}` : '';
-      show({
-        title: 'Недостаточно средств на счёте',
-        text: `Оплата идёт со счёта Antarctic Wallet, не с карты. Пополните счёт или переведите на него с карты${amount} и нажмите «Повторить».`,
-        tone: 'warn',
-        button: 'Повторить',
-        handler: start,
-      });
+      showInsufficientBalance(error.amountUsd, { watch: true });
     } else if (code === 'rate_limited') {
       show({
         title: 'Слишком много запросов',
@@ -399,6 +427,83 @@ async function main() {
         handler: start,
       });
     }
+  }
+
+  // AW списывает только со счёта («Assets and wallets»); деньги на платёжной карте не считаются.
+  // watch: AW отказал ещё при создании интента — тогда успешный повтор означает, что деньги пришли,
+  // и экран сам повторяет запрос, когда человек вернулся в окно, и раз в BALANCE_RETRY_INTERVAL_MS.
+  // Без watch (отказ на подтверждении) интент уже есть и повтор ничего не говорит о балансе.
+  function showInsufficientBalance(amountUsd, { watch }) {
+    const amount = amountUsd || (session && session.amountUsd) || null;
+    const due = amount ? ` На счёте должно быть не меньше ${formatUsd(amount)}.` : '';
+    const steps = [
+      'Вернитесь на главный экран Antarctic Wallet.',
+      'Пополните баланс («Пополнить баланс») или переведите деньги с платёжной карты на счёт.',
+      watch ? 'Вернитесь сюда: оплата продолжится сама.' : 'Вернитесь сюда и нажмите «Оплатить».',
+    ];
+    show({
+      title: 'Недостаточно средств на счёте',
+      text: `Оплата идёт со счёта Antarctic Wallet, а не с карты.${due}`,
+      tone: 'warn',
+      button: watch ? 'Повторить' : 'Оплатить',
+      handler: watch ? retryNow : pay,
+      help: { title: 'Как пополнить счёт', steps },
+      note: watch ? 'Проверяем баланс автоматически…' : '',
+    });
+    if (!watch || screen !== 'live') return;
+
+    const startedAt = Date.now();
+    let lastTry = startedAt;
+    let inFlight = false;
+    let active = true;
+
+    async function retry() {
+      if (!active || inFlight || busy || screen !== 'live') return;
+      if (Date.now() - lastTry < BALANCE_RETRY_MIN_GAP_MS) return;
+      inFlight = true;
+      lastTry = Date.now();
+      try {
+        // Без «Готовим платёж…»: экран не мигает, пока денег всё ещё нет.
+        if (await openSession()) showPayable('Счёт пополнен', 'Можно оплачивать.');
+      } catch (error) {
+        if (!(error instanceof ApiError && error.code === 'insufficient_balance')) showApiError(error);
+      } finally {
+        inFlight = false;
+      }
+    }
+
+    function retryNow() {
+      if (!active) {
+        // Окно автоповтора истекло: обычный старт заново покажет этот же экран и запустит его снова.
+        start();
+        return;
+      }
+      lastTry = 0;
+      retry();
+    }
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') retry();
+    };
+    const timer = setInterval(() => {
+      if (Date.now() - startedAt > BALANCE_RETRY_WINDOW_MS) {
+        stop();
+        noteEl.textContent = 'Пополнили счёт? Нажмите «Повторить».';
+        return;
+      }
+      retry();
+    }, BALANCE_RETRY_INTERVAL_MS);
+
+    function stop() {
+      active = false;
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', retry);
+    }
+
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', retry);
+    onLeave = stop;
   }
 
   async function openSession() {
@@ -467,7 +572,7 @@ async function main() {
           return;
         }
         if (code === 'insufficient_balance') {
-          showPayable('Недостаточно средств в кошельке', 'Пополните кошелёк и попробуйте снова.');
+          showInsufficientBalance(session.amountUsd, { watch: false });
           return;
         }
         // Остальные сбои: подтверждение могло дойти, поэтому проверяем статус ниже.
