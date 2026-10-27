@@ -8,8 +8,10 @@
 - ``userVerification=required``, ``attestation=none``, резидентный ключ обязателен
   (вход без ввода логина — discoverable credentials).
 - Челлендж одноразовый, живёт ``CHALLENGE_TTL_SECONDS`` в Redis, привязан к цели
-  (регистрация или вход) и, для регистрации, к пользователю. Любая попытка его
-  потратить — удачная или нет — сжигает его: подбирать нечего.
+  (регистрация, вход или создание аккаунта) и, для регистрации, к пользователю. Любая
+  попытка его потратить — удачная или нет — сжигает его: подбирать нечего.
+- Аккаунт, созданный самим passkey, на момент options ещё не существует, поэтому его
+  userHandle случайный: он лежит в челлендже и после проверки уезжает в ``user_passkeys``.
 - ``crossOrigin=true`` в clientDataJSON отвергается: кабинет не живёт в чужих iframe.
 - Счётчик подписей: если хоть один из двух (сохранённый, присланный) ненулевой, новый
   обязан быть строго больше. Нулевой счётчик с обеих сторон — устройство без
@@ -55,6 +57,9 @@ CEREMONY_TIMEOUT_MS = 120_000
 
 PURPOSE_REGISTER = 'register'
 PURPOSE_LOGIN = 'login'
+PURPOSE_SIGNUP = 'signup'
+
+SIGNUP_USER_HANDLE_BYTES = 32
 
 _CHALLENGE_ID_RE = re.compile(r'[A-Za-z0-9_-]{16,128}')
 _TRANSPORTS = {item.value for item in AuthenticatorTransport}
@@ -106,6 +111,14 @@ class VerifiedLogin:
     user_handle: bytes | None
 
 
+@dataclass(frozen=True)
+class SignupChallenge:
+    """Потраченный signup-челлендж: его байты и userHandle, который получил аутентификатор."""
+
+    challenge: bytes
+    user_handle: bytes
+
+
 def user_handle_for(user_id: int) -> bytes:
     """Непрозрачный стабильный идентификатор пользователя для аутентификатора.
 
@@ -125,24 +138,21 @@ def _challenge_key(challenge_id: str) -> str:
     return cache_key('passkey', 'chal', challenge_id)
 
 
-async def _store_challenge(challenge: bytes, *, purpose: str, user_id: int | None) -> str:
+async def _store_challenge(
+    challenge: bytes, *, purpose: str, user_id: int | None, user_handle: bytes | None = None
+) -> str:
     challenge_id = secrets.token_urlsafe(32)
-    stored = await cache.set(
-        _challenge_key(challenge_id),
-        {'challenge': bytes_to_base64url(challenge), 'purpose': purpose, 'user_id': user_id},
-        expire=CHALLENGE_TTL_SECONDS,
-    )
+    record: dict[str, Any] = {'challenge': bytes_to_base64url(challenge), 'purpose': purpose, 'user_id': user_id}
+    if user_handle is not None:
+        record['user_handle'] = bytes_to_base64url(user_handle)
+    stored = await cache.set(_challenge_key(challenge_id), record, expire=CHALLENGE_TTL_SECONDS)
     if not stored:
         raise PasskeyUnavailableError('challenge store is unavailable')
     return challenge_id
 
 
-async def consume_challenge(challenge_id: str, *, purpose: str, user_id: int | None = None) -> bytes:
-    """Достать и ОДНОВРЕМЕННО уничтожить челлендж; вернуть его байты.
-
-    ``user_id`` обязателен для регистрации: челлендж выдан конкретному пользователю.
-    Уничтожается он до всех проверок — неудачная попытка тоже его тратит.
-    """
+async def _take_challenge(challenge_id: str, *, purpose: str) -> dict:
+    """Достать запись челленджа и уничтожить её в том же шаге; проверить, что он для этой церемонии."""
     if not isinstance(challenge_id, str) or not _CHALLENGE_ID_RE.fullmatch(challenge_id):
         raise PasskeyChallengeError('malformed challenge id')
 
@@ -151,13 +161,39 @@ async def consume_challenge(challenge_id: str, *, purpose: str, user_id: int | N
         raise PasskeyChallengeError('unknown or expired challenge')
     if data.get('purpose') != purpose:
         raise PasskeyChallengeError('challenge was issued for another ceremony')
-    if purpose == PURPOSE_REGISTER and (user_id is None or data.get('user_id') != user_id):
-        raise PasskeyChallengeError('challenge was issued to another user')
+    return data
 
+
+def _challenge_bytes(data: dict) -> bytes:
     try:
         return base64url_to_bytes(data['challenge'])
     except Exception as exc:
         raise PasskeyChallengeError('corrupted challenge') from exc
+
+
+async def consume_challenge(challenge_id: str, *, purpose: str, user_id: int | None = None) -> bytes:
+    """Достать и ОДНОВРЕМЕННО уничтожить челлендж; вернуть его байты.
+
+    ``user_id`` обязателен для регистрации: челлендж выдан конкретному пользователю.
+    Уничтожается он до всех проверок — неудачная попытка тоже его тратит.
+    Signup-челлендж отсюда не достать (``purpose`` не совпадёт): для него свой вход.
+    """
+    data = await _take_challenge(challenge_id, purpose=purpose)
+    if purpose == PURPOSE_REGISTER and (user_id is None or data.get('user_id') != user_id):
+        raise PasskeyChallengeError('challenge was issued to another user')
+    return _challenge_bytes(data)
+
+
+async def consume_signup_challenge(challenge_id: str) -> SignupChallenge:
+    """Потратить signup-челлендж и вернуть его байты вместе с userHandle, выданным аутентификатору."""
+    data = await _take_challenge(challenge_id, purpose=PURPOSE_SIGNUP)
+    try:
+        user_handle = base64url_to_bytes(data['user_handle'])
+    except Exception as exc:
+        raise PasskeyChallengeError('corrupted challenge') from exc
+    if len(user_handle) != SIGNUP_USER_HANDLE_BYTES:
+        raise PasskeyChallengeError('corrupted challenge')
+    return SignupChallenge(challenge=_challenge_bytes(data), user_handle=user_handle)
 
 
 async def create_registration_options(
@@ -186,6 +222,34 @@ async def create_registration_options(
         ],
     )
     challenge_id = await _store_challenge(options.challenge, purpose=PURPOSE_REGISTER, user_id=user_id)
+    return challenge_id, options_to_json_dict(options)
+
+
+async def create_signup_options(*, display_name: str | None) -> tuple[str, dict]:
+    """Options для создания аккаунта одним passkey: пользователя ещё нет, handle случайный.
+
+    ``user.name`` — подпись в списке ключей браузера; у аккаунта нет ни почты, ни логина,
+    поэтому подпись короткая и разная у каждого аккаунта (иначе несколько ключей одного
+    сайта на устройстве не отличить).
+    """
+    user_handle = secrets.token_bytes(SIGNUP_USER_HANDLE_BYTES)
+    user_name = f'passkey-{user_handle[:3].hex()}'
+    options = generate_registration_options(
+        rp_id=settings.get_passkey_rp_id(),
+        rp_name=settings.PASSKEY_RP_NAME,
+        user_name=user_name,
+        user_id=user_handle,
+        user_display_name=display_name or user_name,
+        timeout=CEREMONY_TIMEOUT_MS,
+        attestation=AttestationConveyancePreference.NONE,
+        authenticator_selection=AuthenticatorSelectionCriteria(
+            resident_key=ResidentKeyRequirement.REQUIRED,
+            user_verification=UserVerificationRequirement.REQUIRED,
+        ),
+    )
+    challenge_id = await _store_challenge(
+        options.challenge, purpose=PURPOSE_SIGNUP, user_id=None, user_handle=user_handle
+    )
     return challenge_id, options_to_json_dict(options)
 
 
