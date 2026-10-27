@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient, Response
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.cabinet.auth import create_access_token
 from app.cabinet.dependencies import get_cabinet_db
@@ -186,7 +186,13 @@ class PasskeyHttp:
 
 
 @contextlib.asynccontextmanager
-async def open_harness(monkeypatch, redis: FakeRedis) -> AsyncIterator[PasskeyHttp]:
+async def open_harness(
+    monkeypatch, redis: FakeRedis, *, session_per_request: bool = False
+) -> AsyncIterator[PasskeyHttp]:
+    """``session_per_request`` — свой сеанс БД на каждый запрос, как в проде: нужен тестам гонок.
+
+    По умолчанию сеанс один на всё приложение, и параллельные запросы по нему недопустимы.
+    """
     async with memory_session(monkeypatch, TABLES) as db:
         app = FastAPI()
         app.include_router(passkey_routes.auth_router, prefix='/cabinet')
@@ -198,8 +204,14 @@ async def open_harness(monkeypatch, redis: FakeRedis) -> AsyncIterator[PasskeyHt
         ):
             app.include_router(signup_router, prefix='/cabinet')
 
+        maker = async_sessionmaker(db.bind, expire_on_commit=False, autoflush=False)
+
         async def _db() -> AsyncIterator[AsyncSession]:
-            yield db
+            if not session_per_request:
+                yield db
+                return
+            async with maker() as session:
+                yield session
 
         app.dependency_overrides[get_cabinet_db] = _db
         async with AsyncClient(transport=ASGITransport(app=app), base_url='http://cabinet') as client:

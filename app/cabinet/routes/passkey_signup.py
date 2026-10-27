@@ -23,22 +23,26 @@ from app.cabinet.auth.passkey import (
     PasskeyUnavailableError,
     PasskeyVerificationError,
 )
-from app.cabinet.auth.passkey_throttle import enforce_passkey_signup_throttle
+from app.cabinet.auth.passkey_throttle import enforce_passkey_signup_throttle, enforce_recovery_login_throttle
 from app.config import settings
-from app.database.crud.user import create_user_by_passkey, emit_user_created
-from app.database.crud.user_passkey import get_passkey_by_credential_id
-from app.database.crud.user_recovery_code import replace_recovery_codes
-from app.database.models import UserPasskey
+from app.database.crud.user import create_user_by_passkey, emit_user_created, get_user_by_id
+from app.database.crud.user_passkey import get_passkey_by_credential_id, lock_user_row
+from app.database.crud.user_recovery_code import consume_recovery_code, recovery_code_counts, replace_recovery_codes
+from app.database.models import User, UserPasskey, UserStatus
 from app.services import legal_consent_service
 from app.utils.cache import RateLimitCache
 
-from ..dependencies import get_cabinet_db
+from ..dependencies import get_cabinet_db, get_current_cabinet_user
 from ..ip_utils import get_client_ip
 from ..schemas.passkey import (
     PasskeyOptionsResponse,
     PasskeySignupOptionsRequest,
     PasskeySignupResponse,
     PasskeySignupVerifyRequest,
+    RecoveryCodesRegenerateResponse,
+    RecoveryCodesStatusResponse,
+    RecoveryLoginRequest,
+    RecoveryLoginResponse,
 )
 from .auth import (
     _create_auth_response,
@@ -47,7 +51,7 @@ from .auth import (
     _require_legal_consent,
     _store_refresh_token,
 )
-from .passkey import _error, _too_many_requests
+from .passkey import _error, _too_many_requests, require_passkey_enabled
 
 
 logger = structlog.get_logger(__name__)
@@ -184,3 +188,108 @@ def _fresh_codes() -> tuple[list[str], list[str]]:
     """Новый набор: (коды для показа человеку, их хэши для БД)."""
     pairs = recovery_codes.new_code_set()
     return [shown for shown, _ in pairs], [digest for _, digest in pairs]
+
+
+# ---------------------------------------------------------------------------
+# Вход по recovery-коду
+# ---------------------------------------------------------------------------
+
+
+def _recovery_refused() -> HTTPException:
+    """Единственный ответ на любую причину отказа: код чужой, потрачен, битый или аккаунт неактивен."""
+    return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Recovery code is invalid')
+
+
+@recovery_auth_router.post(
+    '/login', response_model=RecoveryLoginResponse, dependencies=[Depends(require_passkey_enabled)]
+)
+async def recovery_login(
+    request: RecoveryLoginRequest,
+    raw_request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_cabinet_db),
+) -> RecoveryLoginResponse:
+    client_ip = get_client_ip(raw_request)
+    # Каждая попытка, удачная или нет, идёт в счётчик; Redis недоступен — отказ (fail_closed).
+    await enforce_recovery_login_throttle(client_ip)
+
+    code_hash = recovery_codes.hash_typed_code(request.code)
+    if code_hash is None:
+        logger.info('Recovery login refused', reason='malformed', client_ip=client_ip)
+        raise _recovery_refused()
+
+    user_id = await consume_recovery_code(db, code_hash)
+    # Списание фиксируется ДО всех остальных проверок: что бы ни случилось дальше, код потрачен,
+    # и по тому, сгорел он или нет, нельзя узнать статус чужого аккаунта.
+    await db.commit()
+    if user_id is None:
+        logger.info('Recovery login refused', reason='unknown_or_spent', client_ip=client_ip)
+        raise _recovery_refused()
+
+    user = await get_user_by_id(db, user_id)
+    if user is None or user.status != UserStatus.ACTIVE.value:
+        logger.warning('Recovery login refused', reason='inactive_user', user_id=user_id, client_ip=client_ip)
+        raise _recovery_refused()
+
+    user.cabinet_last_login = datetime.now(UTC)
+    await db.commit()
+
+    auth = await _create_auth_response(user, db)
+    await _store_refresh_token(db, user.id, auth.refresh_token)
+
+    logger.warning('Login by recovery code', user_id=user.id, client_ip=client_ip)
+    response.headers['Cache-Control'] = 'no-store'
+    return RecoveryLoginResponse.model_validate({**auth.model_dump(), 'recovery_login': True})
+
+
+# ---------------------------------------------------------------------------
+# Управление кодами под JWT
+# ---------------------------------------------------------------------------
+
+REGENERATE_LIMIT_PER_HOUR = 3
+
+
+@recovery_router.get('', response_model=RecoveryCodesStatusResponse, dependencies=[Depends(require_passkey_enabled)])
+async def recovery_codes_status(
+    user: User = Depends(get_current_cabinet_user),
+    db: AsyncSession = Depends(get_cabinet_db),
+) -> RecoveryCodesStatusResponse:
+    remaining, total = await recovery_code_counts(db, user.id)
+    return RecoveryCodesStatusResponse(remaining=remaining, total=total)
+
+
+@recovery_router.post(
+    '/regenerate',
+    response_model=RecoveryCodesRegenerateResponse,
+    dependencies=[Depends(require_passkey_enabled)],
+)
+async def recovery_codes_regenerate(
+    response: Response,
+    user: User = Depends(get_current_cabinet_user),
+    db: AsyncSession = Depends(get_cabinet_db),
+) -> RecoveryCodesRegenerateResponse:
+    """Заменить весь набор: старые коды (и неиспользованные тоже) перестают работать."""
+    user_id = user.id
+    if await RateLimitCache.is_rate_limited(
+        user_id, 'recovery_regenerate', limit=REGENERATE_LIMIT_PER_HOUR, window=3600, fail_closed=True
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail='Too many requests',
+            headers={'Retry-After': '3600'},
+        )
+
+    shown_codes, code_hashes = _fresh_codes()
+    try:
+        await lock_user_row(db, user_id)
+        await replace_recovery_codes(db, user_id, code_hashes)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    logger.info('Recovery codes regenerated', user_id=user_id)
+    response.headers['Cache-Control'] = 'no-store'
+    return RecoveryCodesRegenerateResponse(
+        recovery_codes=shown_codes, remaining=len(shown_codes), total=len(shown_codes)
+    )
