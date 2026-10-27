@@ -36,6 +36,7 @@ class NotificationType(Enum):
     DAILY_DEBIT = 'daily_debit'
     DAILY_INSUFFICIENT_FUNDS = 'daily_insufficient_funds'
     TRAFFIC_RESET = 'traffic_reset'
+    TRAFFIC_WARNING = 'traffic_warning'
 
     # Account notifications
     BAN_NOTIFICATION = 'ban_notification'
