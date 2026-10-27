@@ -1,7 +1,7 @@
 """Свежая установка и обновлённая обязаны прийти к одной схеме ``user_passkeys`` и ``user_recovery_codes``.
 
 Свежая база создаётся ``Base.metadata.create_all`` по модели, обновлённая — миграцией
-0128. Забытая колонка или индекс в миграции ломает вход по passkey только на
+0138. Забытая колонка или индекс в миграции ломает вход по passkey только на
 обновлённых установках.
 """
 
@@ -19,14 +19,14 @@ from app.database.models import Base, UserPasskey, UserRecoveryCode
 
 
 VERSIONS = pathlib.Path(__file__).resolve().parents[2] / 'migrations/alembic/versions'
-MIGRATION = '0128_user_passkeys.py'
+MIGRATION = '0138_user_passkeys.py'
 TABLE = 'user_passkeys'
 RECOVERY_TABLE = 'user_recovery_codes'
 TABLES = (TABLE, RECOVERY_TABLE)
 
 
 def _load_migration():
-    spec = importlib.util.spec_from_file_location('0128', VERSIONS / MIGRATION)
+    spec = importlib.util.spec_from_file_location('0138', VERSIONS / MIGRATION)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -135,8 +135,8 @@ def test_upgrade_is_idempotent(tmp_path) -> None:
     assert set(TABLES) <= set(sa.inspect(engine).get_table_names())
 
 
-def test_upgrade_completes_a_database_that_ran_the_first_version_of_0128(tmp_path) -> None:
-    """0128 успели применить на стенде до появления user_handle и recovery-кодов: догнать, не падая."""
+def test_upgrade_completes_a_database_that_ran_the_first_version_of_the_migration(tmp_path) -> None:
+    """0138 успели применить на стенде до появления user_handle и recovery-кодов: догнать, не падая."""
     engine = sa.create_engine(f'sqlite:///{tmp_path / "early.db"}')
     with engine.begin() as conn:
         _create_users(conn)
