@@ -2322,7 +2322,7 @@
   "CASHERA_RECURRING_CANCELLED": "✅ تمدید خودکار Cashera غیرفعال شد",
   "PAYMENT_ANTARCTIC": "🐧 {name}",
   "ANTARCTIC_ENTER_AMOUNT": "🐧 <b>پرداخت از طریق {name}</b>\n\nمبلغ شارژ را بین {min_amount} و {max_amount} وارد کنید. برداشت به دلار با نرخ بانک مرکزی، کارمزد ۰٪.",
-  "ANTARCTIC_PAYMENT_CREATED": "🐧 <b>پرداخت از طریق {name}</b>\n\nمبلغ شارژ: <b>{amount}</b>\nمبلغ قابل پرداخت: <b>${amount_usd}</b>\n\nروی «پرداخت» بزنید تا Antarctic Wallet باز شود. لینک {ttl} اعتبار دارد و موجودی به‌صورت خودکار شارژ می‌شود.",
+  "ANTARCTIC_PAYMENT_CREATED": "🐧 <b>پرداخت از طریق {name}</b>\n\nمبلغ شارژ: <b>{amount}</b>\nمبلغ قابل پرداخت: <b>${amount_usd}</b>\n\nروی «پرداخت» بزنید تا Antarctic Wallet باز شود. لینک {ttl} اعتبار دارد و موجودی به‌صورت خودکار شارژ می‌شود.\n\nمبلغ از حساب کیف پول برداشت می‌شود، نه از کارت: مطمئن شوید <b>${amount_usd}</b> در حساب دارید.",
   "ANTARCTIC_REFERRAL_HINT": "کیف پول ندارید؟ در یک دقیقه بسازید، شارژ از طریق SBP.",
   "ANTARCTIC_PAY_BUTTON": "💳 پرداخت در Antarctic Wallet",
   "ANTARCTIC_REFERRAL_BUTTON": "🆕 کیف پول ندارید؟ بسازید",

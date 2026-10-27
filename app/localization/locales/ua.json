@@ -2322,7 +2322,7 @@
   "CASHERA_RECURRING_CANCELLED": "✅ Автопродовження Cashera вимкнено",
   "PAYMENT_ANTARCTIC": "🐧 {name}",
   "ANTARCTIC_ENTER_AMOUNT": "🐧 <b>Оплата через {name}</b>\n\nВведіть суму поповнення від {min_amount} до {max_amount}. Списання в доларах за курсом ЦБ, комісія 0%.",
-  "ANTARCTIC_PAYMENT_CREATED": "🐧 <b>Оплата через {name}</b>\n\nДо поповнення: <b>{amount}</b>\nДо сплати: <b>${amount_usd}</b>\n\nНатисніть «Сплатити» — відкриється Antarctic Wallet. Посилання діє {ttl}, баланс поповниться автоматично.",
+  "ANTARCTIC_PAYMENT_CREATED": "🐧 <b>Оплата через {name}</b>\n\nДо поповнення: <b>{amount}</b>\nДо сплати: <b>${amount_usd}</b>\n\nНатисніть «Сплатити» — відкриється Antarctic Wallet. Посилання діє {ttl}, баланс поповниться автоматично.\n\nСписання йде з рахунку гаманця, а не з картки: перевірте, що на рахунку є <b>${amount_usd}</b>.",
   "ANTARCTIC_REFERRAL_HINT": "Немає гаманця? Створіть за хвилину, поповнення через СБП.",
   "ANTARCTIC_PAY_BUTTON": "💳 Сплатити в Antarctic Wallet",
   "ANTARCTIC_REFERRAL_BUTTON": "🆕 Немає гаманця? Створити",

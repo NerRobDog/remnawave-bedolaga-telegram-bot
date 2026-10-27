@@ -73,6 +73,7 @@
   .muted { color: var(--muted); }
   .amount { margin: 0 0 4px; font-size: 40px; line-height: 1.1; font-weight: 700; letter-spacing: -0.01em; }
   .credit { margin: 0 0 20px; color: var(--muted); }
+  .source { margin: 0 0 16px; font-size: 14px; color: var(--muted); }
   .desc { margin: 0 0 20px; color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
   .status-ok { color: var(--ok); }
   .status-warn { color: var(--warn); }
@@ -113,6 +114,7 @@
 <!--if:description-->
   <p class="desc">{{DESCRIPTION}}</p>
 <!--endif:description-->
+  <p class="source">Списание со счёта кошелька, а не с карты. Проверьте, что на счёте есть ${{AMOUNT_USD}}.</p>
   <a class="btn btn-primary" href="{{APP_LINK}}" rel="noopener">Оплатить в Antarctic Wallet</a>
 <!--if:referral-->
   <section class="aside" aria-label="Нет кошелька">
