@@ -1143,13 +1143,15 @@ class Settings(BaseSettings):
     CASHERA_RETURN_URL: str | None = None
     CASHERA_FAILED_URL: str | None = None
 
-    # Antarctic Wallet (пополнение долларами из кошелька; через мини-приложение внутри кошелька)
+    # Antarctic Wallet (оплата со счёта кошелька через мини-приложение внутри кошелька; кошелёк выпускает зарубежную карту)
     ANTARCTIC_ENABLED: bool = False
     ANTARCTIC_APP_ID: str | None = None
     ANTARCTIC_APP_SECRET: str | None = None
     ANTARCTIC_API_BASE: str = 'https://app.antarcticwallet.com'
     ANTARCTIC_DISPLAY_NAME: str = 'Antarctic Wallet · 0% комиссии'
-    ANTARCTIC_DESCRIPTION: str = 'Оплата долларами из кошелька. Нет кошелька? Создаётся за минуту, пополнение по СБП'
+    ANTARCTIC_DESCRIPTION: str = (
+        'Выпустите зарубежную карту за минуту и пополняйте её по СБП. Оплачивайте VPN и зарубежные сервисы'
+    )
     ANTARCTIC_MIN_AMOUNT_KOPEKS: int = 10000
     ANTARCTIC_MAX_AMOUNT_KOPEKS: int = 10000000
     ANTARCTIC_MARKUP_PERCENT: float = 0.0

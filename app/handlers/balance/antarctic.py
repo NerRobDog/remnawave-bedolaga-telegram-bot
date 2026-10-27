@@ -59,8 +59,7 @@ async def start_antarctic_payment(callback: types.CallbackQuery, db_user: User, 
     await callback.message.edit_text(
         texts.t(
             'ANTARCTIC_ENTER_AMOUNT',
-            '🐧 <b>Оплата через {name}</b>\n\nВведите сумму пополнения от {min_amount} до {max_amount}. '
-            'Списание в долларах по курсу ЦБ, комиссия 0%.',
+            '🐧 <b>Оплата через {name}</b>\n\nВведите сумму пополнения от {min_amount} до {max_amount}. Комиссия 0%.',
         ).format(
             name=settings.get_antarctic_display_name_html(),
             min_amount=min_amount_label,
@@ -150,7 +149,7 @@ async def process_antarctic_payment_amount(
         rows.append(
             [
                 types.InlineKeyboardButton(
-                    text=texts.t('ANTARCTIC_REFERRAL_BUTTON', '🆕 Нет кошелька? Создать'),
+                    text=texts.t('ANTARCTIC_REFERRAL_BUTTON', '🆕 Выпустить зарубежную карту'),
                     url=referral_url,
                 )
             ]
@@ -179,7 +178,10 @@ async def process_antarctic_payment_amount(
         ttl=format_minutes_declension(settings.ANTARCTIC_PAYMENT_TTL_MINUTES, db_user.language),
     )
     if referral_url:
-        text += '\n\n' + texts.t('ANTARCTIC_REFERRAL_HINT', 'Нет кошелька? Создайте за минуту, пополнение по СБП.')
+        text += '\n\n' + texts.t(
+            'ANTARCTIC_REFERRAL_HINT',
+            'Нет зарубежной карты? Antarctic Wallet выпустит её за минуту, пополнение по СБП.',
+        )
 
     data = await state.get_data()
     prompt_message_id = data.get('antarctic_prompt_message_id')
