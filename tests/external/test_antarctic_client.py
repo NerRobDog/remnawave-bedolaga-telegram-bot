@@ -222,6 +222,46 @@ async def test_upsert_error_without_json_body_has_no_code() -> None:
     assert exc_info.value.code is None
 
 
+async def test_upsert_unwraps_aw_response_envelope() -> None:
+    # AW wraps responses as {data, errors, message, status}; the intent lives in data.
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            201,
+            json={
+                'data': {'operationId': 'op-9', 'status': 'pending', 'data': {'amount': '1.24'}},
+                'errors': None,
+                'message': 'created',
+                'status': 'created',
+            },
+        )
+
+    intent = await _client(handler).upsert_pay_intent(user_app_login='u', reference_id='r', amount_usd='1.24')
+
+    assert intent.operation_id == 'op-9'
+    assert intent.status == 'pending'
+    assert intent.amount == '1.24'
+
+
+async def test_upsert_without_operation_id_logs_shape_not_values() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            201,
+            json={'data': {'intentId': 'secret-ish', 'items': [{'k': 1}]}, 'errors': None, 'status': 'created'},
+        )
+
+    with capture_logs() as records:
+        with pytest.raises(AntarcticAPIError):
+            await _client(handler).upsert_pay_intent(user_app_login='u', reference_id='r', amount_usd='1.00')
+
+    [record] = [r for r in records if r['event'] == 'Antarctic intents response has no operation id']
+    assert record['shape'] == {
+        'data': {'intentId': 'str', 'items': [{'k': 'int'}]},
+        'errors': 'NoneType',
+        'status': 'str',
+    }
+    assert 'secret-ish' not in repr(record)
+
+
 async def test_upsert_missing_operation_id_raises() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={'status': 'pending'})
