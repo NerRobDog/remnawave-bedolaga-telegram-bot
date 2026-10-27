@@ -30,3 +30,5 @@ def passkey_settings(monkeypatch) -> None:
     monkeypatch.setattr(settings, 'PASSKEY_RP_ID', PASSKEY_RP_ID)
     monkeypatch.setattr(settings, 'PASSKEY_RP_NAME', 'Watchdog')
     monkeypatch.setattr(settings, 'PASSKEY_ORIGINS', PASSKEY_ORIGIN)
+    # Подпись JWT настоящая; секрет длинный, чтобы PyJWT не шумел предупреждениями о слабом ключе.
+    monkeypatch.setattr(settings, 'CABINET_JWT_SECRET', 'passkey-tests-' + 'k' * 48)
