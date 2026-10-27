@@ -1569,6 +1569,13 @@ class Settings(BaseSettings):
     CABINET_PASSWORD_RESET_EXPIRE_HOURS: int = 1
     CABINET_EMAIL_CHANGE_CODE_EXPIRE_MINUTES: int = 15  # Email change verification code expiration
     CABINET_EMAIL_AUTH_ENABLED: bool = True  # Enable email registration/login in cabinet
+    # Passkey (WebAuthn) в кабинете. Включается только при заданных rp_id и хотя бы одном origin.
+    # rp_id — домен без схемы и порта (watchd0g.dev); ключи привязаны к нему навсегда, смена
+    # теряет все зарегистрированные passkey. origins — полные адреса страниц кабинета через запятую.
+    PASSKEY_ENABLED: bool = False
+    PASSKEY_RP_ID: str = ''
+    PASSKEY_RP_NAME: str = 'Watchdog'
+    PASSKEY_ORIGINS: str = ''
     # Регистрация по email с одного IP. Минутное окно ловит всплеск; часовое и суточное —
     # скрипт, который ждёт минуту и продолжает (волна одноразовых почт за триалами). 0 выключает окно.
     CABINET_EMAIL_REGISTER_LIMIT_PER_MINUTE: int = 5
@@ -4548,6 +4555,16 @@ class Settings(BaseSettings):
 
     def is_cabinet_email_auth_enabled(self) -> bool:
         return bool(self.CABINET_EMAIL_AUTH_ENABLED)
+
+    def get_passkey_rp_id(self) -> str:
+        return (self.PASSKEY_RP_ID or '').strip().lower()
+
+    def get_passkey_origins(self) -> list[str]:
+        """Допустимые origin страницы кабинета: clientDataJSON сверяется с ними посимвольно."""
+        return [o.strip().rstrip('/') for o in (self.PASSKEY_ORIGINS or '').split(',') if o.strip().strip('/')]
+
+    def is_passkey_enabled(self) -> bool:
+        return bool(self.PASSKEY_ENABLED and self.get_passkey_rp_id() and self.get_passkey_origins())
 
     def get_cabinet_trusted_proxies(self) -> set[str]:
         """Parse CABINET_TRUSTED_PROXIES into a set of IP strings/CIDRs."""
