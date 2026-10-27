@@ -1511,6 +1511,18 @@ class Settings(BaseSettings):
     PASSKEY_RP_ID: str = ''
     PASSKEY_RP_NAME: str = 'Watchdog'
     PASSKEY_ORIGINS: str = ''
+    # Регистрация аккаунта одним passkey, без Telegram, Google и почты (после неё выдаются recovery-коды).
+    # Закрыта по умолчанию: такой аккаунт создаётся за секунды, и без защиты это накрутка триалов.
+    PASSKEY_SIGNUP_ENABLED: bool = False
+    # Триал для auth_type='passkey' (поверх TRIAL_DISABLED_FOR). Выключен: человек платит первым
+    # или привязывает Telegram и попадает под обычные правила.
+    PASSKEY_SIGNUP_TRIAL_ENABLED: bool = False
+    # Рекламные кампании и реферальные бонусы при passkey-регистрации. Выключены: поля в запросе игнорируются.
+    PASSKEY_SIGNUP_BONUSES_ENABLED: bool = False
+    # Регистрация passkey-аккаунтов с одного IP (минута/час/сутки; 0 выключает окно).
+    PASSKEY_SIGNUP_LIMIT_PER_MINUTE: int = 3
+    PASSKEY_SIGNUP_LIMIT_PER_HOUR: int = 10
+    PASSKEY_SIGNUP_LIMIT_PER_DAY: int = 30
     # Регистрация по email с одного IP. Минутное окно ловит всплеск; часовое и суточное —
     # скрипт, который ждёт минуту и продолжает (волна одноразовых почт за триалами). 0 выключает окно.
     CABINET_EMAIL_REGISTER_LIMIT_PER_MINUTE: int = 5
@@ -2391,6 +2403,9 @@ class Settings(BaseSettings):
     def is_trial_disabled_for_user(self, auth_type: str | None) -> bool:
         disabled_for = self.TRIAL_DISABLED_FOR
         if disabled_for == 'all':
+            return True
+        # Анонимный passkey-аккаунт создаётся за секунды: триал ему только по явному флагу.
+        if auth_type == 'passkey' and not self.PASSKEY_SIGNUP_TRIAL_ENABLED:
             return True
         # 'email' means all non-Telegram users (email, google, yandex, discord, vk, etc.)
         if disabled_for == 'email' and auth_type not in (None, 'telegram'):
@@ -4329,6 +4344,9 @@ class Settings(BaseSettings):
 
     def is_passkey_enabled(self) -> bool:
         return bool(self.PASSKEY_ENABLED and self.get_passkey_rp_id() and self.get_passkey_origins())
+
+    def is_passkey_signup_enabled(self) -> bool:
+        return bool(self.PASSKEY_SIGNUP_ENABLED and self.is_passkey_enabled())
 
     def get_cabinet_trusted_proxies(self) -> set[str]:
         """Parse CABINET_TRUSTED_PROXIES into a set of IP strings/CIDRs."""
