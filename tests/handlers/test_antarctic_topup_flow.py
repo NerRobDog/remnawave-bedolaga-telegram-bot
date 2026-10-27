@@ -150,7 +150,7 @@ async def test_invoice_has_pay_button_then_referral_then_check(monkeypatch):
 
     sent = message.answer.call_args
     assert '$1.05' in sent.args[0]
-    assert 'Нет кошелька? Создайте за минуту' in sent.args[0]
+    assert 'Нет зарубежной карты? Antarctic Wallet выпустит её за минуту' in sent.args[0]
     rows = sent.kwargs['reply_markup'].inline_keyboard
     assert rows[0][0].url == APP_LINK
     assert rows[0][0].text == '💳 Оплатить в Antarctic Wallet'
@@ -208,7 +208,7 @@ async def test_invoice_without_referral_has_no_button_and_no_hint(monkeypatch):
     await antarctic_handlers.process_antarctic_payment_amount(message, _user(), object(), 10000, _state())
 
     sent = message.answer.call_args
-    assert 'Нет кошелька' not in sent.args[0]
+    assert 'Нет зарубежной карты' not in sent.args[0]
     rows = sent.kwargs['reply_markup'].inline_keyboard
     assert [row[0].callback_data for row in rows[1:]] == ['check_antarctic_7', 'balance_topup']
     assert all(button.url in (None, APP_LINK) for row in rows for button in row)

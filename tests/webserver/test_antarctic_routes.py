@@ -722,8 +722,8 @@ def test_pay_page_renders_links_and_escapes(env) -> None:
     assert f'href="https://aw.me/app/{APP_ID}?start_param={TOKEN}"' in text
     assert 'Оплатить в Antarctic Wallet' in text
     assert f'href="{REFERRAL}"' in text
-    assert 'Нет кошелька? Создайте за минуту — пополнение по СБП' in text
-    assert 'Создать кошелёк' in text
+    assert 'Нет зарубежной карты? Antarctic Wallet выпустит её за минуту, пополнение по СБП' in text
+    assert 'Выпустить зарубежную карту' in text
     assert 'Ссылка действует 30 минут' in text
     assert 'Списание со счёта кошелька, а не с карты. Проверьте, что на счёте есть $5.43.' in text
     assert '<script' not in text.lower()
@@ -737,8 +737,8 @@ def test_pay_page_without_referral_has_no_referral_block(env) -> None:
     text = _pay(env).text
 
     assert f'start_param={TOKEN}' in text
-    assert 'Создать кошелёк' not in text
-    assert 'Нет кошелька' not in text
+    assert 'Выпустить зарубежную карту' not in text
+    assert 'Нет зарубежной карты' not in text
 
 
 def test_pay_page_ignores_a_non_https_referral(env) -> None:
@@ -748,7 +748,7 @@ def test_pay_page_ignores_a_non_https_referral(env) -> None:
     text = _pay(env).text
 
     assert 'javascript:' not in text
-    assert 'Создать кошелёк' not in text
+    assert 'Выпустить зарубежную карту' not in text
 
 
 def test_pay_page_unknown_token_is_404(env) -> None:
