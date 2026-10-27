@@ -68,6 +68,11 @@ from .notifications import router as notifications_router
 from .oauth import router as oauth_router
 from .partner_application import router as partner_application_router
 from .passkey import auth_router as passkey_auth_router, router as passkey_router
+from .passkey_signup import (
+    recovery_auth_router as passkey_recovery_auth_router,
+    recovery_router as passkey_recovery_router,
+    signup_router as passkey_signup_router,
+)
 from .polls import router as polls_router
 from .promo import router as promo_router
 from .promocode import router as promocode_router
@@ -102,6 +107,9 @@ router.include_router(unsubscribe_router)
 router.include_router(auth_router)
 router.include_router(oauth_router)
 router.include_router(passkey_auth_router)
+router.include_router(passkey_signup_router)
+router.include_router(passkey_recovery_auth_router)
+router.include_router(passkey_recovery_router)
 router.include_router(passkey_router)
 router.include_router(account_linking_router)
 router.include_router(merge_router)

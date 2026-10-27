@@ -113,10 +113,11 @@ class VerifiedLogin:
 
 @dataclass(frozen=True)
 class SignupChallenge:
-    """Потраченный signup-челлендж: его байты и userHandle, который получил аутентификатор."""
+    """Потраченный signup-челлендж: его байты, userHandle аутентификатора и имя для нового аккаунта."""
 
     challenge: bytes
     user_handle: bytes
+    display_name: str | None
 
 
 def user_handle_for(user_id: int) -> bytes:
@@ -139,12 +140,19 @@ def _challenge_key(challenge_id: str) -> str:
 
 
 async def _store_challenge(
-    challenge: bytes, *, purpose: str, user_id: int | None, user_handle: bytes | None = None
+    challenge: bytes,
+    *,
+    purpose: str,
+    user_id: int | None,
+    user_handle: bytes | None = None,
+    display_name: str | None = None,
 ) -> str:
     challenge_id = secrets.token_urlsafe(32)
     record: dict[str, Any] = {'challenge': bytes_to_base64url(challenge), 'purpose': purpose, 'user_id': user_id}
     if user_handle is not None:
         record['user_handle'] = bytes_to_base64url(user_handle)
+    if display_name is not None:
+        record['display_name'] = display_name
     stored = await cache.set(_challenge_key(challenge_id), record, expire=CHALLENGE_TTL_SECONDS)
     if not stored:
         raise PasskeyUnavailableError('challenge store is unavailable')
@@ -193,7 +201,12 @@ async def consume_signup_challenge(challenge_id: str) -> SignupChallenge:
         raise PasskeyChallengeError('corrupted challenge') from exc
     if len(user_handle) != SIGNUP_USER_HANDLE_BYTES:
         raise PasskeyChallengeError('corrupted challenge')
-    return SignupChallenge(challenge=_challenge_bytes(data), user_handle=user_handle)
+    display_name = data.get('display_name')
+    return SignupChallenge(
+        challenge=_challenge_bytes(data),
+        user_handle=user_handle,
+        display_name=display_name if isinstance(display_name, str) else None,
+    )
 
 
 async def create_registration_options(
@@ -248,7 +261,7 @@ async def create_signup_options(*, display_name: str | None) -> tuple[str, dict]
         ),
     )
     challenge_id = await _store_challenge(
-        options.challenge, purpose=PURPOSE_SIGNUP, user_id=None, user_handle=user_handle
+        options.challenge, purpose=PURPOSE_SIGNUP, user_id=None, user_handle=user_handle, display_name=display_name
     )
     return challenge_id, options_to_json_dict(options)
 

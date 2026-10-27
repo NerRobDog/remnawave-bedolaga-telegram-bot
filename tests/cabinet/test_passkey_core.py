@@ -450,6 +450,13 @@ async def test_signup_challenge_returns_the_bytes_and_the_handle_it_was_issued_w
 
     assert b64u(spent.challenge) == options['challenge']
     assert spent.user_handle == unb64u(options['user']['id'])
+    assert spent.display_name is None
+
+
+async def test_signup_challenge_remembers_the_display_name_for_the_new_account(fake_redis) -> None:
+    challenge_id, _ = await passkey.create_signup_options(display_name='Alice')
+
+    assert (await passkey.consume_signup_challenge(challenge_id)).display_name == 'Alice'
 
 
 async def test_signup_challenge_is_single_use(fake_redis) -> None:

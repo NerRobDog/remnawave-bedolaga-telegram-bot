@@ -18,19 +18,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cabinet.auth import create_access_token
 from app.cabinet.dependencies import get_cabinet_db
-from app.cabinet.routes import passkey as passkey_routes
+from app.cabinet.routes import passkey as passkey_routes, passkey_signup as signup_routes
 from app.database.models import (
     AdminRole,
     CabinetRefreshToken,
+    LegalConsent,
     PromoGroup,
+    ServerSquad,
     Subscription,
     SystemSetting,
     Tariff,
     User,
     UserPasskey,
     UserPromoGroup,
+    UserRecoveryCode,
     UserRole,
     UserStatus,
+    server_squad_promo_groups,
 )
 from tests.cabinet.conftest import PASSKEY_ORIGIN, PASSKEY_RP_ID
 from tests.fixtures.fake_redis import FakeRedis
@@ -41,11 +45,15 @@ from tests.fixtures.webauthn_authenticator import SoftwareAuthenticator
 TABLES = (
     User.__table__,
     UserPasskey.__table__,
+    UserRecoveryCode.__table__,
+    LegalConsent.__table__,
     CabinetRefreshToken.__table__,
     Subscription.__table__,
     Tariff.__table__,
     UserPromoGroup.__table__,
     PromoGroup.__table__,
+    server_squad_promo_groups,
+    ServerSquad.__table__,
     UserRole.__table__,
     AdminRole.__table__,
     SystemSetting.__table__,
@@ -121,7 +129,49 @@ class PasskeyHttp:
         options = (await self.login_options()).json()
         return await self.login_verify(options['challenge_id'], authenticator.get(options['options'], **get_kwargs))
 
+    # -- регистрация аккаунта одним passkey --------------------------------
+
+    async def signup_options(self, **body) -> Response:
+        return await self.post('/cabinet/auth/passkey/signup/options', **body)
+
+    async def signup_verify(self, challenge_id: str, credential: dict, **extra) -> Response:
+        return await self.post(
+            '/cabinet/auth/passkey/signup/verify', challenge_id=challenge_id, credential=credential, **extra
+        )
+
+    async def signup(
+        self, authenticator: SoftwareAuthenticator | None = None, *, display_name: str | None = None, **extra
+    ) -> tuple[SoftwareAuthenticator, Response]:
+        """Полный круг: signup/options → программный аутентификатор → signup/verify."""
+        authenticator = authenticator or new_authenticator()
+        body = {'display_name': display_name} if display_name is not None else {}
+        options = (await self.signup_options(**body)).json()
+        credential = authenticator.create(options['options'])
+        return authenticator, await self.signup_verify(options['challenge_id'], credential, **extra)
+
+    # -- recovery-коды -----------------------------------------------------
+
+    async def recovery_login(self, code: str) -> Response:
+        return await self.post('/cabinet/auth/recovery/login', code=code)
+
+    async def recovery_status(self, user: User) -> Response:
+        return await self.client.get('/cabinet/passkey/recovery-codes', headers=self.auth(user))
+
+    async def recovery_regenerate(self, user: User) -> Response:
+        return await self.client.post('/cabinet/passkey/recovery-codes/regenerate', headers=self.auth(user))
+
     # -- БД ----------------------------------------------------------------
+
+    async def users(self) -> list[User]:
+        result = await self.db.execute(select(User).order_by(User.id).execution_options(populate_existing=True))
+        return list(result.scalars())
+
+    async def recovery_rows(self, user_id: int | None = None) -> list[UserRecoveryCode]:
+        query = select(UserRecoveryCode).order_by(UserRecoveryCode.id)
+        if user_id is not None:
+            query = query.where(UserRecoveryCode.user_id == user_id)
+        result = await self.db.execute(query.execution_options(populate_existing=True))
+        return list(result.scalars())
 
     async def passkeys(self, user: User | None = None) -> list[UserPasskey]:
         query = select(UserPasskey).order_by(UserPasskey.id)
@@ -141,6 +191,12 @@ async def open_harness(monkeypatch, redis: FakeRedis) -> AsyncIterator[PasskeyHt
         app = FastAPI()
         app.include_router(passkey_routes.auth_router, prefix='/cabinet')
         app.include_router(passkey_routes.router, prefix='/cabinet')
+        for signup_router in (
+            signup_routes.signup_router,
+            signup_routes.recovery_auth_router,
+            signup_routes.recovery_router,
+        ):
+            app.include_router(signup_router, prefix='/cabinet')
 
         async def _db() -> AsyncIterator[AsyncSession]:
             yield db

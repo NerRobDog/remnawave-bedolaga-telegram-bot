@@ -350,3 +350,60 @@ async def test_challenge_store_outage_after_the_limiter_is_a_503(monkeypatch, fa
 
     assert response.status_code == 503
     assert response.json()['detail']['code'] == 'passkey_unavailable'
+
+
+# --- аккаунт, созданный самим passkey: handle случайный и хранится у ключа -------
+
+
+@pytest.mark.usefixtures('passkey_signup_settings')
+async def test_a_key_from_signup_logs_in_with_its_stored_random_handle(monkeypatch, fake_redis) -> None:
+    async with open_harness(monkeypatch, fake_redis) as h:
+        authenticator, signed_up = await h.signup()
+        response = await h.login(authenticator)
+
+    assert response.status_code == 200, response.text
+    assert response.json()['user']['id'] == signed_up.json()['user']['id']
+    assert authenticator.user_handle != passkey.user_handle_for(signed_up.json()['user']['id'])
+
+
+@pytest.mark.usefixtures('passkey_signup_settings')
+async def test_a_key_from_signup_also_accepts_the_derived_handle_and_no_handle(monkeypatch, fake_redis) -> None:
+    async with open_harness(monkeypatch, fake_redis) as h:
+        authenticator, signed_up = await h.signup()
+        derived = passkey.user_handle_for(signed_up.json()['user']['id'])
+        with_derived = await h.login(authenticator, user_handle=derived)
+        without = await h.login(authenticator, omit_user_handle=True)
+
+    assert with_derived.status_code == 200 and without.status_code == 200
+
+
+@pytest.mark.usefixtures('passkey_signup_settings')
+async def test_a_signup_key_that_presents_another_accounts_handle_is_refused(monkeypatch, fake_redis) -> None:
+    async with open_harness(monkeypatch, fake_redis) as h:
+        mine, _ = await h.signup()
+        other, other_account = await h.signup()
+        stranger = await h.make_user()
+
+        stolen = [
+            other.user_handle,  # случайный handle чужого passkey-аккаунта
+            passkey.user_handle_for(other_account.json()['user']['id']),
+            passkey.user_handle_for(stranger.id),
+            b'\x00' * 32,
+        ]
+        responses = [await h.login(mine, user_handle=handle) for handle in stolen]
+
+    for response in responses:
+        assert response.status_code == 401 and response.json() == GENERIC_REFUSAL
+
+
+@pytest.mark.usefixtures('passkey_signup_settings')
+async def test_a_legacy_key_without_a_stored_handle_still_needs_the_derived_one(monkeypatch, fake_redis) -> None:
+    async with open_harness(monkeypatch, fake_redis) as h:
+        user, authenticator = await _user_with_key(h)
+        (key,) = await h.passkeys(user)
+        derived = await h.login(authenticator)
+        random_handle = await h.login(authenticator, user_handle=b'\x07' * 32)
+
+    assert key.user_handle is None
+    assert derived.status_code == 200
+    assert random_handle.status_code == 401

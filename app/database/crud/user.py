@@ -2046,6 +2046,72 @@ async def create_user_by_oauth(
     return user
 
 
+async def create_user_by_passkey(
+    db: AsyncSession,
+    *,
+    display_name: str | None = None,
+    language: str = 'ru',
+    emit_event: bool = True,
+) -> User:
+    """Создать аккаунт, у которого единственный способ входа — passkey.
+
+    Ни Telegram, ни почты, ни пароля, ни колонки провайдера. Реферера и кампании тут нет:
+    их применяет вызывающий и только если это разрешено настройкой. Commit — на вызывающем;
+    ``emit_event=False`` откладывает ``user.created`` до коммита (``emit_user_created``):
+    откат регистрации не должен оставлять событие о несуществующем аккаунте.
+    """
+    referral_code = await create_unique_referral_code(db)
+    default_group = await _get_or_create_default_promo_group(db)
+
+    user = User(
+        telegram_id=None,
+        auth_type='passkey',
+        email=None,
+        email_verified=False,
+        password_hash=None,
+        username=None,
+        first_name=sanitize_telegram_name(display_name) if display_name else None,
+        last_name=None,
+        language=_normalize_language_code(language),
+        referred_by_id=None,
+        referral_code=referral_code,
+        balance_kopeks=0,
+        has_had_paid_subscription=False,
+        has_made_first_topup=False,
+        promo_group_id=default_group.id,
+    )
+    db.add(user)
+    await db.flush()
+    await db.refresh(user)
+
+    user.promo_group = default_group
+    logger.info('Created passkey user', user_id=user.id)
+
+    if emit_event:
+        await emit_user_created(db, user)
+    return user
+
+
+async def emit_user_created(db: AsyncSession, user: User) -> None:
+    """Событие ``user.created`` для passkey-аккаунта; сбой доставки регистрацию не роняет."""
+    try:
+        from app.services.event_emitter import event_emitter
+
+        await event_emitter.emit(
+            'user.created',
+            {
+                'user_id': user.id,
+                'email': user.email,
+                'auth_type': user.auth_type,
+                'first_name': user.first_name,
+                'referral_code': user.referral_code,
+            },
+            db=db,
+        )
+    except Exception as error:
+        logger.warning('Failed to emit user.created event', error=error)
+
+
 async def lock_user_subscriptions_for_update(db: AsyncSession, user_id: int) -> list[Subscription]:
     """Lock all subscriptions for a user using SELECT FOR UPDATE."""
     result = await db.execute(
