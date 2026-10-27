@@ -407,3 +407,108 @@ async def test_login_exposes_user_handle_for_the_caller_to_compare(fake_redis) -
     )
 
     assert result.user_handle == passkey.user_handle_for(USER_ID)
+
+
+# --- регистрация аккаунта одним passkey (signup) ---------------------------------
+
+
+async def test_signup_options_carry_a_random_handle_not_derived_from_anything(fake_redis) -> None:
+    _, first = await passkey.create_signup_options(display_name=None)
+    _, second = await passkey.create_signup_options(display_name=None)
+
+    first_handle, second_handle = unb64u(first['user']['id']), unb64u(second['user']['id'])
+    assert len(first_handle) == len(second_handle) == 32
+    assert first_handle != second_handle
+    for user_id in range(1, 50):
+        assert first_handle != passkey.user_handle_for(user_id)
+
+
+async def test_signup_options_require_user_verification_and_a_resident_key(fake_redis) -> None:
+    _, options = await passkey.create_signup_options(display_name=None)
+
+    assert options['authenticatorSelection']['residentKey'] == 'required'
+    assert options['authenticatorSelection']['userVerification'] == 'required'
+    assert options['attestation'] == 'none'
+    assert options.get('excludeCredentials', []) == []
+
+
+async def test_signup_options_label_the_account_so_the_picker_can_tell_them_apart(fake_redis) -> None:
+    _, plain = await passkey.create_signup_options(display_name=None)
+    _, named = await passkey.create_signup_options(display_name='Alice')
+    _, other = await passkey.create_signup_options(display_name=None)
+
+    assert plain['user']['name'] and plain['user']['displayName']
+    assert plain['user']['name'] != other['user']['name']
+    assert named['user']['displayName'] == 'Alice'
+    assert '@' not in plain['user']['name']
+
+
+async def test_signup_challenge_returns_the_bytes_and_the_handle_it_was_issued_with(fake_redis) -> None:
+    challenge_id, options = await passkey.create_signup_options(display_name=None)
+
+    spent = await passkey.consume_signup_challenge(challenge_id)
+
+    assert b64u(spent.challenge) == options['challenge']
+    assert spent.user_handle == unb64u(options['user']['id'])
+
+
+async def test_signup_challenge_is_single_use(fake_redis) -> None:
+    challenge_id, _ = await passkey.create_signup_options(display_name=None)
+
+    await passkey.consume_signup_challenge(challenge_id)
+    with pytest.raises(passkey.PasskeyChallengeError):
+        await passkey.consume_signup_challenge(challenge_id)
+
+
+async def test_signup_challenge_expires(fake_redis) -> None:
+    challenge_id, _ = await passkey.create_signup_options(display_name=None)
+
+    fake_redis.advance(passkey.CHALLENGE_TTL_SECONDS + 1)
+
+    with pytest.raises(passkey.PasskeyChallengeError):
+        await passkey.consume_signup_challenge(challenge_id)
+
+
+async def test_signup_challenge_cannot_be_spent_on_any_other_ceremony(fake_redis) -> None:
+    """Иначе вошедший пользователь потратил бы чужой signup-челлендж на добавление ключа (и наоборот)."""
+    signup_id, _ = await passkey.create_signup_options(display_name=None)
+    with pytest.raises(passkey.PasskeyChallengeError):
+        await passkey.consume_challenge(signup_id, purpose=passkey.PURPOSE_REGISTER, user_id=USER_ID)
+
+    signup_id, _ = await passkey.create_signup_options(display_name=None)
+    with pytest.raises(passkey.PasskeyChallengeError):
+        await passkey.consume_challenge(signup_id, purpose=passkey.PURPOSE_LOGIN)
+
+    register_id, _ = await passkey.create_registration_options(
+        user_id=USER_ID, user_name='alice', display_name=None, existing=[]
+    )
+    with pytest.raises(passkey.PasskeyChallengeError):
+        await passkey.consume_signup_challenge(register_id)
+
+    login_id, _ = await passkey.create_login_options()
+    with pytest.raises(passkey.PasskeyChallengeError):
+        await passkey.consume_signup_challenge(login_id)
+
+
+async def test_signup_challenge_with_a_malformed_id_is_refused(fake_redis) -> None:
+    with pytest.raises(passkey.PasskeyChallengeError):
+        await passkey.consume_signup_challenge('short')
+
+
+async def test_signup_attestation_verifies_like_any_registration(fake_redis) -> None:
+    authenticator = _authenticator()
+    challenge_id, options = await passkey.create_signup_options(display_name=None)
+    credential = authenticator.create(options)
+
+    spent = await passkey.consume_signup_challenge(challenge_id)
+    new_key = passkey.verify_registration(challenge=spent.challenge, credential=credential)
+
+    assert new_key.credential_id == authenticator.credential_id
+    assert authenticator.user_handle == spent.user_handle
+
+
+async def test_signup_options_fail_when_redis_is_down(fake_redis, monkeypatch) -> None:
+    monkeypatch.setattr(passkey.cache, '_connected', False)
+
+    with pytest.raises(passkey.PasskeyUnavailableError):
+        await passkey.create_signup_options(display_name=None)
