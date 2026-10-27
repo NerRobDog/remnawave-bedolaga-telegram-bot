@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
+
 import pytest
 
 from app.config import settings
+from app.services.event_emitter import event_emitter
 from app.utils.cache import RateLimitCache, cache
 from tests.fixtures.fake_redis import FakeRedis
 
@@ -32,3 +35,18 @@ def passkey_settings(monkeypatch) -> None:
     monkeypatch.setattr(settings, 'PASSKEY_ORIGINS', PASSKEY_ORIGIN)
     # Подпись JWT настоящая; секрет длинный, чтобы PyJWT не шумел предупреждениями о слабом ключе.
     monkeypatch.setattr(settings, 'CABINET_JWT_SECRET', 'passkey-tests-' + 'k' * 48)
+
+
+@pytest.fixture
+def passkey_signup_settings(monkeypatch) -> AsyncMock:
+    """Регистрация аккаунта одним passkey открыта; согласие с документами не требуется.
+
+    Возвращает перехваченный ``event_emitter.emit``: события не уходят в webhook-таблицы,
+    а тест видит, что и когда было отправлено.
+    """
+    monkeypatch.setattr(settings, 'PASSKEY_SIGNUP_ENABLED', True)
+    monkeypatch.setattr(settings, 'CABINET_REQUIRE_LEGAL_CONSENT', False)
+    monkeypatch.setattr(settings, 'INVITE_ONLY_ENABLED', False)
+    emitted = AsyncMock()
+    monkeypatch.setattr(event_emitter, 'emit', emitted)
+    return emitted
