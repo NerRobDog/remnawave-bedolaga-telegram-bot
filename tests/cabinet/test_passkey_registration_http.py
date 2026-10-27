@@ -27,8 +27,8 @@ async def test_status_reports_whether_passkey_is_configured(monkeypatch, fake_re
         monkeypatch.setattr(settings, 'PASSKEY_ENABLED', False)
         off = await h.client.get('/cabinet/auth/passkey/status')
 
-    assert on.status_code == 200 and on.json() == {'enabled': True}
-    assert off.status_code == 200 and off.json() == {'enabled': False}
+    assert on.status_code == 200 and on.json() == {'enabled': True, 'signup_enabled': False}
+    assert off.status_code == 200 and off.json() == {'enabled': False, 'signup_enabled': False}
 
 
 @pytest.mark.parametrize(

@@ -8,6 +8,7 @@ Passkey — дополнительный способ входа: ключ за�
 входа. Логика WebAuthn — в ``app.cabinet.auth.passkey``; здесь HTTP, лимиты и БД.
 """
 
+import hmac
 from datetime import UTC, datetime
 
 import structlog
@@ -95,6 +96,14 @@ def _to_response(passkey: UserPasskey) -> PasskeyResponse:
     )
 
 
+def _handle_belongs_to(stored: UserPasskey, user_id: int, presented: bytes) -> bool:
+    """Handle от аутентификатора совпадает с handle этого ключа (сравнение за постоянное время)."""
+    if hmac.compare_digest(presented, passkey_core.user_handle_for(user_id)):
+        return True
+    own = stored.user_handle
+    return own is not None and hmac.compare_digest(presented, bytes(own))
+
+
 def _user_name_for(user: User) -> str:
     return user.email or user.username or f'user-{user.id}'
 
@@ -107,7 +116,9 @@ def _user_name_for(user: User) -> str:
 @auth_router.get('/status', response_model=PasskeyStatusResponse)
 async def passkey_status() -> PasskeyStatusResponse:
     """Нужен фронту, чтобы показать или спрятать кнопку «Войти с passkey»."""
-    return PasskeyStatusResponse(enabled=settings.is_passkey_enabled())
+    return PasskeyStatusResponse(
+        enabled=settings.is_passkey_enabled(), signup_enabled=settings.is_passkey_signup_enabled()
+    )
 
 
 @auth_router.post(
@@ -168,8 +179,10 @@ async def passkey_login_verify(
         logger.warning('Passkey login refused', reason=exc.code, user_id=stored_user_id, client_ip=client_ip)
         raise _login_failed() from exc
 
-    # Аутентификатор, вернувший userHandle другого аккаунта, — не наш ключ.
-    if verified.user_handle is not None and verified.user_handle != passkey_core.user_handle_for(stored_user_id):
+    # Аутентификатор, вернувший userHandle другого аккаунта, — не наш ключ. Свой handle у ключа
+    # двух видов: выведенный из user_id (ключ добавлен из профиля) или случайный, сохранённый
+    # при регистрации аккаунта самим passkey (на тот момент user_id ещё не было).
+    if verified.user_handle is not None and not _handle_belongs_to(stored, stored_user_id, verified.user_handle):
         logger.warning('Passkey login refused', reason='user_handle_mismatch', user_id=stored_user_id)
         raise _login_failed()
 

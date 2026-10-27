@@ -6,6 +6,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from .auth import AuthResponse
+
 
 #: Потолок на сериализованный ответ аутентификатора. Настоящая attestation с цепочкой
 #: сертификатов — единицы килобайт; больше — не WebAuthn, парсить незачем.
@@ -15,6 +17,8 @@ MAX_PASSKEY_NAME_LENGTH = 100
 
 class PasskeyStatusResponse(BaseModel):
     enabled: bool
+    #: Открыта ли регистрация аккаунта одним passkey (кнопка «Создать аккаунт с passkey»).
+    signup_enabled: bool = False
 
 
 class PasskeyOptionsResponse(BaseModel):
@@ -76,3 +80,46 @@ class PasskeyListResponse(BaseModel):
 
 class PasskeyDeleteResponse(BaseModel):
     success: bool
+
+
+# --- аккаунт, созданный самим passkey, и recovery-коды -----------------------------
+
+
+class PasskeySignupOptionsRequest(BaseModel):
+    """Тело необязательно: имя — только подпись в списке ключей и ``first_name`` нового аккаунта."""
+
+    display_name: str | None = Field(None, max_length=MAX_PASSKEY_NAME_LENGTH)
+
+    _strip_name = field_validator('display_name')(_clean_name)
+
+
+class PasskeySignupVerifyRequest(PasskeyRegisterVerifyRequest):
+    accepted_legal_documents: list[str] | None = Field(
+        None, max_length=16, description='Отмеченные галочки согласия с документами (как в других регистрациях)'
+    )
+    #: Игнорируются, пока PASSKEY_SIGNUP_BONUSES_ENABLED выключен.
+    campaign_slug: str | None = Field(None, max_length=100)
+    referral_code: str | None = Field(None, max_length=64)
+
+
+class PasskeySignupResponse(AuthResponse):
+    #: Открытые коды показываются ОДИН раз: на сервере остаются только хэши.
+    recovery_codes: list[str]
+
+
+class RecoveryLoginRequest(BaseModel):
+    code: str = Field(..., description='Recovery-код как его показали: регистр и дефисы не важны')
+
+
+class RecoveryLoginResponse(AuthResponse):
+    #: Фронт обязан сразу предложить добавить новый passkey: вход по коду — аварийный путь.
+    recovery_login: bool = True
+
+
+class RecoveryCodesStatusResponse(BaseModel):
+    remaining: int
+    total: int
+
+
+class RecoveryCodesRegenerateResponse(RecoveryCodesStatusResponse):
+    recovery_codes: list[str]
