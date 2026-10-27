@@ -71,7 +71,8 @@ class SeverPayPaymentMixin:
         payment_module = import_module('app.services.payment_service')
         if user_id is not None:
             user = await payment_module.get_user_by_id(db, user_id)
-            tg_id = user.telegram_id if user else user_id
+            # Пользователь кабинета без Telegram: telegram_id is None, берём внутренний id.
+            tg_id = (user.telegram_id or user.id) if user else user_id
         else:
             user = None
             tg_id = 'guest'
@@ -96,9 +97,8 @@ class SeverPayPaymentMixin:
 
         try:
             # SeverPay требует обязательный client_email
-            target_email = email or (
-                f'{user.telegram_id}@telegram.org' if user and user.telegram_id else f'{tg_id}@telegram.org'
-            )
+            own_email = user.email if user and not user.telegram_id else None
+            target_email = email or own_email or f'{tg_id}@telegram.org'
 
             # Используем API для создания платежа
             result = await severpay_service.create_payment(
