@@ -473,6 +473,33 @@ TEMPLATE_TYPES = [
         'context_vars': ['reset_gb', 'current_limit_gb'],
     },
     {
+        'type': 'traffic_warning',
+        'label': {
+            'ru': 'Трафик почти исчерпан',
+            'en': 'Traffic Almost Used Up',
+            'zh': '流量即将用尽',
+            'ua': 'Трафік майже вичерпано',
+        },
+        'description': {
+            'ru': 'Предупреждение о приближении к лимиту трафика',
+            'en': 'Warning about approaching the traffic limit',
+            'zh': '流量接近上限的提醒',
+            'ua': 'Попередження про наближення до ліміту трафіку',
+        },
+        'context_vars': ['used_gb', 'limit_gb', 'percent'],
+    },
+    {
+        'type': 'balance_low',
+        'label': {'ru': 'Низкий баланс', 'en': 'Low Balance', 'zh': '余额不足提醒', 'ua': 'Низький баланс'},
+        'description': {
+            'ru': 'Предупреждение о низком балансе при включённом автопродлении',
+            'en': 'Low balance warning when auto-renewal is enabled',
+            'zh': '启用自动续订时的余额不足提醒',
+            'ua': 'Попередження про низький баланс при увімкненому автопродовженні',
+        },
+        'context_vars': ['formatted_balance', 'formatted_threshold'],
+    },
+    {
         'type': 'payment_received',
         'label': {'ru': 'Платёж получен', 'en': 'Payment Received', 'zh': '收到付款', 'ua': 'Платіж отримано'},
         'description': {
@@ -847,6 +874,8 @@ SAMPLE_CONTEXTS: dict[str, dict[str, Any]] = {
     'referral_registered': {'referral_name': 'John'},
     'referral_welcome': {'referrer_name': 'John', 'bonus_promise': '100.00 ₽ при первом пополнении от 500.00 ₽'},
     'traffic_reset': {'reset_gb': 50, 'current_limit_gb': 100},
+    'traffic_warning': {'used_gb': '85.0', 'limit_gb': 100, 'percent': '85'},
+    'balance_low': {'formatted_balance': '50.00 ₽', 'formatted_threshold': '100.00 ₽'},
     'payment_received': {'formatted_amount': '500.00 ₽', 'amount_rubles': 500, 'payment_method': 'YooKassa'},
     'ticket_reply': {'ticket_id': 42, 'reply_preview': 'Проверьте настройки подключения', 'has_photo': False},
     'email_verification': {

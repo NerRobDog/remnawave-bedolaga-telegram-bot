@@ -96,9 +96,10 @@ class NotificationDeliveryService:
             return False
         if notification_type is NotificationType.BALANCE_LOW and not is_balance_low_enabled(user):
             return False
-        if notification_type is NotificationType.WEBHOOK_SUB_BANDWIDTH_THRESHOLD and not is_traffic_warning_enabled(
-            user
-        ):
+        if notification_type in (
+            NotificationType.WEBHOOK_SUB_BANDWIDTH_THRESHOLD,
+            NotificationType.TRAFFIC_WARNING,
+        ) and not is_traffic_warning_enabled(user):
             return False
         if notification_type is NotificationType.PROMO_OFFER and not is_promo_offers_enabled(user):
             return False
