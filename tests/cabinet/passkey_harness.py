@@ -8,10 +8,10 @@
 from __future__ import annotations
 
 import contextlib
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from httpx import ASGITransport, AsyncClient, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -187,11 +187,17 @@ class PasskeyHttp:
 
 @contextlib.asynccontextmanager
 async def open_harness(
-    monkeypatch, redis: FakeRedis, *, session_per_request: bool = False
+    monkeypatch,
+    redis: FakeRedis,
+    *,
+    session_per_request: bool = False,
+    extra_routers: Sequence[tuple[APIRouter, str]] = (),
 ) -> AsyncIterator[PasskeyHttp]:
     """``session_per_request`` — свой сеанс БД на каждый запрос, как в проде: нужен тестам гонок.
 
     По умолчанию сеанс один на всё приложение, и параллельные запросы по нему недопустимы.
+    ``extra_routers`` — чужие роутеры кабинета (роутер, префикс) для проверки их поведения
+    на passkey-аккаунтах, например ``/cabinet/subscription``.
     """
     async with memory_session(monkeypatch, TABLES) as db:
         app = FastAPI()
@@ -203,6 +209,8 @@ async def open_harness(
             signup_routes.recovery_router,
         ):
             app.include_router(signup_router, prefix='/cabinet')
+        for extra_router, prefix in extra_routers:
+            app.include_router(extra_router, prefix=prefix)
 
         maker = async_sessionmaker(db.bind, expire_on_commit=False, autoflush=False)
 
