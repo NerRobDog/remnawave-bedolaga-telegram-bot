@@ -48,7 +48,7 @@ def test_app_link_formats_template(monkeypatch):
     monkeypatch.setattr(settings, 'ANTARCTIC_APP_ID', '10000001')
     assert (
         settings.get_antarctic_app_link('abc_DEF-1')
-        == 'https://t.me/antarctic_wallet_bot/app?startapp=app_10000001_abc_DEF-1'
+        == 'https://aw.me/app/10000001?start_param=abc_DEF-1'
     )
 
 

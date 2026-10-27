@@ -284,7 +284,7 @@ async def test_create_returns_links(monkeypatch):
     assert result['amount_kopeks'] == 10000
     assert result['amount_usd'] == '1.05'
     assert token in result['app_link']
-    assert result['app_link'] == f'https://t.me/antarctic_wallet_bot/app?startapp=app_{APP_ID}_{token}'
+    assert result['app_link'] == f'https://aw.me/app/{APP_ID}?start_param={token}'
     assert result['pay_page_url'] == f'https://bot.example.com/antarctic/pay/{token}'
     assert result['referral_url'] == 'https://t.me/antarctic_wallet_bot/app?startapp=ref_1'
 

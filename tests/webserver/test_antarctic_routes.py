@@ -121,7 +121,7 @@ def env(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         'ANTARCTIC_MINIAPP_PATH': '/antarctic/app',
         'ANTARCTIC_PAY_PAGE_PATH': '/antarctic/pay',
         'ANTARCTIC_WEBHOOK_PATH': '/antarctic-webhook',
-        'ANTARCTIC_APP_LINK_TEMPLATE': 'https://t.me/antarctic_wallet_bot/app?startapp=app_{app_id}_{token}',
+        'ANTARCTIC_APP_LINK_TEMPLATE': 'https://aw.me/app/{app_id}?start_param={token}',
         'ANTARCTIC_REFERRAL_URL': REFERRAL,
         'ANTARCTIC_PAYMENT_TTL_MINUTES': 30,
         'WEBHOOK_URL': 'https://bot.example.com',
@@ -719,7 +719,7 @@ def test_pay_page_renders_links_and_escapes(env) -> None:
     assert '<title>Оплата через Antarctic Wallet</title>' in text
     assert '$5.43' in text
     assert 'Баланс пополнится на 500\u00a0₽' in text
-    assert f'href="https://t.me/antarctic_wallet_bot/app?startapp=app_{APP_ID}_{TOKEN}"' in text
+    assert f'href="https://aw.me/app/{APP_ID}?start_param={TOKEN}"' in text
     assert 'Оплатить в Antarctic Wallet' in text
     assert f'href="{REFERRAL}"' in text
     assert 'Нет кошелька? Создайте за минуту — пополнение по СБП' in text
@@ -736,7 +736,7 @@ def test_pay_page_without_referral_has_no_referral_block(env) -> None:
 
     text = _pay(env).text
 
-    assert f'startapp=app_{APP_ID}_{TOKEN}' in text
+    assert f'start_param={TOKEN}' in text
     assert 'Создать кошелёк' not in text
     assert 'Нет кошелька' not in text
 
@@ -776,7 +776,7 @@ def test_pay_page_paid_shows_paid_state(env) -> None:
     assert response.status_code == 200
     assert 'Оплачено' in response.text
     assert 'Оплатить в Antarctic Wallet' not in response.text
-    assert f'startapp=app_{APP_ID}_{TOKEN}' not in response.text
+    assert f'start_param={TOKEN}' not in response.text
 
 
 @pytest.mark.parametrize('status', ['rejected', 'failed', 'expired', 'amount_mismatch'])
@@ -788,7 +788,7 @@ def test_pay_page_terminal_failure_shows_stale_link(env, status: str) -> None:
     assert response.status_code == 410
     assert 'Ссылка устарела, создайте платёж заново' in response.text
     assert 'Оплатить в Antarctic Wallet' not in response.text
-    assert f'startapp=app_{APP_ID}_{TOKEN}' not in response.text
+    assert f'start_param={TOKEN}' not in response.text
 
 
 def test_pay_page_unopened_payment_past_its_ttl_is_stale(env) -> None:

@@ -1157,7 +1157,7 @@ class Settings(BaseSettings):
     ANTARCTIC_MINIAPP_PATH: str = '/antarctic/app'
     ANTARCTIC_PAY_PAGE_PATH: str = '/antarctic/pay'
     ANTARCTIC_WEBHOOK_PATH: str = '/antarctic-webhook'
-    ANTARCTIC_APP_LINK_TEMPLATE: str = 'https://t.me/antarctic_wallet_bot/app?startapp=app_{app_id}_{token}'
+    ANTARCTIC_APP_LINK_TEMPLATE: str = 'https://aw.me/app/{app_id}?start_param={token}'
     ANTARCTIC_REFERRAL_URL: str | None = None
 
     # TabPay (tabpay.org, СБП и карты с 3-D Secure)
