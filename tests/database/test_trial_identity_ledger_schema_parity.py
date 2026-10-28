@@ -103,3 +103,95 @@ def test_upgrade_skips_missing_tables(tmp_path) -> None:
     _run(engine, 'upgrade')
 
     assert _nullable(engine, 'users', 'telegram_id') is True
+
+
+# ---------------------------------------------------------------------------
+# Журнал личностей триала: свежая установка (create_all по модели) == обновлённая (миграция)
+# ---------------------------------------------------------------------------
+
+TABLE = 'trial_identity_ledger'
+
+
+def _fresh(path: pathlib.Path):
+    from app.database.models import Base, TrialIdentityLedger
+
+    engine = sa.create_engine(f'sqlite:///{path}')
+    Base.metadata.create_all(engine, tables=[TrialIdentityLedger.__table__], checkfirst=True)
+    return engine
+
+
+def _upgraded(path: pathlib.Path):
+    engine = _drifted(path)
+    _run(engine, 'upgrade')
+    return engine
+
+
+@pytest.fixture
+def both(tmp_path):
+    return sa.inspect(_fresh(tmp_path / 'fresh.db')), sa.inspect(_upgraded(tmp_path / 'upgraded.db'))
+
+
+def test_columns_match(both) -> None:
+    fresh, upgraded = both
+    fresh_cols = {c['name'] for c in fresh.get_columns(TABLE)}
+    assert fresh_cols == {c['name'] for c in upgraded.get_columns(TABLE)}
+    assert fresh_cols == {'id', 'identity_hash', 'created_at'}
+
+
+def test_column_types_and_nullability_match(both) -> None:
+    fresh, upgraded = both
+    as_map = lambda inspector: {  # noqa: E731
+        c['name']: (str(c['type']).upper(), c['nullable']) for c in inspector.get_columns(TABLE)
+    }
+    assert as_map(fresh) == as_map(upgraded)
+    assert as_map(fresh)['identity_hash'] == ('VARCHAR(64)', False)
+
+
+def _shape(inspector):
+    indexes = {(i['name'], tuple(i['column_names']), bool(i['unique'])) for i in inspector.get_indexes(TABLE)}
+    uniques = {tuple(u['column_names']) for u in inspector.get_unique_constraints(TABLE)}
+    return indexes, uniques
+
+
+def test_indexes_and_unique_constraints_match(both) -> None:
+    fresh, upgraded = both
+    assert _shape(fresh) == _shape(upgraded)
+    indexes, uniques = _shape(fresh)
+    unique_columns = {cols for _, cols, unique in indexes if unique} | uniques
+    assert ('identity_hash',) in unique_columns, 'повторная выдача ловится по уникальности хэша'
+
+
+def test_the_ledger_is_not_linked_to_users(both) -> None:
+    """Журнал хранит только хэши: связи с пользователем нет, удаление аккаунта запись не стирает."""
+    for inspector in both:
+        assert inspector.get_foreign_keys(TABLE) == []
+
+
+def test_downgrade_drops_the_ledger_but_keeps_the_nullable_columns(tmp_path) -> None:
+    engine = _upgraded(tmp_path / 'roundtrip.db')
+
+    _run(engine, 'downgrade')
+
+    inspector = sa.inspect(engine)
+    assert TABLE not in inspector.get_table_names()
+    assert _nullable(engine, 'users', 'telegram_id') is True
+
+
+def test_upgrade_twice_keeps_the_ledger_rows(tmp_path) -> None:
+    engine = _upgraded(tmp_path / 'twice.db')
+    with engine.begin() as conn:
+        conn.execute(sa.text("INSERT INTO trial_identity_ledger (identity_hash) VALUES ('abc')"))
+
+    _run(engine, 'upgrade')
+
+    with engine.connect() as conn:
+        assert conn.execute(sa.text('SELECT COUNT(*) FROM trial_identity_ledger')).scalar() == 1
+
+
+def test_created_at_defaults_to_now(tmp_path) -> None:
+    engine = _upgraded(tmp_path / 'default.db')
+    with engine.begin() as conn:
+        conn.execute(sa.text("INSERT INTO trial_identity_ledger (identity_hash) VALUES ('abc')"))
+
+    with engine.connect() as conn:
+        assert conn.execute(sa.text('SELECT created_at FROM trial_identity_ledger')).scalar() is not None

@@ -44,7 +44,18 @@ def upgrade() -> None:
     for table, column in _NULLABLE_COLUMNS:
         _drop_not_null(table, column)
 
+    if 'trial_identity_ledger' not in sa.inspect(op.get_bind()).get_table_names():
+        op.create_table(
+            'trial_identity_ledger',
+            sa.Column('id', sa.Integer(), primary_key=True),
+            sa.Column('identity_hash', sa.String(64), nullable=False),
+            sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+            sa.UniqueConstraint('identity_hash', name='uq_trial_identity_ledger_identity_hash'),
+        )
+        op.create_index('ix_trial_identity_ledger_id', 'trial_identity_ledger', ['id'])
+
 
 def downgrade() -> None:
     # The NOT NULL constraint is deliberately not restored: rows without Telegram may exist by now.
-    pass
+    if 'trial_identity_ledger' in sa.inspect(op.get_bind()).get_table_names():
+        op.drop_table('trial_identity_ledger')
