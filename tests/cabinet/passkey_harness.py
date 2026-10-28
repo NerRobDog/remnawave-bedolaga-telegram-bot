@@ -25,6 +25,7 @@ from app.database.models import (
     AdminRole,
     AuthLinkBonus,
     CabinetRefreshToken,
+    GraceAccessSessionModel,
     LegalConsent,
     PaymentMethod,
     PromoGroup,
@@ -70,6 +71,7 @@ TABLES = (
     Transaction.__table__,
     AuthLinkBonus.__table__,
     SentNotification.__table__,
+    GraceAccessSessionModel.__table__,
 )
 
 

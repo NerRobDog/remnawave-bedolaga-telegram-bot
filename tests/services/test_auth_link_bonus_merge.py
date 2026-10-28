@@ -17,6 +17,7 @@ from sqlalchemy import select
 from app.config import settings
 from app.database.models import (
     AuthLinkBonus,
+    GraceAccessSessionModel,
     PaymentMethod,
     SentNotification,
     Subscription,
@@ -40,6 +41,7 @@ TABLES = (
     Transaction.__table__,
     AuthLinkBonus.__table__,
     SentNotification.__table__,
+    GraceAccessSessionModel.__table__,
 )
 
 

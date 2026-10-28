@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database.models import (
     AuthLinkBonus,
+    GraceAccessSessionModel,
     PaymentMethod,
     SentNotification,
     Subscription,
@@ -35,6 +36,7 @@ pytestmark = [pytest.mark.postgres, pytest.mark.asyncio]
 
 TABLES = (
     AuthLinkBonus.__table__,
+    GraceAccessSessionModel.__table__,
     SentNotification.__table__,
     Transaction.__table__,
     Subscription.__table__,
