@@ -29,6 +29,23 @@ class TrialMode(StrEnum):
     LITE = 'lite'
 
 
+class LiteTrialReason(StrEnum):
+    """Почему лёгкий триал сейчас недоступен (коды ``reason_unavailable`` в API)."""
+
+    DAILY_LIMIT_REACHED = 'daily_limit_reached'
+    IP_LIMIT_REACHED = 'ip_limit_reached'
+    IDENTITY_ALREADY_USED = 'identity_already_used'
+    NOT_AVAILABLE = 'not_available'
+
+
+class LiteTrialRefused(Exception):
+    """Лёгкий триал не выдан; ``reason`` — код причины."""
+
+    def __init__(self, reason: LiteTrialReason) -> None:
+        super().__init__(reason.value)
+        self.reason = reason
+
+
 _UNSET: Any = object()
 
 

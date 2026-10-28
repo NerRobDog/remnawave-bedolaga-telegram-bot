@@ -76,3 +76,32 @@ class FakeRedis:
             expires = self.now + int(window)
         self._data[key] = (str(current), expires)
         return current
+
+    async def eval(self, script: str, numkeys: int, *args):
+        """Lua-скрипты бюджета лёгкого триала (``app.services.lite_trial_budget``), узнаваемые по метке.
+
+        Повторяют скрипты построчно; атомарность даёт то, что тело синхронное, без ``await``.
+        """
+        self._purge()
+        keys, argv = list(args[:numkeys]), [int(a) for a in args[numkeys:]]
+        if 'lite_trial:reserve' in script:
+            daily_limit, ip_limit, ttl = argv
+            if int(self._data.get(keys[0], (0, None))[0]) >= daily_limit:
+                return 1
+            if ip_limit > 0:
+                if int(self._data.get(keys[1], (0, None))[0]) >= ip_limit:
+                    return 2
+                self._incr(keys[1], ttl)
+            self._incr(keys[0], ttl)
+            return 0
+        if 'lite_trial:release' in script:
+            for key in keys:
+                if int(self._data.get(key, (0, None))[0]) > 0:
+                    value, expires = self._data[key]
+                    self._data[key] = (str(int(value) - 1), expires)
+            return 0
+        raise NotImplementedError(script[:60])
+
+    def _incr(self, key: str, ttl: int) -> None:
+        value, _ = self._data.get(key, (0, None))
+        self._data[key] = (str(int(value) + 1), self.now + ttl)
