@@ -35,6 +35,8 @@ from app.services.account_merge_service import (
     flush_remnawave_deletions,
     get_merge_preview,
 )
+from app.services.auth_link_bonus_notifications import deliver_link_bonus
+from app.services.auth_link_bonus_service import grant_link_bonus, had_method_before_link
 from app.utils.cache import RateLimitCache, TokenReplayCache
 
 from ..auth.merge_service import (
@@ -359,9 +361,17 @@ async def _exchange_and_link_oauth(
             user.email_verified_at = datetime.now(UTC)
             user.email_verification_source = f'oauth_{provider}'
 
+    # Бонус за привязку (docs/auth-link-bonus.md): был ли уже passkey или OAuth-провайдер —
+    # спрашиваем до того, как этот провайдер окажется на аккаунте.
+    had_method = await had_method_before_link(db, user)
+
     # Link the provider to current user
     await set_user_oauth_provider_id(db, user, provider, user_info.provider_id)
     try:
+        # Привязка уходит в БД ДО бонуса: занятый провайдер (UNIQUE) должен дать 409 ниже, а не
+        # раствориться в savepoint бонуса. Строка выдачи, продление и привязка — одним коммитом.
+        await db.flush()
+        grant = await grant_link_bonus(db, user, provider, had_qualifying_method=had_method)
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
@@ -377,6 +387,8 @@ async def _exchange_and_link_oauth(
         provider_id=user_info.provider_id,
         user_id=user.id,
     )
+    if grant is not None:
+        await deliver_link_bonus(db, user, grant)
     return LinkCallbackResponse(success=True, message='linked')
 
 

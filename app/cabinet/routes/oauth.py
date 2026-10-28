@@ -21,6 +21,12 @@ from app.database.crud.user import (
     set_user_oauth_provider_id,
 )
 from app.database.models import User, UserStatus
+from app.services.auth_link_bonus_notifications import deliver_link_bonus
+from app.services.auth_link_bonus_service import (
+    grant_link_bonus,
+    had_method_before_link,
+    is_enabled as is_link_bonus_enabled,
+)
 from app.services.rbac_bootstrap_service import (
     TRUSTED_EMAIL_VERIFICATION_SOURCES,
     is_user_admin_by_env,
@@ -296,6 +302,9 @@ async def oauth_callback(
                 user=user,
                 exact_provider_match=False,
             )
+            # Бонус за привязку (docs/auth-link-bonus.md): вход по той же подтверждённой почте — тоже
+            # привязка второго способа. Воскрешённому удалённому аккаунту бонус не положен.
+            had_method = await had_method_before_link(db, user)
             await set_user_oauth_provider_id(db, user, provider, user_info.provider_id)
             logger.info(
                 'OAuth provider linked to existing email user',
@@ -303,7 +312,17 @@ async def oauth_callback(
                 user_id=user.id,
                 revived=was_deleted,
             )
-            return await _finalize_oauth_login(db, user, provider, request.campaign_slug, request.referral_code)
+            grant = None
+            if not was_deleted and is_link_bonus_enabled():
+                # Привязка уходит в БД до бонуса, чтобы её ошибка не растворилась в savepoint бонуса.
+                await db.flush()
+                grant = await grant_link_bonus(db, user, provider, had_qualifying_method=had_method)
+            auth_response = await _finalize_oauth_login(
+                db, user, provider, request.campaign_slug, request.referral_code
+            )
+            if grant is not None:
+                await deliver_link_bonus(db, user, grant)
+            return auth_response
 
     await _gate_oauth_identity(
         db,
