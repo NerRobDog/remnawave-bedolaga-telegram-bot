@@ -236,6 +236,25 @@ async def test_grant_sets_the_panel_expiry_marker_and_clears_sent_expiry_notices
 
 
 @uses_db
+async def test_a_grant_is_visible_to_the_admin_in_the_log(db) -> None:
+    from structlog.testing import capture_logs
+
+    user, sub = await paying_user(db)
+
+    with capture_logs() as logs:
+        await service.grant_link_bonus(db, user, 'google', had_qualifying_method=False)
+
+    (entry,) = [e for e in logs if e['event'] == 'Link bonus granted']
+    assert entry['log_level'] == 'info'
+    assert (entry['user_id'], entry['method'], entry['days'], entry['subscription_id']) == (
+        user.id,
+        'google',
+        DAYS,
+        sub.id,
+    )
+
+
+@uses_db
 async def test_nothing_is_granted_when_the_feature_is_off(db, monkeypatch) -> None:
     monkeypatch.setattr(settings, 'AUTH_LINK_BONUS_ENABLED', False)
     user, sub = await paying_user(db)
