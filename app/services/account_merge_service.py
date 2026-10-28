@@ -70,6 +70,7 @@ from app.database.models import (
     YooKassaPayment,
 )
 from app.external.remnawave_api import RemnaWaveAPI
+from app.services.auth_link_bonus_service import carry_over_on_merge as carry_link_bonus_over
 from app.services.panel_sync import patch_panel_account
 
 
@@ -1102,6 +1103,9 @@ async def execute_merge(
 
     # 10l. Переназначение wheel_spins
     await db.execute(update(WheelSpin).where(WheelSpin.user_id == secondary.id).values(user_id=primary.id))
+
+    # 10l2. Факт «бонус за привязку способа входа получен» остаётся у выжившего (docs/auth-link-bonus.md)
+    await carry_link_bonus_over(db, primary_id=primary.id, secondary_id=secondary.id)
 
     # 10m. Обновление FK ссылок в advertising_campaigns
     # partner_user_id — владение (переназначаем)
