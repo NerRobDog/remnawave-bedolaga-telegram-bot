@@ -324,6 +324,16 @@ class Settings(BaseSettings):
     TRIAL_ACTIVATION_PRICE: int = 0
     TRIAL_USER_TAG: str | None = None
     TRIAL_DISABLED_FOR: str = 'none'  # none, email, telegram, all
+    # Лёгкий триал для аккаунтов без Telegram (якоря): короткая проверка с потолком расходов.
+    # Выключен по умолчанию: без флага поведение триала не меняется. Подробности — docs/lite-trial.md.
+    TRIAL_LITE_ENABLED: bool = False
+    TRIAL_LITE_DURATION_HOURS: int = 24
+    TRIAL_LITE_TRAFFIC_LIMIT_GB: int = 2
+    TRIAL_LITE_DEVICE_LIMIT: int = 1
+    # Общий лимит лёгких триалов за календарный день (Europe/Moscow) на всю систему; 0 — триал закрыт.
+    TRIAL_LITE_DAILY_LIMIT: int = 30
+    # Лёгких триалов с одного IP за календарный день; 0 выключает проверку по IP.
+    TRIAL_LITE_PER_IP_DAILY_LIMIT: int = 1
     DEFAULT_TRAFFIC_LIMIT_GB: int = 100
     DEFAULT_DEVICE_LIMIT: int = 1
     DEFAULT_TRAFFIC_RESET_STRATEGY: str = 'MONTH'

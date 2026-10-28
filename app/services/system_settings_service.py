@@ -715,6 +715,17 @@ class BotConfigurationService:
         ],
     }
 
+    # Допустимые значения целочисленных настроек (включительно). Проверяются при вводе из админки
+    # (бот, кабинет, web API); значение из окружения, вышедшее за границы, дополнительно
+    # ограничивается там, где оно читается.
+    NUMERIC_BOUNDS: ClassVar[dict[str, tuple[int, int]]] = {
+        'TRIAL_LITE_DURATION_HOURS': (1, 720),
+        'TRIAL_LITE_TRAFFIC_LIMIT_GB': (1, 1000),
+        'TRIAL_LITE_DEVICE_LIMIT': (1, 20),
+        'TRIAL_LITE_DAILY_LIMIT': (0, 100000),
+        'TRIAL_LITE_PER_IP_DAILY_LIMIT': (0, 1000),
+    }
+
     SETTING_HINTS: dict[str, dict[str, str]] = {
         'SUPPORT_ADMIN_TICKET_NOTIFICATIONS_ENABLED': {
             'description': 'Сообщать администраторам в Telegram о новых тикетах и ответах пользователей.',
@@ -1338,6 +1349,60 @@ class BotConfigurationService:
             'warning': 'Неверный формат будет проигнорирован при создании пользователя.',
             'dependencies': 'Активация триала и включенная интеграция с RemnaWave',
         },
+        'TRIAL_LITE_ENABLED': {
+            'description': (
+                'Лёгкий триал для аккаунтов без Telegram: короткая проверка с малым трафиком, '
+                'общим дневным лимитом и лимитом по IP. Полный триал остаётся за аккаунтами с Telegram.'
+            ),
+            'format': 'Булево значение (да/нет).',
+            'example': 'false',
+            'warning': (
+                'Выключено — поведение триала не меняется. Включено — аккаунт без Telegram получает только '
+                'лёгкий триал, даже если TRIAL_DISABLED_FOR=email закрывает ему полный.'
+            ),
+            'dependencies': 'TRIAL_DISABLED_FOR, TRIAL_LITE_DAILY_LIMIT, REDIS_URL',
+        },
+        'TRIAL_LITE_DURATION_HOURS': {
+            'description': 'Длительность лёгкого триала в часах.',
+            'format': 'Целое число часов.',
+            'example': '24',
+            'warning': 'Действует для новых триалов; уже выданные подписки не меняются.',
+            'dependencies': 'TRIAL_LITE_ENABLED',
+        },
+        'TRIAL_LITE_TRAFFIC_LIMIT_GB': {
+            'description': 'Лимит трафика лёгкого триала в гигабайтах. Безлимита нет.',
+            'format': 'Целое число ГБ.',
+            'example': '2',
+            'warning': ('Суточный потолок расходов ≈ TRIAL_LITE_DAILY_LIMIT × этот лимит: меняйте их вместе.'),
+            'dependencies': 'TRIAL_LITE_ENABLED, TRIAL_LITE_DAILY_LIMIT',
+        },
+        'TRIAL_LITE_DEVICE_LIMIT': {
+            'description': 'Лимит устройств лёгкого триала.',
+            'format': 'Целое число устройств.',
+            'example': '1',
+            'warning': 'Действует для новых триалов; уже выданные подписки не меняются.',
+            'dependencies': 'TRIAL_LITE_ENABLED',
+        },
+        'TRIAL_LITE_DAILY_LIMIT': {
+            'description': (
+                'Сколько лёгких триалов можно выдать за календарный день (Europe/Moscow) на всю систему. '
+                'Счётчик общий для бота и кабинета и хранится в Redis.'
+            ),
+            'format': 'Целое число; 0 закрывает лёгкий триал совсем.',
+            'example': '30',
+            'warning': 'Redis недоступен — лёгкий триал не выдаётся (безопасный отказ).',
+            'dependencies': 'TRIAL_LITE_ENABLED, REDIS_URL',
+        },
+        'TRIAL_LITE_PER_IP_DAILY_LIMIT': {
+            'description': 'Сколько лёгких триалов можно выдать с одного IP за календарный день (Europe/Moscow).',
+            'format': 'Целое число; 0 выключает проверку по IP.',
+            'example': '1',
+            'warning': (
+                'IP берётся из заголовков доверенного прокси (CABINET_TRUSTED_PROXIES); '
+                'за общим NAT несколько человек делят один лимит.'
+            ),
+            'dependencies': 'TRIAL_LITE_ENABLED, CABINET_TRUSTED_PROXIES',
+        },
         'PAID_SUBSCRIPTION_USER_TAG': {
             'description': ('Тег, который бот ставит пользователю при покупке платной подписки в панели RemnaWave.'),
             'format': 'До 16 символов: заглавные A-Z, цифры и подчёркивание.',
@@ -1704,6 +1769,26 @@ class BotConfigurationService:
         return str(value)
 
     @classmethod
+    def get_bounds(cls, key: str) -> tuple[int, int] | None:
+        """Границы целочисленной настройки (включительно) или None, если они не заданы."""
+        return cls.NUMERIC_BOUNDS.get(key)
+
+    @classmethod
+    def is_within_bounds(cls, key: str, value: Any) -> bool:
+        """True, если у настройки нет границ или число в них укладывается."""
+        bounds = cls.get_bounds(key)
+        if bounds is None or isinstance(value, bool) or not isinstance(value, int):
+            return True
+        return bounds[0] <= value <= bounds[1]
+
+    @classmethod
+    def check_bounds(cls, key: str, value: Any) -> None:
+        """Бросает ValueError, если число выходит за границы настройки."""
+        if not cls.is_within_bounds(key, value):
+            low, high = cls.NUMERIC_BOUNDS[key]
+            raise ValueError(f'Допустимо от {low} до {high}')
+
+    @classmethod
     def get_setting_guidance(cls, key: str) -> dict[str, str]:
         definition = cls.get_definition(key)
         original = cls.get_original_value(key)
@@ -1719,6 +1804,9 @@ class BotConfigurationService:
             if definition.python_type is bool
             else 'Введите значение соответствующего типа (число или строку).'
         )
+        bounds = cls.get_bounds(key)
+        if bounds is not None:
+            base_format = f'{base_format} Допустимо: от {bounds[0]} до {bounds[1]}.'
         example = hints.get('example') or (cls.format_value_human(key, original) if original is not None else '—')
         warning = hints.get('warning') or ('Неверные значения могут привести к некорректной работе бота.')
         dependencies = hints.get('dependencies') or definition.category_label
@@ -2302,6 +2390,7 @@ class BotConfigurationService:
 
         if python_type is int:
             parsed_value: Any = int(text)
+            cls.check_bounds(key, parsed_value)
         elif python_type is float:
             parsed_value = float(text.replace(',', '.'))
         else:
