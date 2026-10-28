@@ -22,7 +22,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -166,6 +166,20 @@ def _extendable_subscription_query(user_id: int, *, lock: bool):
         .execution_options(populate_existing=True)
     )
     return query.with_for_update() if lock else query
+
+
+async def carry_over_on_merge(db: AsyncSession, *, primary_id: int, secondary_id: int) -> None:
+    """Слияние аккаунтов: факт «бонус получен» остаётся у выжившего.
+
+    Поглощённый аккаунт становится надгробием (статус deleted), его строка выдачи осталась бы при
+    нём, а выживший мог бы отвязать провайдер, привязать снова и получить бонус второй раз за одного
+    человека. Строка переезжает на выжившего, если своей у него нет; иначе остаётся его собственная.
+    Без чтения результата: подзапрос ``NOT EXISTS`` сам решает, переносить ли.
+    """
+    survivor_has_row = select(AuthLinkBonus.id).where(AuthLinkBonus.user_id == primary_id).exists()
+    await db.execute(
+        update(AuthLinkBonus).where(AuthLinkBonus.user_id == secondary_id, ~survivor_has_row).values(user_id=primary_id)
+    )
 
 
 async def get_link_bonus_status(db: AsyncSession, user: Any) -> LinkBonusStatus:
