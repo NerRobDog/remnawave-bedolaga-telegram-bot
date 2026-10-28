@@ -1603,6 +1603,12 @@ class Settings(BaseSettings):
     PASSKEY_SIGNUP_LIMIT_PER_MINUTE: int = 3
     PASSKEY_SIGNUP_LIMIT_PER_HOUR: int = 10
     PASSKEY_SIGNUP_LIMIT_PER_DAY: int = 30
+    # Бонус за привязку второго способа входа: дни к платной подписке за первую привязку passkey
+    # или OAuth-провайдера (почта не считается). Выключен по умолчанию. Подробности — docs/auth-link-bonus.md.
+    AUTH_LINK_BONUS_ENABLED: bool = False
+    AUTH_LINK_BONUS_DAYS: int = 7
+    # True — бонус только аккаунтам с историей оплаты (платная подписка или пополнение/покупка).
+    AUTH_LINK_BONUS_REQUIRES_PAID: bool = True
     # Регистрация по email с одного IP. Минутное окно ловит всплеск; часовое и суточное —
     # скрипт, который ждёт минуту и продолжает (волна одноразовых почт за триалами). 0 выключает окно.
     CABINET_EMAIL_REGISTER_LIMIT_PER_MINUTE: int = 5

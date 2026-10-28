@@ -488,6 +488,7 @@ class BotConfigurationService:
         'REDIS_': 'REDIS',
         'REMNAWAVE': 'REMNAWAVE',
         'TRIAL_': 'TRIAL',
+        'AUTH_LINK_BONUS_': 'REGISTRATION_ACCESS',
         'TRAFFIC_PACKAGES': 'TRAFFIC_PACKAGES',
         'PRICE_TRAFFIC': 'TRAFFIC_PACKAGES',
         'TRAFFIC_': 'TRAFFIC',
@@ -725,6 +726,7 @@ class BotConfigurationService:
         'TRIAL_LITE_DEVICE_LIMIT': (1, 20),
         'TRIAL_LITE_DAILY_LIMIT': (0, 100000),
         'TRIAL_LITE_PER_IP_DAILY_LIMIT': (0, 1000),
+        'AUTH_LINK_BONUS_DAYS': (1, 365),
     }
 
     SETTING_HINTS: dict[str, dict[str, str]] = {
@@ -1403,6 +1405,39 @@ class BotConfigurationService:
                 'за общим NAT несколько человек делят один лимит.'
             ),
             'dependencies': 'TRIAL_LITE_ENABLED, CABINET_TRUSTED_PROXIES',
+        },
+        'AUTH_LINK_BONUS_ENABLED': {
+            'description': (
+                'Бонусные дни к платной подписке за первую привязку passkey или OAuth-провайдера '
+                '(Google, Yandex, Discord, VK). Почта не считается. Выдаётся один раз на аккаунт.'
+            ),
+            'format': 'Булево значение (да/нет).',
+            'example': 'false',
+            'warning': (
+                'Бонус — бесплатное платное время: включайте вместе с AUTH_LINK_BONUS_REQUIRES_PAID. '
+                'Без активной платной подписки на момент привязки дни не выдаются и право не тратится.'
+            ),
+            'dependencies': 'AUTH_LINK_BONUS_DAYS, AUTH_LINK_BONUS_REQUIRES_PAID, PASSKEY_ENABLED или OAuth-провайдер',
+        },
+        'AUTH_LINK_BONUS_DAYS': {
+            'description': 'Сколько дней добавить к концу платной подписки за первую привязку второго способа входа.',
+            'format': 'Целое число дней.',
+            'example': '7',
+            'warning': 'Действует для новых привязок; уже выданные бонусы не пересчитываются.',
+            'dependencies': 'AUTH_LINK_BONUS_ENABLED',
+        },
+        'AUTH_LINK_BONUS_REQUIRES_PAID': {
+            'description': (
+                'Выдавать бонус только аккаунтам с историей оплаты (платная подписка, пополнение или покупка). '
+                'Аккаунт только с триалом бонус не получает.'
+            ),
+            'format': 'Булево значение (да/нет).',
+            'example': 'true',
+            'warning': (
+                'Выключено — бонус получит любой аккаунт с активной платной подпиской, '
+                'в том числе выданной администратором или промокодом.'
+            ),
+            'dependencies': 'AUTH_LINK_BONUS_ENABLED',
         },
         'PAID_SUBSCRIPTION_USER_TAG': {
             'description': ('Тег, который бот ставит пользователю при покупке платной подписки в панели RemnaWave.'),
