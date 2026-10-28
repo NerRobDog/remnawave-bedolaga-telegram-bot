@@ -182,6 +182,10 @@ class TrialInfoResponse(BaseModel):
     price_kopeks: int = 0
     price_rubles: float = 0.0
     reason_unavailable: str | None = None
+    # 'full' | 'lite' | None (триала нет). У лёгкого триала срок короче суток возможен, поэтому
+    # точный срок — в часах; duration_days для него округляется вниз и может быть 0.
+    kind: str | None = None
+    duration_hours: int | None = None
 
 
 # ============ Purchase Options Schemas ============

@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +37,7 @@ from app.database.crud.user import add_user_balance, get_user_by_id, subtract_us
 from app.database.database import AsyncSessionLocal
 from app.database.models import PaymentMethod, Subscription, Tariff, Transaction, TransactionType, User
 from app.localization.texts import get_texts
+from app.services.lite_trial import check_trial_availability, claim_trial
 from app.services.notification_delivery_service import (
     NotificationType,
     notification_delivery_service,
@@ -50,6 +51,13 @@ from app.services.subscription_purchase_service import (
 )
 from app.services.subscription_service import SubscriptionService
 from app.services.traffic_reset_policy import should_reset_traffic_on_tariff_purchase
+from app.services.trial_eligibility import (
+    LiteTrialReason,
+    LiteTrialRefused,
+    TrialMode,
+    get_lite_trial_limits,
+    get_trial_mode,
+)
 from app.services.user_cart_service import user_cart_service
 from app.utils.pricing_utils import (
     calculate_months_from_days,
@@ -61,6 +69,7 @@ from app.utils.subscription_utils import resolve_tariff_purchase_device_limit
 from app.utils.timezone import format_local_datetime
 
 from ...dependencies import get_cabinet_db, get_current_cabinet_user
+from ...ip_utils import get_client_ip
 from ...schemas.subscription import (
     PurchasePreviewRequest,
     SubscriptionResponse,
@@ -1531,20 +1540,46 @@ async def purchase_tariff(
 
 # ============ Trial ============
 
+_TRIAL_REFUSAL_MESSAGES: dict[LiteTrialReason, str] = {
+    LiteTrialReason.DAILY_LIMIT_REACHED: 'The daily limit of trials has been reached. Try again tomorrow',
+    LiteTrialReason.IP_LIMIT_REACHED: 'A trial has already been issued from this network today',
+    LiteTrialReason.IDENTITY_ALREADY_USED: 'A trial has already been used by this identity',
+    LiteTrialReason.NOT_AVAILABLE: 'Trial is not available right now',
+}
+
+
+def _client_ip_or_none(http_request: Request) -> str | None:
+    try:
+        return get_client_ip(http_request)
+    except HTTPException:
+        return None
+
+
+def _trial_refusal(reason: LiteTrialReason) -> HTTPException:
+    """Отказ в выдаче триала: код причины в ``detail.code`` совпадает с ``reason_unavailable`` из GET."""
+    limited = reason in (LiteTrialReason.DAILY_LIMIT_REACHED, LiteTrialReason.IP_LIMIT_REACHED)
+    return HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS if limited else status.HTTP_400_BAD_REQUEST,
+        detail={'code': reason.value, 'message': _TRIAL_REFUSAL_MESSAGES[reason]},
+    )
+
 
 @router.get('/trial', response_model=TrialInfoResponse)
 async def get_trial_info(
+    http_request: Request,
     user: User = Depends(get_current_cabinet_user),
     db: AsyncSession = Depends(get_cabinet_db),
 ):
     """Get trial subscription info and availability."""
     await db.refresh(user, ['subscriptions'])
 
-    # Проверяем, отключён ли триал для этого типа пользователя
-    if settings.is_trial_disabled_for_user(getattr(user, 'auth_type', 'telegram')):
+    # Какой триал положен этому аккаунту (None — никакого): одна проверка с ботом и мини-приложением
+    mode = get_trial_mode(user)
+    if mode is None:
         return TrialInfoResponse(
             is_available=False,
             duration_days=settings.TRIAL_DURATION_DAYS,
+            duration_hours=settings.TRIAL_DURATION_DAYS * 24,
             traffic_limit_gb=settings.TRIAL_TRAFFIC_LIMIT_GB,
             device_limit=settings.TRIAL_DEVICE_LIMIT,
             requires_payment=bool(settings.TRIAL_PAYMENT_ENABLED),
@@ -1553,35 +1588,59 @@ async def get_trial_info(
             reason_unavailable='Trial is not available for your account type',
         )
 
-    duration_days = settings.TRIAL_DURATION_DAYS
-    traffic_limit_gb = settings.TRIAL_TRAFFIC_LIMIT_GB
-    device_limit = settings.TRIAL_DEVICE_LIMIT
-    requires_payment = bool(settings.TRIAL_PAYMENT_ENABLED)
-    price_kopeks = settings.TRIAL_ACTIVATION_PRICE if requires_payment else 0
+    if mode == TrialMode.LITE:
+        limits = get_lite_trial_limits()
+        duration_days = limits.duration_hours // 24
+        duration_hours = limits.duration_hours
+        traffic_limit_gb = limits.traffic_limit_gb
+        device_limit = limits.device_limit
+        requires_payment = False
+        price_kopeks = 0
+    else:
+        duration_days = settings.TRIAL_DURATION_DAYS
+        traffic_limit_gb = settings.TRIAL_TRAFFIC_LIMIT_GB
+        device_limit = settings.TRIAL_DEVICE_LIMIT
+        requires_payment = bool(settings.TRIAL_PAYMENT_ENABLED)
+        price_kopeks = settings.TRIAL_ACTIVATION_PRICE if requires_payment else 0
 
-    # Get trial parameters from tariff if configured (same logic as activate_trial)
-    try:
-        from app.database.crud.tariff import get_tariff_by_id, get_trial_tariff
+        # Get trial parameters from tariff if configured (same logic as activate_trial)
+        try:
+            from app.database.crud.tariff import get_tariff_by_id, get_trial_tariff
 
-        trial_tariff = await get_trial_tariff(db)
+            trial_tariff = await get_trial_tariff(db)
 
-        if not trial_tariff:
-            trial_tariff_id = settings.get_trial_tariff_id()
-            if trial_tariff_id > 0:
-                # Триальный тариф намеренно может быть НЕактивным (скрыт из списка
-                # покупки, но задаёт лимиты триала) — не отбраковываем по is_active,
-                # иначе триал падает на TRIAL_TRAFFIC_LIMIT_GB. Так же ведут себя
-                # бот и miniapp, и get_trial_tariff (по флагу is_trial_available).
-                trial_tariff = await get_tariff_by_id(db, trial_tariff_id)
+            if not trial_tariff:
+                trial_tariff_id = settings.get_trial_tariff_id()
+                if trial_tariff_id > 0:
+                    # Триальный тариф намеренно может быть НЕактивным (скрыт из списка
+                    # покупки, но задаёт лимиты триала) — не отбраковываем по is_active,
+                    # иначе триал падает на TRIAL_TRAFFIC_LIMIT_GB. Так же ведут себя
+                    # бот и miniapp, и get_trial_tariff (по флагу is_trial_available).
+                    trial_tariff = await get_tariff_by_id(db, trial_tariff_id)
 
-        if trial_tariff:
-            traffic_limit_gb = trial_tariff.traffic_limit_gb
-            device_limit = trial_tariff.device_limit
-            tariff_trial_days = getattr(trial_tariff, 'trial_duration_days', None)
-            if tariff_trial_days:
-                duration_days = tariff_trial_days
-    except Exception as e:
-        logger.error('Error getting trial tariff for info', error=e)
+            if trial_tariff:
+                traffic_limit_gb = trial_tariff.traffic_limit_gb
+                device_limit = trial_tariff.device_limit
+                tariff_trial_days = getattr(trial_tariff, 'trial_duration_days', None)
+                if tariff_trial_days:
+                    duration_days = tariff_trial_days
+        except Exception as e:
+            logger.error('Error getting trial tariff for info', error=e)
+        duration_hours = duration_days * 24
+
+    def info(*, available: bool, reason: str | None = None) -> TrialInfoResponse:
+        return TrialInfoResponse(
+            is_available=available,
+            duration_days=duration_days,
+            duration_hours=duration_hours,
+            traffic_limit_gb=traffic_limit_gb,
+            device_limit=device_limit,
+            requires_payment=requires_payment,
+            price_kopeks=price_kopeks,
+            price_rubles=price_kopeks / 100,
+            reason_unavailable=reason,
+            kind=mode.value,
+        )
 
     # Check if user already has an active subscription
     subs = getattr(user, 'subscriptions', None) or []
@@ -1589,42 +1648,21 @@ async def get_trial_info(
     has_used_trial = user.is_trial_already_used()
 
     if has_active:
-        return TrialInfoResponse(
-            is_available=False,
-            duration_days=duration_days,
-            traffic_limit_gb=traffic_limit_gb,
-            device_limit=device_limit,
-            requires_payment=requires_payment,
-            price_kopeks=price_kopeks,
-            price_rubles=price_kopeks / 100,
-            reason_unavailable='You already have an active subscription',
-        )
+        return info(available=False, reason='You already have an active subscription')
 
     if has_used_trial:
-        return TrialInfoResponse(
-            is_available=False,
-            duration_days=duration_days,
-            traffic_limit_gb=traffic_limit_gb,
-            device_limit=device_limit,
-            requires_payment=requires_payment,
-            price_kopeks=price_kopeks,
-            price_rubles=price_kopeks / 100,
-            reason_unavailable='Trial already used',
-        )
+        return info(available=False, reason='Trial already used')
 
-    return TrialInfoResponse(
-        is_available=True,
-        duration_days=duration_days,
-        traffic_limit_gb=traffic_limit_gb,
-        device_limit=device_limit,
-        requires_payment=requires_payment,
-        price_kopeks=price_kopeks,
-        price_rubles=price_kopeks / 100,
-    )
+    unavailable = await check_trial_availability(db, user, mode, _client_ip_or_none(http_request))
+    if unavailable is not None:
+        return info(available=False, reason=unavailable.value)
+
+    return info(available=True)
 
 
 @router.post('/trial', response_model=SubscriptionResponse)
 async def activate_trial(
+    http_request: Request,
     request: TrialActivateRequest | None = None,
     user: User = Depends(get_current_cabinet_user),
     db: AsyncSession = Depends(get_cabinet_db),
@@ -1632,8 +1670,9 @@ async def activate_trial(
     """Activate trial subscription."""
     await db.refresh(user, ['subscriptions'])
 
-    # Проверяем, отключён ли триал для этого типа пользователя
-    if settings.is_trial_disabled_for_user(getattr(user, 'auth_type', 'telegram')):
+    # Какой триал положен этому аккаунту (None — никакого): одна проверка с ботом и мини-приложением
+    mode = get_trial_mode(user)
+    if mode is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail='Trial is not available for your account type',
@@ -1662,8 +1701,15 @@ async def activate_trial(
     except CheckoutSquadsUnavailableError as error:
         raise HTTPException(status_code=409, detail={'code': error.code, 'message': error.message}) from error
 
-    # Check if trial requires payment
-    requires_payment = bool(settings.TRIAL_PAYMENT_ENABLED)
+    # Лёгкий триал: журнал личностей и бюджет проверяются до списания денег; занимаются позже,
+    # прямо перед созданием подписки (см. claim_trial ниже).
+    client_ip = _client_ip_or_none(http_request)
+    unavailable = await check_trial_availability(db, user, mode, client_ip)
+    if unavailable is not None:
+        raise _trial_refusal(unavailable)
+
+    # Check if trial requires payment (лёгкий триал бесплатный)
+    requires_payment = bool(settings.TRIAL_PAYMENT_ENABLED) and mode == TrialMode.FULL
     if requires_payment:
         from app.database.crud.user import subtract_user_balance
 
@@ -1719,6 +1765,7 @@ async def activate_trial(
 
     # Get trial parameters from tariff if configured (same logic as bot handler)
     trial_duration = settings.TRIAL_DURATION_DAYS
+    trial_duration_hours = None
     trial_traffic_limit = settings.TRIAL_TRAFFIC_LIMIT_GB
     trial_device_limit = settings.TRIAL_DEVICE_LIMIT
     trial_squads = []
@@ -1767,16 +1814,46 @@ async def activate_trial(
         trial_squad_uuid = await get_random_trial_squad_uuid(db)
         trial_squads = [trial_squad_uuid] if trial_squad_uuid else []
 
-    # Create trial subscription
-    subscription = await create_trial_subscription(
-        db=db,
-        user_id=user.id,
-        duration_days=trial_duration,
-        traffic_limit_gb=trial_traffic_limit,
-        device_limit=trial_device_limit,
-        connected_squads=trial_squads or None,
-        tariff_id=tariff_id_for_trial,
-    )
+    # Лёгкий триал: срок и лимиты свои; сквады остаются теми же, что у обычного триала.
+    # Привязки к тарифу нет, иначе лимиты перебил бы тариф при сверке трафика.
+    if mode == TrialMode.LITE:
+        lite_limits = get_lite_trial_limits()
+        trial_duration_hours = lite_limits.duration_hours
+        trial_traffic_limit = lite_limits.traffic_limit_gb
+        trial_device_limit = lite_limits.device_limit
+        tariff_id_for_trial = None
+
+    # Create trial subscription. Бюджет и личность занимаются здесь и возвращаются, если подписки не вышло.
+    claim = None
+    try:
+        claim = await claim_trial(db, user, mode, client_ip)
+        subscription = await create_trial_subscription(
+            db=db,
+            user_id=user.id,
+            duration_days=trial_duration,
+            duration_hours=trial_duration_hours,
+            traffic_limit_gb=trial_traffic_limit,
+            device_limit=trial_device_limit,
+            connected_squads=trial_squads or None,
+            tariff_id=tariff_id_for_trial,
+        )
+    except LiteTrialRefused as refused:
+        # Гонка двух аккаунтов с одной личностью: проверка выше их не развела, развела запись в журнал.
+        if requires_payment and price_kopeks > 0:
+            refunded = await add_user_balance(
+                db,
+                user,
+                price_kopeks,
+                'Возврат оплаты за активацию триала',
+                transaction_type=TransactionType.REFUND,
+            )
+            if not refunded:
+                logger.critical('CRITICAL: trial refused after payment and refund failed', price_kopeks=price_kopeks)
+        raise _trial_refusal(refused.reason) from None
+    except BaseException:
+        if claim is not None:
+            await claim.release(db)
+        raise
 
     logger.info('Trial subscription activated for user', user_id=user.id)
 
