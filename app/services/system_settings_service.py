@@ -86,6 +86,7 @@ class BotConfigurationService:
         'ADMIN_IDS',
         'ADMIN_EMAILS',
         'CABINET_JWT_SECRET',
+        'CABINET_PEPPER',
         'WEB_API_DEFAULT_TOKEN',
         'WEB_API_TOKEN_HMAC_SECRET',
         'WEBHOOK_SECRET_TOKEN',

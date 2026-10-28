@@ -17,7 +17,7 @@ import hashlib
 import hmac
 import secrets
 
-from app.config import settings
+from app.cabinet.auth.pepper import pepper_secret
 
 
 #: Crockford base32: без I, L, O, U — их не путают с 1, 0 и V.
@@ -55,7 +55,7 @@ def normalize_code(raw: object) -> str | None:
 
 
 def _pepper() -> bytes:
-    return _PEPPER_LABEL + settings.get_cabinet_jwt_secret().encode()
+    return _PEPPER_LABEL + pepper_secret()
 
 
 def hash_code(code: str) -> str:
