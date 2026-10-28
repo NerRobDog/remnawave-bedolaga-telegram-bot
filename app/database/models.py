@@ -4665,6 +4665,27 @@ class TrialIdentityLedger(Base):
         return f'<TrialIdentityLedger id={self.id}>'
 
 
+class AuthLinkBonus(Base):
+    """Бонус за первую привязку второго способа входа: одна строка — одна выдача на аккаунт.
+
+    Уникальность ``user_id`` — единственная защита от повторной выдачи под гонкой: строка
+    вставляется в той же транзакции, что привязка и продление подписки, а проигравший
+    параллельный запрос получает ``IntegrityError`` и бонус не выдаёт. ``method`` — что привязано
+    (``passkey`` или имя OAuth-провайдера); для аудита, на логику не влияет.
+    """
+
+    __tablename__ = 'auth_link_bonus'
+    __table_args__ = (UniqueConstraint('user_id', name='uq_auth_link_bonus_user_id'),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    method = Column(String(32), nullable=False)
+    granted_at = Column(AwareDateTime(), default=func.now(), server_default=func.now(), nullable=False)
+
+    def __repr__(self) -> str:
+        return f'<AuthLinkBonus id={self.id} user_id={self.user_id} method={self.method!r}>'
+
+
 # ==================== FORTUNE WHEEL ====================
 
 
