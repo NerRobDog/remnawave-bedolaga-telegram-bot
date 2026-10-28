@@ -2336,5 +2336,6 @@
   "TOPUP_RETRY_TOO_LOW": "❌ 最低充值金额：{minimum} 卢布。\n\n如需继续，请向机器人发送一条消息，输入 {minimum} 至 {maximum} 卢布之间的充值金额。",
   "TOPUP_RETRY_TOO_HIGH": "❌ 最高充值金额：{maximum} 卢布。\n\n如需继续，请向机器人发送一条消息，输入 {minimum} 至 {maximum} 卢布之间的充值金额。",
   "TOPUP_RETRY_EXAMPLE": "例如，发送：{amount}",
-  "TOPUP_RETRY_NO_RANGE": "❌ 此方式没有可手动输入的有效金额（最低 {minimum} 卢布，最高 {maximum} 卢布）。请选择其他支付方式。"
+  "TOPUP_RETRY_NO_RANGE": "❌ 此方式没有可手动输入的有效金额（最低 {minimum} 卢布，最高 {maximum} 卢布）。请选择其他支付方式。",
+  "AUTH_LINK_BONUS_GRANTED": "🎁 <b>登录方式绑定奖励</b>\n\n您已绑定第二种登录方式，感谢！您的订阅已增加 {days} 天，现有效期至 {until}。"
 }

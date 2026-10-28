@@ -2336,5 +2336,6 @@
   "TOPUP_RETRY_TOO_LOW": "❌ Minimum top-up amount: {minimum} RUB.\n\nTo continue, send the bot a new top-up amount between {minimum} RUB and {maximum} RUB.",
   "TOPUP_RETRY_TOO_HIGH": "❌ Maximum top-up amount: {maximum} RUB.\n\nTo continue, send the bot a new top-up amount between {minimum} RUB and {maximum} RUB.",
   "TOPUP_RETRY_EXAMPLE": "For example, send: {amount}",
-  "TOPUP_RETRY_NO_RANGE": "❌ This method has no valid amount for manual input (minimum {minimum} RUB, maximum {maximum} RUB). Choose another payment method."
+  "TOPUP_RETRY_NO_RANGE": "❌ This method has no valid amount for manual input (minimum {minimum} RUB, maximum {maximum} RUB). Choose another payment method.",
+  "AUTH_LINK_BONUS_GRANTED": "🎁 <b>Sign-in method bonus</b>\n\nYou linked a second sign-in method — thank you! {days} days were added to your subscription; it is now valid until {until}."
 }

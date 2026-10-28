@@ -89,6 +89,7 @@ class EmailNotificationTemplates:
             NotificationType.PROMO_OFFER: self._promo_offer_template,
             NotificationType.TICKET_REPLY: self._ticket_reply_template,
             NotificationType.PROMO_GROUP_AUTO_ASSIGNED: self._promo_group_auto_assigned_template,
+            NotificationType.AUTH_LINK_BONUS: self._auth_link_bonus_template,
             NotificationType.EMAIL_VERIFICATION: self._email_verification_template,
             NotificationType.PASSWORD_RESET: self._password_reset_template,
             NotificationType.EMAIL_CHANGE_CODE: self._email_change_code_template,
@@ -2055,6 +2056,33 @@ class EmailNotificationTemplates:
         content = (
             f'<h2>{subject}</h2><div class="highlight"><p>{intro}</p>{discounts_html}</div>'
             f'{self._get_cabinet_button(language)}'
+        )
+        return {'subject': subject, 'body_html': self._get_base_template(content, language)}
+
+    def _auth_link_bonus_template(self, language: str, context: dict[str, Any]) -> dict[str, str]:
+        """Бонусные дни к подписке за первую привязку второго способа входа."""
+        try:
+            days = max(0, int(context.get('days') or 0))
+        except (TypeError, ValueError):
+            days = 0
+        until = html.escape(str(context.get('until') or ''))
+
+        subjects = {
+            'ru': 'Бонус за привязку способа входа',
+            'en': 'Sign-in method bonus',
+            'zh': '登录方式绑定奖励',
+            'ua': "Бонус за прив'язку способу входу",
+        }
+        intros = {
+            'ru': f'Вы привязали второй способ входа — спасибо! К вашей подписке добавлено {days} дн., теперь она действует до <strong>{until}</strong>.',
+            'en': f'You linked a second sign-in method — thank you! {days} days were added to your subscription; it is now valid until <strong>{until}</strong>.',
+            'zh': f'您已绑定第二种登录方式，感谢！您的订阅已增加 {days} 天，现有效期至 <strong>{until}</strong>。',
+            'ua': f"Ви прив'язали другий спосіб входу — дякуємо! До вашої підписки додано {days} дн., тепер вона діє до <strong>{until}</strong>.",
+        }
+        subject = subjects.get(language, subjects['ru'])
+        intro = intros.get(language, intros['ru'])
+        content = (
+            f'<h2>{subject}</h2><div class="highlight success"><p>{intro}</p></div>{self._get_cabinet_button(language)}'
         )
         return {'subject': subject, 'body_html': self._get_base_template(content, language)}
 

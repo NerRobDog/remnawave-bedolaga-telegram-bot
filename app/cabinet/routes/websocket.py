@@ -474,6 +474,22 @@ async def notify_user_referral_registered(
     )
 
 
+async def notify_user_link_bonus_granted(
+    user_id: int,
+    days: int,
+    new_expires_at: datetime | str | None = None,
+) -> None:
+    """Уведомить пользователя о бонусных днях за первую привязку второго способа входа."""
+    await cabinet_ws_manager.send_to_user(
+        user_id,
+        {
+            'type': 'auth_link_bonus.granted',
+            'days': days,
+            'new_expires_at': _iso_utc(new_expires_at),
+        },
+    )
+
+
 # ============================================================================
 # Прочие уведомления
 # ============================================================================
