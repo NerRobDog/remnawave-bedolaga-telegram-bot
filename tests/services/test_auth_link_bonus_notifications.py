@@ -101,6 +101,49 @@ async def test_a_failing_panel_sync_does_not_stop_the_notification(wired) -> Non
     wired.ws.assert_awaited_once()
 
 
+class _ExpirableUser(SimpleNamespace):
+    """Как ORM-объект после отката сессии: любое чтение поля бросает (в async-сессии это MissingGreenlet)."""
+
+    def expire(self) -> None:
+        object.__setattr__(self, '_expired', True)
+
+    def __getattribute__(self, name):
+        if not name.startswith('_') and name != 'expire' and object.__getattribute__(self, '__dict__').get('_expired'):
+            raise RuntimeError(f'MissingGreenlet: {name} read on an expired instance')
+        return object.__getattribute__(self, name)
+
+
+@pytest.mark.asyncio
+async def test_the_notification_survives_a_panel_sync_that_expires_the_user(wired) -> None:
+    user = _ExpirableUser(
+        id=5, telegram_id=1001, language='en', email='a@example.com', email_verified=True, status='active'
+    )
+    wired.sync.side_effect = lambda *_a, **_k: (user.expire(), (_ for _ in ()).throw(RuntimeError('panel down')))[1]
+    seen = {}
+
+    async def deliver(**kwargs):
+        target = kwargs['user']
+        seen.update(
+            id=target.id,
+            status=target.status,
+            telegram_id=target.telegram_id,
+            language=target.language,
+            email=target.email,
+            email_verified=target.email_verified,
+        )
+        return True
+
+    wired.delivery.side_effect = deliver
+
+    await notifications.deliver_link_bonus(_db_with_subscription(), user, GRANT)
+
+    wired.delivery.assert_awaited_once()
+    assert seen == dict(
+        id=5, status='active', telegram_id=1001, language='en', email='a@example.com', email_verified=True
+    )
+    assert wired.delivery.await_args.kwargs['bot'] is wired.bot
+
+
 @pytest.mark.asyncio
 async def test_a_failing_delivery_never_raises(wired) -> None:
     wired.delivery.side_effect = RuntimeError('telegram down')
