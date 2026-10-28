@@ -1571,6 +1571,11 @@ class Settings(BaseSettings):
     # Cabinet (Personal Account) settings
     CABINET_ENABLED: bool = False
     CABINET_JWT_SECRET: str | None = None
+    # Перец для хэшей recovery-кодов и журнала личностей триала. Не задан — используется
+    # CABINET_JWT_SECRET (хэши те же, что и раньше), а без него BOT_TOKEN. Задайте текущим значением
+    # CABINET_JWT_SECRET до его ротации, иначе ротация обнулит коды и память журнала. Это секрет:
+    # в админке не редактируется.
+    CABINET_PEPPER: str | None = None
     CABINET_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     CABINET_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     CABINET_ALLOWED_ORIGINS: str = ''

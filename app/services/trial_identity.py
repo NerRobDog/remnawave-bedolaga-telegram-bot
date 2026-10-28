@@ -26,7 +26,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from app.config import settings
+from app.cabinet.auth.pepper import pepper_secret
 from app.database.models import TrialIdentityLedger
 from app.services.trial_eligibility import LiteTrialReason, LiteTrialRefused
 
@@ -78,7 +78,7 @@ def identity_keys(user: Any) -> list[str]:
 
 
 def _pepper() -> bytes:
-    return _PEPPER_LABEL + settings.get_cabinet_jwt_secret().encode()
+    return _PEPPER_LABEL + pepper_secret()
 
 
 def hash_identity(key: str) -> str:
