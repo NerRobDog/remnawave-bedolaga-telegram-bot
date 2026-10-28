@@ -236,6 +236,38 @@ async def test_grant_sets_the_panel_expiry_marker_and_clears_sent_expiry_notices
 
 
 @uses_db
+async def test_the_tariff_traffic_rule_is_applied_like_on_any_renewal(db, monkeypatch) -> None:
+    """Правило репозитория: любое продление даты применяет правило трафика тарифа (см. сторож в tests/contracts)."""
+    from unittest.mock import AsyncMock
+
+    applied = AsyncMock()
+    monkeypatch.setattr(service, 'reconcile_tariff_traffic_limit', applied)
+    user, sub = await paying_user(db)
+
+    grant = await service.grant_link_bonus(db, user, 'passkey', had_qualifying_method=False)
+
+    assert grant is not None
+    applied.assert_awaited_once()
+    assert applied.await_args.args[1].id == sub.id
+
+
+@uses_db
+async def test_a_failure_applying_the_traffic_rule_rolls_the_whole_grant_back(db, monkeypatch) -> None:
+    async def _boom(*args, **kwargs):
+        raise RuntimeError('housekeeping failed')
+
+    monkeypatch.setattr(service, 'reconcile_tariff_traffic_limit', _boom)
+    user, sub = await paying_user(db)
+    sub_id = sub.id
+    before = await end_date(db, sub)
+
+    assert await service.grant_link_bonus(db, user, 'passkey', had_qualifying_method=False) is None
+    await db.commit()
+
+    assert await end_date(db, SimpleNamespace(id=sub_id)) == before and await rows(db) == []
+
+
+@uses_db
 async def test_a_grant_is_visible_to_the_admin_in_the_log(db) -> None:
     from structlog.testing import capture_logs
 

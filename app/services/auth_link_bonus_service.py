@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database.auth_methods import OAUTH_PROVIDER_COLUMNS
 from app.database.crud.notification import clear_notifications
+from app.database.crud.subscription import reconcile_tariff_traffic_limit
 from app.database.crud.transaction import REAL_PAYMENT_METHODS
 from app.database.models import (
     AuthLinkBonus,
@@ -250,6 +251,9 @@ async def grant_link_bonus(
             subscription.end_date = subscription.end_date + timedelta(days=days)
             subscription.pending_panel_expire_at = subscription.end_date
             subscription.updated_at = now
+            # Любое продление даты применяет правило трафика тарифа (сторож в tests/contracts); для
+            # активной подписки это лишь уборка истёкших докупок, лимит и расход не меняются.
+            await reconcile_tariff_traffic_limit(db, subscription, now=now)
             # Напоминания «подписка заканчивается» должны сработать заново на новую дату.
             await clear_notifications(db, subscription.id, commit=False)
             await db.flush()
