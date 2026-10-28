@@ -168,6 +168,9 @@
 - `app/cabinet/auth/password_utils.py` — Python-модуль
   Классы: нет
   Функции: `hash_password` — Hash a password using bcrypt., `verify_password` — Verify a password against its hash.
+- `app/cabinet/auth/pepper.py` — Python-модуль
+  Классы: нет
+  Функции: `pepper_secret` — Секрет под перец (без метки назначения).
 - `app/cabinet/auth/recovery_codes.py` — Python-модуль
   Классы: нет
   Функции: `generate_code` — Новый код: 16 равновероятных символов алфавита, без разделителей., `format_code` — ``0123456789ABCDEF`` → ``0123-4567-89AB-CDEF``: так код показывают человеку., `normalize_code` — Привести введённый человеком код к каноническому виду; ``None`` — это не код., `hash_code` — HMAC-SHA256 канонического кода под перцем; hex, 64 символа., `hash_typed_code` — Хэш введённого человеком кода; ``None``, если ввод не похож на код., `new_code_set` — ``count`` различных кодов: пары (код для показа человеку, хэш для БД).
@@ -3533,6 +3536,9 @@
 - `tests/cabinet/test_bulk_delete_subscription_lazy_user.py` — Python-модуль
   Классы: нет
   Функции: `test_known_subscriptions_falls_back_to_target` — Коллекция недоступна → берём целевую подписку, а не падаем., `test_known_subscriptions_uses_loaded_collection` — Коллекция загружена → отдаём её целиком, запасная не нужна., `test_known_subscriptions_keeps_loaded_empty_list_empty` — Загруженный пустой список — это «подписок нет», а не пробел в данных., `test_active_paid_skip_reports_target_without_collection` — Ветка «активная платная» тоже читает подписки — и тоже не должна падать., `test_execute_for_user_survives_unloaded_collection` — Досборка подписок в _execute_for_user не должна ронять действие., `test_delete_subscription_survives_unloaded_collection` — Удаление истёкшего триала доходит до конца, а не падает на подписках., `test_known_subscriptions_falls_back_when_sqlalchemy_21_wraps_missing_greenlet`
+- `tests/cabinet/test_cabinet_pepper.py` — Python-модуль
+  Классы: нет
+  Функции: `jwt_only`, `test_without_cabinet_pepper_hashes_are_byte_identical_to_the_old_ones`, `test_the_bot_token_fallback_is_unchanged`, `test_the_bot_token_fallback_still_warns`, `test_cabinet_pepper_changes_every_hash`, `test_rotating_the_jwt_secret_does_not_move_hashes_once_the_pepper_is_set`, `test_setting_the_pepper_to_the_current_jwt_secret_keeps_every_hash` — Путь миграции: перед ротацией CABINET_PEPPER = текущий CABINET_JWT_SECRET, ничего не теряется., `test_changing_the_pepper_changes_the_hashes`, `test_precedence_is_pepper_then_jwt_secret_then_bot_token`, `test_a_blank_pepper_counts_as_unset`, `test_the_two_users_keep_different_labels_under_one_pepper` — Один перец, но домены хэшей разделены метками: код и ключ личности с одним текстом не совпадают., `test_the_pepper_is_not_an_admin_editable_setting` — Секрет: ни в списке настроек админки, ни через API настроек., `test_the_pepper_is_optional_and_documented`
 - `tests/cabinet/test_cashera_recurrent_routes.py` — Python-модуль
   Классы: нет
   Функции: `user`, `test_enable_gated_before_touching_db`, `test_get_gated_before_touching_db`, `test_cancel_works_even_when_gate_off` — Отмена — операция безопасности, флагом не гейтится., `test_enable_rejects_trial_subscription`, `test_enable_surfaces_missing_price_reason` — Нет цены за период — причина доходит до пользователя., `test_enable_returns_payment_url`, `test_get_returns_none_status_without_binding`, `test_get_returns_binding_state`, `test_purchase_gated_and_maps_errors` — Покупка привязкой: гейт фичи, отказы доносятся как 400., `test_purchase_returns_payment_url_and_subscription`
@@ -3848,6 +3854,9 @@
 - `tests/cabinet/test_traffic_packages_discount.py` — Python-модуль
   Классы: нет
   Функции: `classic_mode` — Drive ``get_traffic_packages`` down the classic (non-tariff) branch., `test_traffic_packages_expose_promo_group_discount` — A 20% traffic promo-group discount surfaces on every package., `test_traffic_packages_no_discount_when_group_has_none` — No promo discount → no discount fields, raw price unchanged., `test_traffic_packages_respect_apply_discounts_to_addons_flag` — When the promo group opts out of addon discounts, traffic stays full price., `test_traffic_packages_apply_discount_in_tariff_mode` — Tariff-mode packages go through the same discount path as classic mode., `test_traffic_packages_floor_displayed_price_at_one_ruble` — An extreme discount never displays below 1₽ — matching POST's max(100,...) floor., `test_traffic_packages_default_group_uses_prorated_period_hint` — Default group period-based traffic discount uses the same ceil(remaining days)
+- `tests/cabinet/test_trial_refund_after_ledger_race.py` — Python-модуль
+  Классы: нет
+  Функции: `test_the_charge_is_refunded_through_add_user_balance_as_a_refund`, `test_a_failed_refund_is_logged_as_critical_and_the_answer_is_unchanged`, `test_a_free_full_trial_refused_by_the_race_refunds_nothing`
 - `tests/cabinet/test_unlink_forgets_provider_email.py` — Python-модуль
   Классы: нет
   Функции: `test_unlink_forgets_the_email_that_only_this_provider_attested`, `test_unlink_keeps_the_email_once_a_password_made_it_a_login`, `test_unlink_keeps_an_email_verified_elsewhere`, `test_unlinking_another_provider_leaves_the_email_alone`
