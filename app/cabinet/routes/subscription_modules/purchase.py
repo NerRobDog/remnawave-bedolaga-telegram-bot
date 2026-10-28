@@ -1548,7 +1548,9 @@ _TRIAL_REFUSAL_MESSAGES: dict[LiteTrialReason, str] = {
 }
 
 
-def _client_ip_or_none(http_request: Request) -> str | None:
+def _client_ip_or_none(http_request: Request | None) -> str | None:
+    if http_request is None:
+        return None
     try:
         return get_client_ip(http_request)
     except HTTPException:
@@ -1566,9 +1568,9 @@ def _trial_refusal(reason: LiteTrialReason) -> HTTPException:
 
 @router.get('/trial', response_model=TrialInfoResponse)
 async def get_trial_info(
-    http_request: Request,
     user: User = Depends(get_current_cabinet_user),
     db: AsyncSession = Depends(get_cabinet_db),
+    http_request: Request = None,  # type: ignore[assignment]  # внедряется FastAPI; None — прямой вызов
 ):
     """Get trial subscription info and availability."""
     await db.refresh(user, ['subscriptions'])
@@ -1662,10 +1664,10 @@ async def get_trial_info(
 
 @router.post('/trial', response_model=SubscriptionResponse)
 async def activate_trial(
-    http_request: Request,
     request: TrialActivateRequest | None = None,
     user: User = Depends(get_current_cabinet_user),
     db: AsyncSession = Depends(get_cabinet_db),
+    http_request: Request = None,  # type: ignore[assignment]  # внедряется FastAPI; None — прямой вызов
 ):
     """Activate trial subscription."""
     await db.refresh(user, ['subscriptions'])
