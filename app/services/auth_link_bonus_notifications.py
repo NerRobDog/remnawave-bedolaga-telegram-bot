@@ -13,6 +13,9 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from typing import Any
+
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,14 +37,33 @@ async def deliver_link_bonus(db: AsyncSession, user: User, grant: LinkBonusGrant
     try:
         # Берём всё нужное из пользователя ДО похода в панель: её сбой откатывает сессию,
         # и ORM-объект протухает (в async-сессии это MissingGreenlet).
-        language = (user.language or settings.DEFAULT_LANGUAGE) or 'ru'
-        telegram_id = user.telegram_id
+        recipient = _snapshot_recipient(user)
+        language = (recipient.language or settings.DEFAULT_LANGUAGE) or 'ru'
 
         await _sync_panel(db, grant)
         await _notify_cabinet(grant)
-        await _notify_user(user, language, telegram_id, grant)
+        await _notify_user(recipient, language, recipient.telegram_id, grant)
     except Exception:
         logger.exception('Link bonus: post-grant delivery failed, the grant is kept', user_id=user_id)
+
+
+def _snapshot_recipient(user: User) -> Any:
+    """Plain-value copy of every user field the notification path reads.
+
+    ``send_notification`` reads status, telegram_id, email, email_verified, language, names and
+    notification_settings; on the expired ORM object after a rolled-back panel sync that raises.
+    """
+    return SimpleNamespace(
+        id=user.id,
+        status=user.status,
+        telegram_id=user.telegram_id,
+        email=user.email,
+        email_verified=user.email_verified,
+        language=user.language,
+        first_name=getattr(user, 'first_name', None),
+        username=getattr(user, 'username', None),
+        notification_settings=getattr(user, 'notification_settings', None),
+    )
 
 
 async def _sync_panel(db: AsyncSession, grant: LinkBonusGrant) -> None:
@@ -79,7 +101,7 @@ async def _notify_cabinet(grant: LinkBonusGrant) -> None:
         logger.warning('Link bonus: cabinet event not delivered', user_id=grant.user_id, exc_info=True)
 
 
-async def _notify_user(user: User, language: str, telegram_id: int | None, grant: LinkBonusGrant) -> None:
+async def _notify_user(user: Any, language: str, telegram_id: int | None, grant: LinkBonusGrant) -> None:
     bot = None
     try:
         from app.bot_factory import create_bot
