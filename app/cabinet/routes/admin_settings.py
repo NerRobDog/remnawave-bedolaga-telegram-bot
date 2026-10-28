@@ -141,6 +141,10 @@ def _coerce_value(key: str, value: Any) -> Any:
     except ValueError:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, 'Invalid value type') from None
 
+    if not bot_configuration_service.is_within_bounds(key, normalized):
+        low, high = bot_configuration_service.NUMERIC_BOUNDS[key]
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=f'Value must be between {low} and {high}')
+
     # Сравнение через as_choice_key: варианты описаны строками, а значение уже
     # приведено к типу настройки. У булевой это True/False, и прямое сравнение
     # с 'true' не совпадало никогда — настройка с вариантами отвечала 400 на
