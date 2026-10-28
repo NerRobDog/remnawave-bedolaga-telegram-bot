@@ -29,6 +29,7 @@ from app.database.crud.user import (
     set_user_oauth_provider_id,
 )
 from app.database.models import User
+from app.services import auth_link_bonus_service as link_bonus
 from app.services.account_merge_service import (
     compute_auth_methods,
     execute_merge,
@@ -109,8 +110,20 @@ class LinkedProvider(BaseModel):
     forgets_email: str | None = None
 
 
+class LinkBonusInfo(BaseModel):
+    """Бонус за привязку второго способа входа (docs/auth-link-bonus.md) — для баннера в кабинете."""
+
+    #: True, только если привязка passkey или OAuth-провайдера прямо сейчас добавила бы дни:
+    #: функция включена, бонус не получен, подходящих способов ещё нет, аккаунт платящий
+    #: (если это требуется) и есть активная платная подписка.
+    available: bool = False
+    #: Сколько дней даёт привязка (0, когда функция выключена).
+    days: int = 0
+
+
 class LinkedProvidersResponse(BaseModel):
     providers: list[LinkedProvider]
+    link_bonus: LinkBonusInfo = Field(default_factory=LinkBonusInfo)
 
 
 class LinkInitResponse(BaseModel):
@@ -416,7 +429,17 @@ async def get_linked_providers(
                 forgets_email=provider_attested_email(user, provider) if identifier else None,
             )
         )
-    return LinkedProvidersResponse(providers=providers)
+    return LinkedProvidersResponse(providers=providers, link_bonus=await _link_bonus_info(db, user))
+
+
+async def _link_bonus_info(db: AsyncSession, user: User) -> LinkBonusInfo:
+    """Флаг для баннера. Сбой его расчёта не должен ломать список способов входа."""
+    try:
+        status_ = await link_bonus.get_link_bonus_status(db, user)
+    except Exception:
+        logger.warning('Link bonus status failed, reporting it as unavailable', user_id=user.id, exc_info=True)
+        return LinkBonusInfo()
+    return LinkBonusInfo(available=status_.available, days=status_.days)
 
 
 @router.get('/link/{provider}/init', response_model=LinkInitResponse)
