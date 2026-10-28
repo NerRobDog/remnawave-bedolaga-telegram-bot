@@ -36,6 +36,8 @@ from app.database.crud.user_passkey import (
     record_assertion,
 )
 from app.database.models import User, UserPasskey, UserStatus
+from app.services.auth_link_bonus_notifications import deliver_link_bonus
+from app.services.auth_link_bonus_service import METHOD_PASSKEY, grant_link_bonus, had_method_before_link
 from app.utils.cache import RateLimitCache
 
 from ..dependencies import get_cabinet_db, get_current_cabinet_user
@@ -282,6 +284,10 @@ async def passkey_register_verify(
         await db.rollback()
         raise _error(status.HTTP_400_BAD_REQUEST, 'passkey_limit_reached', 'Maximum number of passkeys reached')
 
+    # Бонус за привязку (docs/auth-link-bonus.md): был ли уже passkey или OAuth-провайдер — спрашиваем
+    # до того, как этот ключ окажется в базе.
+    had_method = await had_method_before_link(db, user)
+
     record = UserPasskey(
         user_id=user_id,
         credential_id=new_key.credential_id,
@@ -292,8 +298,14 @@ async def passkey_register_verify(
         transports=new_key.transports,
         name=request.name or f'Passkey {count + 1}',
     )
-    db.add(record)
     try:
+        db.add(record)
+        # Ключ уходит в БД ДО бонуса: ошибка самого ключа (занятый credential_id) должна дать 409,
+        # а не раствориться в savepoint бонуса.
+        await db.flush()
+        # Строка выдачи, продление подписки и ключ фиксируются одним коммитом. Сбой бонуса откатывает
+        # только бонус; ключ при этом остаётся.
+        grant = await grant_link_bonus(db, user, METHOD_PASSKEY, had_qualifying_method=had_method)
         await db.commit()
     except IntegrityError as exc:
         # credential_id уникален глобально: чужой (или уже свой) ключ занять нельзя.
@@ -305,7 +317,11 @@ async def passkey_register_verify(
     await db.refresh(record)
 
     logger.info('Passkey registered', user_id=user_id, passkey_id=record.id, device_type=record.device_type)
-    return _to_response(record)
+    response = _to_response(record)
+    if grant is not None:
+        # После ответа-в-памяти: синхронизация с панелью при сбое откатывает сессию и протушит record.
+        await deliver_link_bonus(db, user, grant)
+    return response
 
 
 @router.get('', response_model=PasskeyListResponse, dependencies=[Depends(require_passkey_enabled)])

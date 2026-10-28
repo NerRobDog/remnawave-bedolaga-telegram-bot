@@ -129,6 +129,21 @@ async def has_qualifying_method(db: AsyncSession, user: Any) -> bool:
     return (count.scalar() or 0) > 0
 
 
+async def had_method_before_link(db: AsyncSession, user: Any) -> bool:
+    """Спросить ДО применения привязки: был ли уже подходящий способ входа.
+
+    ``True`` и когда функция выключена, и когда проверка не удалась: в обоих случаях бонус не
+    выдаётся, а привязка идёт как обычно. Выключенная функция не делает ни одного запроса к БД.
+    """
+    if not is_enabled():
+        return True
+    try:
+        return await has_qualifying_method(db, user)
+    except Exception:
+        logger.exception('Link bonus: could not check linked methods, no bonus for this link')
+        return True
+
+
 def _extendable_subscription_query(user_id: int, *, lock: bool):
     """Платная активная подписка, к которой добавляются дни.
 
@@ -188,10 +203,11 @@ async def grant_link_bonus(
 ) -> LinkBonusGrant | None:
     """Выдать бонус за только что применённую привязку. Не бросает; ``None`` — не выдан.
 
-    Вызывается ПОСЛЕ того, как привязка применена в сессии (строка/колонка записаны), и ДО коммита:
-    привязка, строка выдачи и продление фиксируются одним коммитом вызывающего. ``had_qualifying_method``
-    — результат ``has_qualifying_method`` до привязки. Всё, что делает эта функция, идёт в savepoint:
-    при любом сбое откатывается только бонус.
+    Вызывается ПОСЛЕ того, как привязка применена в сессии и отправлена в БД (``flush``: ошибка самой
+    привязки должна всплыть у вызывающего, а не раствориться в бонусе), и ДО коммита: привязка, строка
+    выдачи и продление фиксируются одним коммитом вызывающего. ``had_qualifying_method`` — результат
+    ``had_method_before_link`` до привязки. Всё, что делает эта функция, идёт в savepoint: при любом
+    сбое откатывается только бонус.
     """
     if not is_enabled() or had_qualifying_method:
         return None
