@@ -96,6 +96,7 @@ from app.services.trial_activation_service import (
     revert_trial_activation,
     rollback_trial_subscription_activation,
 )
+from app.services.trial_eligibility import TrialMode, get_trial_mode
 from app.services.tribute_service import TributeService
 from app.services.user_action_log_service import mark_user_seen, schedule_miniapp_action_log
 from app.utils.currency_converter import currency_converter
@@ -3154,7 +3155,8 @@ def _is_trial_available_for_user(user: User) -> bool:
     if settings.TRIAL_DURATION_DAYS <= 0:
         return False
 
-    if settings.is_trial_disabled_for_user(getattr(user, 'auth_type', 'telegram')):
+    # Лёгкий триал выдаёт только кабинет: мини-приложение открывает лишь полный.
+    if get_trial_mode(user) != TrialMode.FULL:
         return False
 
     if getattr(user, 'has_had_paid_subscription', False):

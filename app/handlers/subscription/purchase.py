@@ -56,6 +56,7 @@ from app.services.trial_activation_service import (
     revert_trial_activation,
     rollback_trial_subscription_activation,
 )
+from app.services.trial_eligibility import TrialMode, get_trial_mode
 from app.services.user_cart_service import user_cart_service
 from app.utils.decorators import error_handler
 from app.utils.legacy_subscription import is_legacy_subscription as _legacy_subscription
@@ -596,9 +597,8 @@ async def show_trial_offer(callback: types.CallbackQuery, db_user: User, db: Asy
     texts = get_texts(db_user.language)
 
     # Триал отключён глобально (нулевая длительность) либо для этого типа пользователя
-    if settings.TRIAL_DURATION_DAYS <= 0 or settings.is_trial_disabled_for_user(
-        getattr(db_user, 'auth_type', 'telegram')
-    ):
+    # Лёгкий триал выдаёт только кабинет: бот открывает лишь полный.
+    if settings.TRIAL_DURATION_DAYS <= 0 or get_trial_mode(db_user) != TrialMode.FULL:
         await callback.message.edit_text(
             texts.t('TRIAL_DISABLED_FOR_USER_TYPE', 'Пробный период недоступен'),
             reply_markup=get_back_keyboard(db_user.language),
@@ -800,9 +800,8 @@ async def activate_trial(callback: types.CallbackQuery, db_user: User, db: Async
         return
 
     # Триал отключён глобально (нулевая длительность) либо для этого типа пользователя
-    if settings.TRIAL_DURATION_DAYS <= 0 or settings.is_trial_disabled_for_user(
-        getattr(db_user, 'auth_type', 'telegram')
-    ):
+    # Лёгкий триал выдаёт только кабинет: бот открывает лишь полный.
+    if settings.TRIAL_DURATION_DAYS <= 0 or get_trial_mode(db_user) != TrialMode.FULL:
         await callback.message.edit_text(
             texts.t('TRIAL_DISABLED_FOR_USER_TYPE', 'Пробный период недоступен'),
             reply_markup=get_back_keyboard(db_user.language),
