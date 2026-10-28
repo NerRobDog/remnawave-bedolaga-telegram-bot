@@ -181,12 +181,14 @@ async def create_trial_subscription(
     squad_uuid: str = None,
     connected_squads: list[str] = None,
     tariff_id: int | None = None,
+    duration_hours: int | None = None,
 ) -> Subscription:
     """Создает триальную подписку.
 
     Args:
         connected_squads: Список UUID сквадов (если указан, squad_uuid игнорируется)
         tariff_id: ID тарифа (для режима тарифов)
+        duration_hours: срок в часах (лёгкий триал); если задан, перекрывает duration_days
     """
     duration_days = duration_days or settings.TRIAL_DURATION_DAYS
     # 0 ГБ — это осознанный БЕЗЛИМИТ (валидное значение), поэтому отличаем
@@ -218,7 +220,8 @@ async def create_trial_subscription(
         except Exception as error:
             logger.error('Не удалось получить сквад для триальной подписки пользователя', user_id=user_id, error=error)
 
-    end_date = datetime.now(UTC) + timedelta(days=duration_days)
+    trial_term = timedelta(hours=duration_hours) if duration_hours else timedelta(days=duration_days)
+    end_date = datetime.now(UTC) + trial_term
 
     # Check for existing PENDING trial subscription (retry after failed payment)
     # In multi-tariff mode, only reuse a subscription for the SAME tariff to avoid
