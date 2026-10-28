@@ -19,6 +19,7 @@ from sqlalchemy import func, select
 from app.config import settings
 from app.database.models import (
     AuthLinkBonus,
+    GraceAccessSessionModel,
     PaymentMethod,
     SentNotification,
     Subscription,
@@ -41,6 +42,7 @@ TABLES = (
     Transaction.__table__,
     AuthLinkBonus.__table__,
     SentNotification.__table__,
+    GraceAccessSessionModel.__table__,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -265,6 +267,45 @@ async def test_a_failure_applying_the_traffic_rule_rolls_the_whole_grant_back(db
     await db.commit()
 
     assert await end_date(db, SimpleNamespace(id=sub_id)) == before and await rows(db) == []
+
+
+@uses_db
+async def test_a_grace_overlay_is_undone_before_the_date_moves(db, monkeypatch) -> None:
+    """Сторож продлений: сначала вернуть то, что оверлей грейса затёр в подписке, и только потом сдвигать срок."""
+    seen = {}
+
+    async def _spy(_db, subscription):
+        seen['end_date_at_undo'] = subscription.end_date
+        return set()
+
+    monkeypatch.setattr(service, 'undo_grace_overlay_echo', _spy)
+    user, sub = await paying_user(db, days=30)
+    before = await end_date(db, sub)
+
+    grant = await service.grant_link_bonus(db, user, 'passkey', had_qualifying_method=False)
+
+    assert grant is not None
+    assert seen['end_date_at_undo'].replace(tzinfo=UTC) == before, 'починка идёт до сдвига даты'
+    assert grant.new_end_date.replace(tzinfo=UTC) == before + timedelta(days=DAYS)
+
+
+@uses_db
+async def test_a_repaired_end_date_is_the_base_of_the_bonus(db, monkeypatch) -> None:
+    """Починка вернула прежнюю дату конца: дни прибавляются к ней, а не к дате, затёртой оверлеем."""
+    restored = datetime.now(UTC) + timedelta(days=10)
+
+    async def _repair(_db, subscription):
+        subscription.end_date = restored
+        return {'end_date'}
+
+    monkeypatch.setattr(service, 'undo_grace_overlay_echo', _repair)
+    user, sub = await paying_user(db, days=30)
+
+    grant = await service.grant_link_bonus(db, user, 'passkey', had_qualifying_method=False)
+    await db.commit()
+
+    assert grant is not None
+    assert await end_date(db, sub) == restored + timedelta(days=DAYS)
 
 
 @uses_db

@@ -19,6 +19,7 @@ from app.cabinet.routes import account_linking, oauth as oauth_routes
 from app.config import settings
 from app.database.models import (
     AuthLinkBonus,
+    GraceAccessSessionModel,
     PaymentMethod,
     SentNotification,
     Subscription,
@@ -44,6 +45,7 @@ TABLES = (
     Transaction.__table__,
     AuthLinkBonus.__table__,
     SentNotification.__table__,
+    GraceAccessSessionModel.__table__,
 )
 DAYS = 7
 
