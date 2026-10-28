@@ -113,6 +113,22 @@ def _webhook_sample_contexts() -> dict[str, dict[str, Any]]:
 
 TEMPLATE_TYPES = [
     {
+        'type': 'auth_link_bonus',
+        'label': {
+            'ru': 'Бонус за привязку входа',
+            'en': 'Sign-in method bonus',
+            'zh': '登录方式绑定奖励',
+            'ua': "Бонус за прив'язку входу",
+        },
+        'description': {
+            'ru': 'К подписке добавлены бонусные дни за первую привязку passkey или внешнего аккаунта',
+            'en': 'Bonus days were added to the subscription for the first linked passkey or external account',
+            'zh': '首次绑定 passkey 或外部账号后，订阅已增加奖励天数',
+            'ua': "До підписки додано бонусні дні за першу прив'язку passkey або зовнішнього акаунта",
+        },
+        'context_vars': ['days', 'until'],
+    },
+    {
         'type': 'promo_group_auto_assigned',
         'label': {
             'ru': 'Назначена промогруппа',
@@ -793,6 +809,7 @@ SAMPLE_LAYOUT_CONTENT = (
 )
 
 SAMPLE_CONTEXTS: dict[str, dict[str, Any]] = {
+    'auth_link_bonus': {'days': 7, 'until': '17.11.2026 12:00'},
     'promo_group_auto_assigned': {
         'group_name': 'Продвинутый',
         'total_spent': '5 000 ₽',

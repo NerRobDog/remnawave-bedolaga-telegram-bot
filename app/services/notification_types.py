@@ -87,6 +87,9 @@ class NotificationType(Enum):
     # Промогруппа назначена автоматически за сумму трат
     PROMO_GROUP_AUTO_ASSIGNED = 'promo_group_auto_assigned'
 
+    # Бонусные дни за первую привязку второго способа входа (docs/auth-link-bonus.md)
+    AUTH_LINK_BONUS = 'auth_link_bonus'
+
     # User reminders (раздел «Напоминания» в кабинете) — служебный тип, не рассылка
     USER_REMINDER = 'user_reminder'
 
