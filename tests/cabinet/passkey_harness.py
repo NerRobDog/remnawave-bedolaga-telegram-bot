@@ -8,8 +8,10 @@
 from __future__ import annotations
 
 import contextlib
+import uuid
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, FastAPI
 from httpx import ASGITransport, AsyncClient, Response
@@ -21,14 +23,19 @@ from app.cabinet.dependencies import get_cabinet_db
 from app.cabinet.routes import passkey as passkey_routes, passkey_signup as signup_routes
 from app.database.models import (
     AdminRole,
+    AuthLinkBonus,
     CabinetRefreshToken,
     LegalConsent,
+    PaymentMethod,
     PromoGroup,
+    SentNotification,
     ServerSquad,
     Subscription,
+    SubscriptionStatus,
     SystemSetting,
     Tariff,
     Transaction,
+    TransactionType,
     TrialIdentityLedger,
     User,
     UserPasskey,
@@ -61,6 +68,8 @@ TABLES = (
     SystemSetting.__table__,
     TrialIdentityLedger.__table__,
     Transaction.__table__,
+    AuthLinkBonus.__table__,
+    SentNotification.__table__,
 )
 
 
@@ -95,6 +104,40 @@ class PasskeyHttp:
         # Отсоединённый, он остаётся читаемым, а обработчик загрузит свою копию.
         self.db.expunge(user)
         return user
+
+    async def make_paying_user(self, *, days: int = 30, paid: bool = True, **fields) -> tuple[User, int]:
+        """Аккаунт с платной активной подпиской (и платежом через шлюз, если ``paid``): (пользователь, id подписки)."""
+        user = await self.make_user(**fields)
+        if paid:
+            self.db.add(
+                Transaction(
+                    user_id=user.id,
+                    type=TransactionType.DEPOSIT.value,
+                    amount_kopeks=10000,
+                    payment_method=PaymentMethod.YOOKASSA.value,
+                    is_completed=True,
+                )
+            )
+        subscription = Subscription(
+            user_id=user.id,
+            status=SubscriptionStatus.ACTIVE.value,
+            is_trial=False,
+            end_date=datetime.now(UTC).replace(microsecond=0) + timedelta(days=days),
+            remnawave_short_id=uuid.uuid4().hex[:12],
+        )
+        self.db.add(subscription)
+        await self.db.commit()
+        return user, subscription.id
+
+    async def subscription_end(self, subscription_id: int) -> datetime:
+        value = (
+            await self.db.execute(select(Subscription.end_date).where(Subscription.id == subscription_id))
+        ).scalar_one()
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+    async def bonus_rows(self) -> list[AuthLinkBonus]:
+        query = select(AuthLinkBonus).order_by(AuthLinkBonus.id).execution_options(populate_existing=True)
+        return list((await self.db.execute(query)).scalars())
 
     @staticmethod
     def auth(user: User) -> dict[str, str]:
