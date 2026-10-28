@@ -81,6 +81,7 @@ from app.services.registration_access_service import (
 from app.services.registration_invite_service import RegistrationInviteConflict, RegistrationInviteService
 from app.services.subscription_service import SubscriptionService
 from app.services.support_settings_service import SupportSettingsService
+from app.services.trial_eligibility import TrialMode, get_trial_mode
 from app.services.web_auth_service import WEB_AUTH_TOKEN_MIN_LENGTH, link_web_auth_token
 from app.states import RegistrationStates
 from app.utils.gift_links import InvalidGiftTokenError, parse_gift_claim_input
@@ -601,9 +602,8 @@ async def _activate_pending_trial(
             return
         await state.update_data(pending_trial=None)
 
-        if settings.TRIAL_DURATION_DAYS <= 0 or settings.TRIAL_DISABLED_FOR == 'all':
-            return
-        if settings.is_trial_disabled_for_user(getattr(user, 'auth_type', None)):
+        # Лёгкий триал выдаёт только кабинет: бот открывает лишь полный.
+        if get_trial_mode(user) != TrialMode.FULL or settings.TRIAL_DURATION_DAYS <= 0:
             return
         if settings.is_trial_paid_activation_enabled():
             return

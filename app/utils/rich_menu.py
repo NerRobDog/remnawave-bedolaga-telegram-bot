@@ -46,6 +46,7 @@ from app.database.crud.tariff import get_tariff_by_id
 from app.database.crud.user_message import get_random_active_message
 from app.database.models import User
 from app.localization.texts import Texts
+from app.services.trial_eligibility import TrialMode, get_trial_mode
 from app.utils.cache import cache
 from app.utils.formatters import format_username_link
 from app.utils.logo_fingerprint import logo_version
@@ -416,9 +417,8 @@ def _trial_offer_link(user: User, texts) -> str:
     (TRIAL_PAYMENT_ENABLED + цена) активируется только через оплату — ссылка
     ведёт в миниапп-кабинет (дашборд с TrialOfferCard, startapp=trial).
     """
-    if settings.TRIAL_DURATION_DAYS <= 0 or settings.TRIAL_DISABLED_FOR == 'all':
-        return ''
-    if settings.is_trial_disabled_for_user(getattr(user, 'auth_type', None)):
+    # Ссылка ведёт в бот/миниапп, где выдаётся только полный триал; лёгкий — только в кабинете.
+    if get_trial_mode(user) != TrialMode.FULL or settings.TRIAL_DURATION_DAYS <= 0:
         return ''
     try:
         if user.is_trial_already_used():
