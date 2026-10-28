@@ -31,18 +31,17 @@ _DATE_FORMAT = '%d.%m.%Y %H:%M'
 async def deliver_link_bonus(db: AsyncSession, user: User, grant: LinkBonusGrant) -> None:
     """Синхронизация с панелью и уведомления о выданном бонусе. Никогда не бросает."""
     user_id = grant.user_id
-    # Берём всё нужное из пользователя ДО похода в панель: её сбой откатывает сессию,
-    # и ORM-объект протухает (в async-сессии это MissingGreenlet).
     try:
+        # Берём всё нужное из пользователя ДО похода в панель: её сбой откатывает сессию,
+        # и ORM-объект протухает (в async-сессии это MissingGreenlet).
         language = (user.language or settings.DEFAULT_LANGUAGE) or 'ru'
         telegram_id = user.telegram_id
-    except Exception:
-        logger.exception('Link bonus: could not read the user, notification skipped', user_id=user_id)
-        return
 
-    await _sync_panel(db, grant)
-    await _notify_cabinet(grant)
-    await _notify_user(user, language, telegram_id, grant)
+        await _sync_panel(db, grant)
+        await _notify_cabinet(grant)
+        await _notify_user(user, language, telegram_id, grant)
+    except Exception:
+        logger.exception('Link bonus: post-grant delivery failed, the grant is kept', user_id=user_id)
 
 
 async def _sync_panel(db: AsyncSession, grant: LinkBonusGrant) -> None:
