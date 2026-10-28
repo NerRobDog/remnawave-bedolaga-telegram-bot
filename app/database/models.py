@@ -4646,6 +4646,25 @@ class UserRecoveryCode(Base):
         return f'<UserRecoveryCode id={self.id} user_id={self.user_id} used={self.used_at is not None}>'
 
 
+class TrialIdentityLedger(Base):
+    """Журнал личностей, которым уже выдавали триал (память переживает удаление аккаунта).
+
+    Хранится только ``HMAC-SHA256`` ключа личности (``tg:<id>``, ``email:<нормализованный>``,
+    ``google:<sub>``) под перцем из секрета кабинета; открытых значений и связи с пользователем
+    нет. Уникальность хэша не даёт получить второй триал новым аккаунтом на ту же личность.
+    """
+
+    __tablename__ = 'trial_identity_ledger'
+    __table_args__ = (UniqueConstraint('identity_hash', name='uq_trial_identity_ledger_identity_hash'),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    identity_hash = Column(String(64), nullable=False)
+    created_at = Column(AwareDateTime(), default=func.now(), server_default=func.now(), nullable=False)
+
+    def __repr__(self) -> str:
+        return f'<TrialIdentityLedger id={self.id}>'
+
+
 # ==================== FORTUNE WHEEL ====================
 
 
