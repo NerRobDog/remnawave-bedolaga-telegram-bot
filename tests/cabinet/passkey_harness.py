@@ -28,6 +28,7 @@ from app.database.models import (
     Subscription,
     SystemSetting,
     Tariff,
+    Transaction,
     TrialIdentityLedger,
     User,
     UserPasskey,
@@ -59,6 +60,7 @@ TABLES = (
     AdminRole.__table__,
     SystemSetting.__table__,
     TrialIdentityLedger.__table__,
+    Transaction.__table__,
 )
 
 
