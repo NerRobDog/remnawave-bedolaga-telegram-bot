@@ -40,6 +40,7 @@ from app.database.models import (
     TransactionType,
     UserPasskey,
 )
+from app.services.grace_access_echo import undo_grace_overlay_echo
 
 
 logger = structlog.get_logger(__name__)
@@ -246,6 +247,10 @@ async def grant_link_bonus(
 
             db.add(AuthLinkBonus(user_id=user_id, method=method))
             await db.flush()
+
+            # Как на любом продлении: сначала вернуть то, что оверлей грейса (v4.10-4.11) затёр в подписке,
+            # и только потом сдвигать срок (сторож tests/contracts/test_renewal_undoes_grace_echo_first).
+            await undo_grace_overlay_echo(db, subscription)
 
             now = datetime.now(UTC)
             subscription.end_date = subscription.end_date + timedelta(days=days)
