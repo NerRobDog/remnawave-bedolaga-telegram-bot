@@ -5168,6 +5168,9 @@
 - `tests/services/test_grace_access_sqlite_safety.py` — Python-модуль
   Классы: нет
   Функции: `test_sqlite_delete_guard_preserves_open_snapshot_and_cascades_completed_history`, `test_sqlite_predelete_noop_write_blocks_a_concurrent_pending_insert`, `test_sqlite_user_lock_blocks_a_new_subscription_during_full_delete`, `test_sqlite_delete_guard_also_blocks_user_cascade`
+- `tests/services/test_grace_billing_abroad_squad.py` — Python-модуль
+  Классы: нет
+  Функции: `abroad_enabled`, `test_abroad_subscription_keeps_abroad_squad_in_billing_state`, `test_abroad_subscription_without_tariff_squad_keeps_abroad`, `test_home_subscription_uses_tariff_squad`, `test_abroad_flag_is_ignored_when_feature_is_off`
 - `tests/services/test_grace_deleted_squad_recovery.py` — Python-модуль
   Классы: нет
   Функции: `grace_database_dsn`, `test_paid_grace_completion_after_deleted_squad`, `test_background_paid_reconciliation_checks_surviving_target`
