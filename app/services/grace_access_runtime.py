@@ -37,6 +37,7 @@ from app.external.remnawave_api import (
     UserStatus as PanelUserStatus,
     coerce_panel_user_id,
 )
+from app.services.abroad_mode_service import resolve_external_squad_for_sync
 from app.services.grace_access_codec import (
     GraceSnapshotError,
     _as_utc,
@@ -1908,7 +1909,12 @@ def _subscription_to_billing(subscription: Subscription) -> GraceBillingState:
         used_traffic_bytes=int(traffic_used_gb * 1024**3),
         device_limit=subscription.device_limit,
         squad_uuids=_string_tuple(subscription.connected_squads),
-        external_squad_uuid=(tariff.external_squad_uuid if tariff else None),
+        # Клиент в режиме «за границей» остаётся на скваде Abroad и после оплаты:
+        # иначе восстановление записало бы сквад тарифа, а в базе abroad_mode
+        # осталось бы включённым.
+        external_squad_uuid=resolve_external_squad_for_sync(
+            subscription, tariff.external_squad_uuid if tariff else None
+        ),
         is_trial=bool(subscription.is_trial or subscription.status == SubscriptionStatus.TRIAL.value),
         is_daily=bool(tariff and tariff.is_daily),
         is_free_tariff=bool(tariff and tariff.is_free),
