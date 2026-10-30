@@ -432,7 +432,8 @@ async def create_topup(
                     request.amount_kopeks, telegram_user_id=user.telegram_id, user_db_id=user.id
                 ),
                 payload=f'cabinet_topup_{user.id}_{request.amount_kopeks}',
-                return_url=cabinet_return_url,
+                # The Return button only appears once the invoice is paid.
+                return_url=cabinet_success_url,
             )
             if result:
                 payment_url = (
