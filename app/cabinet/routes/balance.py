@@ -28,6 +28,7 @@ from app.services.payment_verification_service import (
     method_display_name,
     run_manual_check,
 )
+from app.services.topup_presets import load_topup_presets_basis
 from app.utils.currency_converter import currency_converter
 
 from ..dependencies import get_cabinet_db, get_current_cabinet_user
@@ -165,7 +166,12 @@ async def get_payment_methods(
     is_first_topup = not has_completed_topup.scalar()
 
     # Get enabled methods from database config
-    enabled_methods = await get_enabled_methods_for_user(db, user=user, is_first_topup=is_first_topup)
+    # Быстрые суммы под пользователя: цена продления его подписки (со скидками) и баланс.
+    # None → у способов остаются статические суммы.
+    topup_presets = await load_topup_presets_basis(db, user)
+    enabled_methods = await get_enabled_methods_for_user(
+        db, user=user, is_first_topup=is_first_topup, topup_presets=topup_presets
+    )
 
     # Build response with additional options formatting
     methods = []

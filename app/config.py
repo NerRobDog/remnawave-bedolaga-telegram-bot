@@ -726,6 +726,12 @@ class Settings(BaseSettings):
 
     AUTO_PURCHASE_AFTER_TOPUP_ENABLED: bool = False
 
+    # Быстрые суммы пополнения под пользователя: цена продления его подписки (со скидками).
+    # Работают только для способов, где админ не задал свой список quick_amounts.
+    TOPUP_DYNAMIC_PRESETS_ENABLED: bool = True
+    # Вычитать текущий баланс из суммы кнопки (пополнить ровно недостающее)
+    TOPUP_PRESETS_DEDUCT_BALANCE: bool = True
+
     # Отключение превью ссылок в сообщениях бота
     DISABLE_WEB_PAGE_PREVIEW: bool = False
     ACTIVATE_BUTTON_VISIBLE: bool = False

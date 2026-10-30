@@ -394,6 +394,8 @@ class BotConfigurationService:
         'PAYMENT_BALANCE_TEMPLATE': 'PAYMENT',
         'PAYMENT_SUBSCRIPTION_TEMPLATE': 'PAYMENT',
         'AUTO_PURCHASE_AFTER_TOPUP_ENABLED': 'PAYMENT',
+        'TOPUP_DYNAMIC_PRESETS_ENABLED': 'PAYMENT',
+        'TOPUP_PRESETS_DEDUCT_BALANCE': 'PAYMENT',
         'SIMPLE_SUBSCRIPTION_ENABLED': 'SIMPLE_SUBSCRIPTION',
         'SIMPLE_SUBSCRIPTION_PERIOD_DAYS': 'SIMPLE_SUBSCRIPTION',
         'SIMPLE_SUBSCRIPTION_DEVICE_LIMIT': 'SIMPLE_SUBSCRIPTION',
@@ -1179,6 +1181,26 @@ class BotConfigurationService:
                 'Используйте с осторожностью: средства будут списаны мгновенно, если найдена корзина '
                 'или суточная подписка для возобновления. Подписки на паузе пользователя не возобновляются.'
             ),
+        },
+        'TOPUP_DYNAMIC_PRESETS_ENABLED': {
+            'description': (
+                'Кнопки быстрых сумм пополнения считаются под пользователя: цена продления его '
+                'подписки за 1, 3, 6 … месяцев со всеми его скидками.'
+            ),
+            'format': 'Булево значение.',
+            'example': 'true',
+            'warning': (
+                'Действует только для способов оплаты, где список быстрых сумм не задан вручную. '
+                'Без подписки и для суточных тарифов остаются обычные суммы.'
+            ),
+        },
+        'TOPUP_PRESETS_DEDUCT_BALANCE': {
+            'description': (
+                'Вычитать текущий баланс из суммы кнопки: пользователь пополняет ровно столько, '
+                'сколько не хватает на продление. Выключено — кнопки показывают полную цену.'
+            ),
+            'format': 'Булево значение.',
+            'example': 'true',
         },
         'SUPPORT_TICKET_SLA_MINUTES': {
             'description': 'Лимит времени для ответа модераторов на тикет в минутах.',

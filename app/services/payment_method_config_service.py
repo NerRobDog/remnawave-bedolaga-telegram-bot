@@ -1,5 +1,7 @@
 """Service for managing payment method display configurations in cabinet."""
 
+from typing import Protocol
+
 import structlog
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +9,16 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.database.models import PaymentMethodConfig, PromoGroup
+
+
+class TopupPresetsSource(Protocol):
+    """Источник динамических быстрых сумм (см. app.services.topup_presets.TopupPresetsBasis).
+
+    Протокол, а не импорт: topup_presets тянет кабинетные маршруты, а этот модуль
+    импортируется из app.config.
+    """
+
+    def amounts_for(self, min_kopeks: int, max_kopeks: int) -> list[int]: ...
 
 
 logger = structlog.get_logger(__name__)
@@ -438,6 +450,19 @@ def get_effective_quick_amounts(
     return [amount for amount in source if min_amount_kopeks <= amount <= max_amount_kopeks]
 
 
+def _resolve_quick_amounts(
+    quick_amounts: list[int] | None,
+    min_amount_kopeks: int,
+    max_amount_kopeks: int,
+    topup_presets: 'TopupPresetsSource | None',
+) -> list[int]:
+    if quick_amounts is None and topup_presets is not None:
+        dynamic = topup_presets.amounts_for(min_amount_kopeks, max_amount_kopeks)
+        if dynamic:
+            return dynamic
+    return get_effective_quick_amounts(quick_amounts, min_amount_kopeks, max_amount_kopeks)
+
+
 # ============ Initialization ============
 
 
@@ -620,8 +645,13 @@ async def get_enabled_methods_for_user(
     db: AsyncSession,
     user: 'User | None' = None,
     is_first_topup: bool | None = None,
+    topup_presets: 'TopupPresetsSource | None' = None,
 ) -> list[dict]:
     """Get payment methods available for a specific user.
+
+    ``topup_presets`` — данные для динамических быстрых сумм (цены продления пользователя).
+    Они подставляются только там, где админ не задал свой ``quick_amounts`` (None в БД);
+    явный список админа, в том числе пустой, всегда главнее.
 
     Applies all filters from PaymentMethodConfig:
     - is_enabled
@@ -726,7 +756,7 @@ async def get_enabled_methods_for_user(
                 'min_amount_kopeks': min_amount,
                 'max_amount_kopeks': max_amount,
                 'options': options,
-                'quick_amounts': get_effective_quick_amounts(config.quick_amounts, min_amount, max_amount),
+                'quick_amounts': _resolve_quick_amounts(config.quick_amounts, min_amount, max_amount, topup_presets),
                 'sort_order': config.sort_order,
                 # Если True — кабинет, получив payment_url, делает
                 # window.location.href сразу вместо показа панели с ссылкой.

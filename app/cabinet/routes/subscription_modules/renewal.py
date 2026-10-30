@@ -16,6 +16,7 @@ from app.config import settings
 from app.database.crud.tariff import get_tariff_by_id
 from app.database.models import PaymentMethod, SubscriptionStatus, User
 from app.services.pricing_engine import pricing_engine
+from app.services.renewal_options_service import list_renewal_options
 from app.services.subscription_renewal_service import (
     SubscriptionRenewalChargeError,
     SubscriptionRenewalService,
@@ -44,65 +45,19 @@ async def get_renewal_options(
     from .helpers import resolve_subscription
 
     subscription = await resolve_subscription(db, user, subscription_id)
-    if not subscription:
-        return []
+    options = await list_renewal_options(db, user, subscription)
 
-    # Classic subscriptions cannot be renewed when tariff mode is enabled
-    if settings.is_tariffs_mode() and not subscription.tariff_id:
-        return []
-
-    _non_renewable = {SubscriptionStatus.DISABLED.value, SubscriptionStatus.PENDING.value}
-    _actual_status = getattr(subscription, 'actual_status', subscription.status)
-    if _actual_status in _non_renewable:
-        return []
-
-    # Determine available periods
-    # Скрытый/неактивный тариф (например, триальный после промокода) —
-    # не показываем его периоды, используем стандартные
-    if (
-        subscription.tariff_id
-        and subscription.tariff
-        and subscription.tariff.is_active
-        and subscription.tariff.period_prices
-    ):
-        periods = sorted(int(k) for k in subscription.tariff.period_prices.keys())
-        highlighted_period = subscription.tariff.highlight_period_days
-    else:
-        periods = settings.get_available_renewal_periods()
-        highlighted_period = None
-
-    options = []
-
-    # Нулевая цена — не всегда поломка: у бесплатного тарифа она настроена
-    # намеренно. Пропускаем период, только если цена не проставлена вовсе.
-    renewal_tariff = subscription.tariff if subscription.tariff_id else None
-
-    for period in periods:
-        pricing = await pricing_engine.calculate_renewal_price(db, subscription, period, user=user)
-
-        if pricing.final_total <= 0 and pricing.original_total <= 0:
-            if renewal_tariff is None or not renewal_tariff.has_configured_price_for_period(period):
-                continue
-
-        original_price = pricing.original_total
-        combined_discount = 0
-        if original_price > 0 and original_price != pricing.final_total:
-            combined_discount = int((original_price - pricing.final_total) * 100 / original_price)
-
-        options.append(
-            RenewalOptionResponse(
-                period_days=period,
-                price_kopeks=pricing.final_total,
-                price_rubles=pricing.final_total / 100,
-                discount_percent=combined_discount,
-                original_price_kopeks=original_price if combined_discount > 0 else None,
-                # Выделение живёт у тарифа. Когда периоды берутся не из тарифа
-                # (скрытый тариф, классический режим), выделять нечего.
-                is_highlighted=bool(highlighted_period is not None and highlighted_period == period),
-            )
+    return [
+        RenewalOptionResponse(
+            period_days=option.period_days,
+            price_kopeks=option.final_total,
+            price_rubles=option.final_total / 100,
+            discount_percent=option.discount_percent,
+            original_price_kopeks=option.original_total if option.discount_percent > 0 else None,
+            is_highlighted=option.is_highlighted,
         )
-
-    return options
+        for option in options
+    ]
 
 
 @router.post('/renew')
