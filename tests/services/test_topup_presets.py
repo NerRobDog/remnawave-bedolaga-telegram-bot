@@ -66,9 +66,16 @@ class TestBuildTopupPresets:
         )
         assert result == [25100]
 
-    def test_small_shortfall_is_raised_to_method_minimum(self):
+    def test_shortfall_below_method_minimum_gives_no_button(self):
+        # докупить нужно меньше, чем метод вообще принимает: кнопка с суммой выше нужной обманывала бы
         result = build_topup_presets(
             [40000], balance_kopeks=39900, deduct_balance=True, min_kopeks=MIN_KOPEKS, max_kopeks=MAX_KOPEKS
+        )
+        assert result == []
+
+    def test_amount_equal_to_minimum_is_kept(self):
+        result = build_topup_presets(
+            [40000], balance_kopeks=30000, deduct_balance=True, min_kopeks=MIN_KOPEKS, max_kopeks=MAX_KOPEKS
         )
         assert result == [MIN_KOPEKS]
 
@@ -88,12 +95,23 @@ class TestBuildTopupPresets:
         )
         assert result == [40000, 100000]
 
-    def test_clamping_can_create_duplicates_that_collapse(self):
+    def test_sub_minimum_amounts_are_dropped_and_the_rest_kept(self):
         result = build_topup_presets(
             [20000, 30000], balance_kopeks=15000, deduct_balance=True, min_kopeks=MIN_KOPEKS, max_kopeks=MAX_KOPEKS
         )
-        # 50 ₽ и 150 ₽ → 100 ₽ (минимум) и 150 ₽
-        assert result == [MIN_KOPEKS, 15000]
+        # 50 ₽ ниже минимума 100 ₽ — нет кнопки, 150 ₽ остаётся
+        assert result == [15000]
+
+    def test_kopek_sized_shortfall_never_becomes_a_button(self):
+        # скидка 99 % и почти покрытая ценой: хвост в копейки не округляется до «0 $»
+        result = build_topup_presets(
+            [100, 400], balance_kopeks=12, deduct_balance=True, min_kopeks=100, max_kopeks=MAX_KOPEKS
+        )
+        assert result == [100, 400]
+        assert (
+            build_topup_presets([100], balance_kopeks=60, deduct_balance=True, min_kopeks=200, max_kopeks=MAX_KOPEKS)
+            == []
+        )
 
     def test_free_prices_are_dropped(self):
         # скидка 100 % → цена 0: кнопки «пополнить на 0 ₽» не бывает
@@ -348,10 +366,10 @@ class TestPresetHints:
         assert basis.amounts_for(MIN_KOPEKS, MAX_KOPEKS) == [60000, 140000]
         assert [h.period_days for h in basis.hints_for(MIN_KOPEKS, MAX_KOPEKS)] == [90, 180]
 
-    def test_clamped_amount_is_marked_so_the_caption_is_not_misleading(self):
-        basis = self._basis(balance=39900, prices=(40000,), periods=(30,), discounts=(0,))
+    def test_amount_capped_at_maximum_is_marked_so_the_caption_is_not_misleading(self):
+        basis = self._basis(prices=(900000,), periods=(30,), discounts=(0,))
 
-        (hint,) = basis.hints_for(MIN_KOPEKS, MAX_KOPEKS)
+        (hint,) = basis.hints_for(MIN_KOPEKS, 500000)
 
         assert hint.clamped is True
 

@@ -43,7 +43,7 @@ _KOPEKS_IN_RUBLE = 100
 class PresetEntry:
     amount_kopeks: int
     index: int  # позиция цены во входном списке — по ней находится период
-    clamped: bool  # сумма поднята до минимума или опущена до максимума метода
+    clamped: bool  # сумма опущена до максимума метода
     balance_deducted: bool
 
 
@@ -61,7 +61,9 @@ def build_topup_preset_entries(
     - при ``deduct_balance`` из цены вычитается баланс (отрицательный баланс считается нулём:
       долг не увеличивает сумму кнопки, платёж остаётся ценой продления);
     - сумма округляется вверх до целого рубля;
-    - сумма зажимается в [min_kopeks, max_kopeks] метода; если границы перевёрнуты — кнопок нет;
+    - недостающая сумма меньше минимума метода — кнопки нет (метод её не примет, а кнопка с
+      суммой выше нужной обманывала бы); больше максимума — опускается до максимума;
+      если границы перевёрнуты — кнопок нет;
     - цены и остатки <= 0 (период уже покрыт балансом или скидка 100 %) кнопки не дают;
     - при совпадении сумм остаётся первая цена (короткий период).
     """
@@ -75,7 +77,9 @@ def build_topup_preset_entries(
         if shortfall <= 0:
             continue
         rounded = math.ceil(shortfall / _KOPEKS_IN_RUBLE) * _KOPEKS_IN_RUBLE
-        amount = min(max(rounded, min_kopeks), max_kopeks)
+        if rounded < min_kopeks:
+            continue
+        amount = min(rounded, max_kopeks)
         entries.setdefault(
             amount,
             PresetEntry(amount_kopeks=amount, index=index, clamped=amount != rounded, balance_deducted=credit > 0),
