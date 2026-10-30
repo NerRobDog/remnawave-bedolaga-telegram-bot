@@ -1164,10 +1164,9 @@ class Settings(BaseSettings):
     ANTARCTIC_APP_ID: str | None = None
     ANTARCTIC_APP_SECRET: str | None = None
     ANTARCTIC_API_BASE: str = 'https://app.antarcticwallet.com'
-    ANTARCTIC_DISPLAY_NAME: str = 'Antarctic Wallet · 0% комиссии'
-    ANTARCTIC_DESCRIPTION: str = (
-        'Выпустите зарубежную карту за минуту и пополняйте её по СБП. Оплачивайте VPN и зарубежные сервисы'
-    )
+    ANTARCTIC_DISPLAY_NAME: str = 'Antarctic Wallet'
+    # Пусто — описание берётся из переводов кабинета (balance.paymentMethods.antarctic.description)
+    ANTARCTIC_DESCRIPTION: str = ''
     ANTARCTIC_MIN_AMOUNT_KOPEKS: int = 10000
     ANTARCTIC_MAX_AMOUNT_KOPEKS: int = 10000000
     ANTARCTIC_MARKUP_PERCENT: float = 0.0
