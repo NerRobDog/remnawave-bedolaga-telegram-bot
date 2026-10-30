@@ -21,6 +21,18 @@ from app.utils.topup_retry import format_topup_amount_retry
 logger = structlog.get_logger(__name__)
 
 
+async def _resolve_bot_return_url(bot) -> str | None:
+    """Ссылка на бота для кнопки «Return» на инвойсе CryptoBot."""
+    username = settings.get_bot_username()
+    if not username:
+        try:
+            username = ((await bot.get_me()).username or '').strip().lstrip('@') or None
+        except Exception as error:
+            logger.warning('Не удалось определить username бота для ссылки возврата CryptoBot', error=error)
+            return None
+    return f'https://t.me/{username}' if username else None
+
+
 @error_handler
 async def start_cryptobot_payment(callback: types.CallbackQuery, db_user: User, state: FSMContext):
     texts = get_texts(db_user.language)
@@ -175,6 +187,7 @@ async def process_cryptobot_payment_amount(
             asset=settings.CRYPTOBOT_DEFAULT_ASSET,
             description=f'Пополнение баланса на {amount_rubles:.0f} ₽ ({amount_usd:.2f} USD)',
             payload=f'balance_{db_user.id}_{amount_kopeks}',
+            return_url=await _resolve_bot_return_url(message.bot),
         )
 
         if not payment_result:

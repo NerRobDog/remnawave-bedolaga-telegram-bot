@@ -94,8 +94,12 @@ class CryptoBotPaymentMixin:
         asset: str = 'USDT',
         description: str = 'Пополнение баланса',
         payload: str | None = None,
+        return_url: str | None = None,
     ) -> dict[str, Any] | None:
-        """Создаёт invoice в CryptoBot и сохраняет локальную запись."""
+        """Создаёт invoice в CryptoBot и сохраняет локальную запись.
+
+        ``return_url`` — куда вернёт кнопка «Return» после оплаты (http/https).
+        """
         if not getattr(self, 'cryptobot_service', None):
             logger.error('CryptoBot сервис не инициализирован')
             return None
@@ -103,12 +107,18 @@ class CryptoBotPaymentMixin:
         try:
             amount_str = f'{amount_usd:.2f}'
 
+            invoice_kwargs: dict[str, Any] = {}
+            if return_url:
+                invoice_kwargs['paid_btn_name'] = 'callback'
+                invoice_kwargs['paid_btn_url'] = return_url
+
             invoice_data = await self.cryptobot_service.create_invoice(
                 amount=amount_str,
                 asset=asset,
                 description=description,
                 payload=payload or f'balance_topup_{user_id}_{int(amount_usd * 100)}',
                 expires_in=settings.get_cryptobot_invoice_expires_seconds(),
+                **invoice_kwargs,
             )
 
             if not invoice_data:
