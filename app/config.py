@@ -540,6 +540,9 @@ class Settings(BaseSettings):
     # Настройки перевыпуска подписки (revoke + regenerate link)
     SUBSCRIPTION_REVOKE_ENABLED: bool = True
     SUBSCRIPTION_REVOKE_COOLDOWN_SECONDS: int = 900  # 15 minutes
+    # Переключатель «Я в РФ / Я за границей» в кабинете: меняет внешний сквад пользователя в панели.
+    ABROAD_MODE_ENABLED: bool = False
+    ABROAD_EXTERNAL_SQUAD_UUID: str | None = None
 
     # Настройки простой покупки
     SIMPLE_SUBSCRIPTION_ENABLED: bool = False

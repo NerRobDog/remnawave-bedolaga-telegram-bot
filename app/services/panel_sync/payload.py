@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from app.config import settings
 from app.database.models import SubscriptionStatus, UserStatus as OwnerStatus
 from app.external.remnawave_api import TrafficLimitStrategy, UserStatus
+from app.services.abroad_mode_service import resolve_external_squad_for_sync
 from app.services.panel_sync.expiry import panel_expire_at
 from app.services.panel_sync.liveness import is_subscription_expired, is_subscription_live
 from app.services.panel_sync.tags import resolve_panel_user_tag
@@ -212,7 +213,7 @@ def build_panel_payload(
         ),
         active_internal_squads=tuple(getattr(subscription, 'connected_squads', None) or ()),
         hwid_device_limit=resolve_hwid_device_limit_for_payload(subscription),
-        external_squad_uuid=getattr(tariff, 'external_squad_uuid', None),
+        external_squad_uuid=resolve_external_squad_for_sync(subscription, getattr(tariff, 'external_squad_uuid', None)),
         # Вызывающий мог посчитать тег сам (тем же правилом); иначе берём его здесь —
         # так тег тарифа доходит до панели из любой точки записи.
         tag=user_tag if user_tag is not None else resolve_panel_user_tag(subscription),

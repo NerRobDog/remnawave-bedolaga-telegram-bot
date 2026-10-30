@@ -21,6 +21,7 @@ from app.external.remnawave_api import (
 
 # Правила поля стратегии живут в пакете синхронизации; имя оставлено здесь для
 # внешнего кода, который импортировал его из сервиса.
+from app.services.abroad_mode_service import resolve_external_squad_for_sync
 from app.services.panel_sync import (
     PanelIdentity,
     build_panel_payload,
@@ -237,7 +238,9 @@ class SubscriptionService:
             user_tag = self._resolve_user_tag(subscription)
 
             # Определяем внешний сквад из тарифа
-            ext_squad_uuid = subscription.tariff.external_squad_uuid if subscription.tariff else None
+            ext_squad_uuid = resolve_external_squad_for_sync(
+                subscription, subscription.tariff.external_squad_uuid if subscription.tariff else None
+            )
 
             async with self.get_api_client() as api:
                 hwid_limit = resolve_hwid_device_limit_for_payload(subscription)
@@ -645,7 +648,9 @@ class SubscriptionService:
             user_tag = self._resolve_user_tag(subscription)
 
             # Определяем внешний сквад из тарифа
-            ext_squad_uuid = subscription.tariff.external_squad_uuid if subscription.tariff else None
+            ext_squad_uuid = resolve_external_squad_for_sync(
+                subscription, subscription.tariff.external_squad_uuid if subscription.tariff else None
+            )
 
             async with self.get_api_client() as api:
                 hwid_limit = resolve_hwid_device_limit_for_payload(subscription)
@@ -1464,7 +1469,9 @@ class SubscriptionService:
                         if not remnawave_id:
                             return False
 
-                        ext_squad_uuid = sub.tariff.external_squad_uuid if sub.tariff else None
+                        ext_squad_uuid = resolve_external_squad_for_sync(
+                            sub, sub.tariff.external_squad_uuid if sub.tariff else None
+                        )
 
                         update_kwargs = dict(
                             user_id=remnawave_id,

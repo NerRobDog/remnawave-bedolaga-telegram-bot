@@ -572,3 +572,19 @@ async def patch_panel_squads(
         active_internal_squads=squads,
         external_squad_uuid=external_squad_uuid,
     )
+
+
+async def patch_panel_external_squad(
+    api,
+    *,
+    user_id: int,
+    external_squad_uuid: str | None,
+    update_call=None,
+) -> RemnaWaveUser:
+    """Сменить только внешний сквад аккаунта (переключатель «за границей»).
+
+    Отдельный вход: источник — выбор человека, а не тариф и не подписка, поэтому
+    сквады и статус не трогаются. ``None`` отправляется как null — сквад снимается.
+    """
+    update = partial(_update_with_device_limit, api, update_call or api.update_user)
+    return await update(user_id=user_id, external_squad_uuid=external_squad_uuid)

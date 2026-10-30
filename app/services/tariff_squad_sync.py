@@ -67,6 +67,7 @@ async def sync_tariff_squads_in_background(tariff_id: int, admin_id: int) -> Non
             new_squads = tariff.allowed_squads or []
             ext_squad_uuid = tariff.external_squad_uuid
 
+            from app.services.abroad_mode_service import resolve_external_squad_for_sync
             from app.services.grace_access_runtime import update_panel_user_grace_safe
 
             service = RemnaWaveService()
@@ -91,7 +92,7 @@ async def sync_tariff_squads_in_background(tariff_id: int, admin_id: int) -> Non
                                 api,
                                 user_id=remnawave_id,
                                 squads=new_squads,
-                                external_squad_uuid=ext_squad_uuid,
+                                external_squad_uuid=resolve_external_squad_for_sync(sub, ext_squad_uuid),
                                 update_call=lambda **kwargs: update_panel_user_grace_safe(api, sub.id, **kwargs),
                             )
                             sub.connected_squads = new_squads
