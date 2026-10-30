@@ -1726,7 +1726,7 @@
   Функции: нет
 - `app/services/payment/`
 - `app/services/payment_method_config_service.py` — Python-модуль
-  Классы: нет
+  Классы: `TopupPresetsSource` (1 методов)
   Функции: `refresh_display_name_overrides` — Reload names and saved order for synchronous Telegram keyboards., `get_display_name_override` — Sync read of a cabinet-set display name for a method, or None if not set., `get_display_sort_order`, `normalize_quick_amounts`, `get_effective_quick_amounts`, `ensure_payment_method_configs` — Initialize payment method configs if they don't exist yet., `get_all_configs` — Get supported payment method configs ordered by sort_order., `get_config_by_method_id` — Get a single config by method_id, ignoring retired backup entries., `update_config` — Update a payment method config., `update_sort_order` — Batch update sort order for all methods., `get_all_promo_groups` — Get all promo groups for the filter selector., `get_enabled_methods_for_user` — Get payment methods available for a specific user., `get_anore_checkout_policy` — Effective policy shared by checkout prompts and creation entry points., `get_cispay_checkout_policy` — Shared effective checkout policy; generic checkout selects an explicit fiat method.
 - `app/services/payment_search_service.py` — Python-модуль
   Классы: `StatusFilter`, `PeriodPreset`, `SearchParams` (2 методов), `SearchStats`
@@ -1837,6 +1837,9 @@
 - `app/services/remnawave_webhook_service.py` — Python-модуль
   Классы: `RemnaWaveWebhookService` (48 методов)
   Функции: нет
+- `app/services/renewal_options_service.py` — Python-модуль
+  Классы: `RenewalOption`
+  Функции: `list_renewal_options` — Периоды продления подписки и их цена для конкретного пользователя.
 - `app/services/reporting_service.py` — Python-модуль
   Классы: `ReportingServiceError`, `ReportPeriod`, `ReportPeriodRange`, `ReportingService` (22 методов)
   Функции: нет
@@ -1909,6 +1912,9 @@
 - `app/services/tariff_switch_policy.py` — Python-модуль
   Классы: нет
   Функции: `remaining_days_for_switch` — Сколько дней остатка оплачивать при переключении тарифа., `should_reset_used_traffic` — Обнулять ли счётчик трафика при переключении тарифа.
+- `app/services/topup_presets.py` — Python-модуль
+  Классы: `TopupPresetsBasis` (1 методов)
+  Функции: `resolve_subscription`, `build_topup_presets` — Суммы кнопок в копейках: по возрастанию, без повторов, не больше ``limit``., `load_topup_presets_basis` — Цены продления пользователя или ``None``, если динамических кнопок не будет.
 - `app/services/traffic_monitoring_service.py` — Python-модуль
   Классы: `TrafficViolation`, `TrafficMonitoringServiceV2` (35 методов), `TrafficMonitoringSchedulerV2` (9 методов), `TrafficMonitoringService` (6 методов), `TrafficMonitoringScheduler` (9 методов)
   Функции: нет
@@ -5594,6 +5600,9 @@
 - `tests/services/test_ticket_reply_email.py` — Python-модуль
   Классы: нет
   Функции: `sent` — Перехватывает send_notification роутера., `last_message` — Подменяет чтение последнего сообщения тикета (проверка на фото)., `test_email_user_gets_ticket_reply_email`, `test_photo_reply_marked_in_context`, `test_long_reply_is_previewed`, `test_telegram_user_does_not_get_email` — Юзеру с Telegram ответ уже ушёл в бот — письмо было бы дублем., `test_disabled_toggle_blocks_email`, `test_global_notifications_switch_does_not_mute_support_replies` — ENABLE_NOTIFICATIONS не должен глушить ответ поддержки только email-юзеру., `test_user_without_verified_email_is_skipped`, `test_delivery_failure_does_not_raise`, `test_template_renders_for_supported_languages`, `test_template_escapes_html_in_preview` — Ответ поддержки вида «откройте <config>» не должен ломать вёрстку письма., `test_template_mentions_photo_when_reply_has_one`
+- `tests/services/test_topup_presets.py` — Python-модуль
+  Классы: `TestBuildTopupPresets` (15 методов), `TestLoadTopupBasis` (10 методов), `TestMethodsUseDynamicPresets` (7 методов)
+  Функции: `enabled`
 - `tests/services/test_traffic_daily_check_schedule.py` — Python-модуль
   Классы: нет
   Функции: `test_daily_check_runs_at_local_midnight`, `test_daily_check_today_if_local_time_is_still_ahead`
