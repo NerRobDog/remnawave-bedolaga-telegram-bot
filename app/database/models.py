@@ -2758,6 +2758,10 @@ class Subscription(Base):
     # поле uuid из UsersSchema удалено. remnawave_uuid оставлен как исторические
     # данные для аудита и разбора незарезолвленных строк; читается только одноразовым бэкфилом (восстановление идентичности).
     remnawave_id = Column(BigInteger, nullable=True)
+    # Режим «за границей»: внешний сквад в панели подменён на ABROAD_EXTERNAL_SQUAD_UUID,
+    # прежний («домашний») сквад хранится здесь для возврата. NULL при abroad_mode=True = дома сквада не было.
+    abroad_mode = Column(Boolean, nullable=False, default=False, server_default=text('false'))
+    abroad_home_squad_uuid = Column(String(255), nullable=True)
     remnawave_uuid = Column(String(255), nullable=True)
     remnawave_short_id = Column(
         String(16), nullable=False, unique=True, server_default=''

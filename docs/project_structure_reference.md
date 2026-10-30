@@ -436,6 +436,9 @@
 - `app/cabinet/routes/subscription_modules/__init__.py` — Python-модуль
   Классы: нет
   Функции: нет
+- `app/cabinet/routes/subscription_modules/abroad.py` — Python-модуль
+  Классы: `AbroadModeRequest`, `AbroadModeResponse`
+  Функции: `get_abroad_mode`, `set_abroad_mode`
 - `app/cabinet/routes/subscription_modules/autopay.py` — Python-модуль
   Классы: нет
   Функции: `update_autopay` — Update autopay settings.
@@ -1486,6 +1489,9 @@
 - `app/services/__init__.py` — Python-модуль
   Классы: нет
   Функции: нет
+- `app/services/abroad_mode_service.py` — Python-модуль
+  Классы: `AbroadModeError`, `AbroadModeDisabled`, `AbroadModeUnavailable`, `AbroadModePanelError`, `AbroadModeState`
+  Функции: `abroad_squad_uuid`, `is_available`, `resolve_external_squad_for_sync` — Сквад, который обычная синхронизация с панелью должна записать., `get_state` — Живое состояние из панели: стоит ли сейчас сквад Abroad., `set_abroad_mode`
 - `app/services/abuse_api_service.py` — Python-модуль
   Классы: нет
   Функции: `is_configured`, `get_summary` — Вердикт по клиенту: уровень доверия и последнее предупреждение., `get_violations` — История нарушений клиента — для операторов., `is_limited` — Ограничен ли клиент по решению антифрода.
@@ -2086,7 +2092,7 @@
   Функции: `get_traffic_reset_strategy` — Стратегия сброса трафика: настройка тарифа, иначе общая из конфига.
 - `app/services/panel_sync/writer.py` — Python-модуль
   Классы: `DeviceLimitReconciliationError`, `PanelWriteResult`
-  Функции: `write_panel_user_with_squad_recovery` — Recover a rejected write only when a fresh catalog proves stale squads., `push_subscription` — Отправить состояние подписки в панель., `patch_panel_account` — Обновить карточку аккаунта в панели, не трогая состояние подписки., `patch_panel_squads` — Переназначить аккаунту сквады тарифа.
+  Функции: `write_panel_user_with_squad_recovery` — Recover a rejected write only when a fresh catalog proves stale squads., `push_subscription` — Отправить состояние подписки в панель., `patch_panel_account` — Обновить карточку аккаунта в панели, не трогая состояние подписки., `patch_panel_squads` — Переназначить аккаунту сквады тарифа., `patch_panel_external_squad` — Сменить только внешний сквад аккаунта (переключатель «за границей»).
 
 #### app/services/payment
 
@@ -3235,6 +3241,9 @@
   Классы: нет
   Функции: `upgrade`, `downgrade`
 - `migrations/alembic/versions/0140_auth_link_bonus.py` — Python-модуль
+  Классы: нет
+  Функции: `upgrade`, `downgrade`
+- `migrations/alembic/versions/0141_subscription_abroad_mode.py` — Python-модуль
   Классы: нет
   Функции: `upgrade`, `downgrade`
 
@@ -4913,6 +4922,9 @@
 - `tests/services/dpichecker/`
 - `tests/services/panel_sync/`
 - `tests/services/reachability/`
+- `tests/services/test_abroad_mode_service.py` — Python-модуль
+  Классы: `FakePanel` (3 методов)
+  Функции: `test_round_trip_restores_home_squad`, `test_exit_prefers_current_tariff_squad`, `test_enable_when_already_on_abroad_keeps_saved_home`, `test_exit_does_not_overwrite_squad_changed_by_admin`, `test_panel_failure_rolls_back_local_state`, `test_silent_stale_retry_counts_as_failure`, `test_deleted_home_squad_falls_back_to_detach`, `test_disabled_flag_blocks_switch`, `test_no_panel_account`, `test_sync_guard_keeps_abroad_over_tariff_squad`
 - `tests/services/test_account_merge_service.py` — Python-модуль
   Классы: `TestComputeAuthMethods` (6 методов), `TestBuildSubscriptionPreview` (3 методов), `TestBuildUserPreview` (2 методов), `TestGetMergePreview` (4 методов), `TestExecuteMergeValidation` (6 методов), `TestExecuteMergeOAuthTransfer` (2 методов), `TestExecuteMergeTelegramTransfer` (2 методов), `TestExecuteMergeEmailTransfer` (2 методов), `TestExecuteMergeKeepsWhatThePagePromises` (11 методов), `TestExecuteMergeBalance` (3 методов), `TestExecuteMergePartnerStatus` (4 методов), `TestExecuteMergeReferralCommission` (2 методов), `TestExecuteMergeSecondaryDeleted` (3 методов), `TestExecuteMergeSubscription` (7 методов), `TestExecuteMergeSubscriptionMultiTariff` (2 методов), `TestExecuteMergeBulkUpdates` (1 методов), `TestExecuteMergeSelfReferralPrevention` (6 методов), `TestRemnawaveDeleteMode` (4 методов)
   Функции: нет
