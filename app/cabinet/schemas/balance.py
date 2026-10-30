@@ -47,6 +47,17 @@ class PaymentOptionResponse(BaseModel):
     description: str | None = None
 
 
+class QuickAmountHint(BaseModel):
+    """Пояснение к кнопке быстрой суммы: на какой период продления она рассчитана."""
+
+    period_days: int
+    discount_percent: int = 0
+    # Из суммы вычтен баланс пользователя
+    balance_deducted: bool = False
+    # Сумма поднята до минимума или опущена до максимума способа оплаты — период не соответствует точно
+    clamped: bool = False
+
+
 class PaymentMethodResponse(BaseModel):
     """Available payment method."""
 
@@ -58,6 +69,8 @@ class PaymentMethodResponse(BaseModel):
     is_available: bool = True
     options: list[dict[str, Any]] | None = None
     quick_amounts: list[int] = Field(default_factory=list)
+    # Пояснения по индексам quick_amounts; None для статических сумм
+    quick_amount_hints: list[QuickAmountHint] | None = None
     # Если True — кабинет, получив payment_url от провайдера, делает window.location.href
     # сразу (seamless flow внутри MiniApp WebView). Если False — показывает панель
     # "Открыть страницу оплаты" с кнопкой.

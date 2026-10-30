@@ -39,6 +39,51 @@ MAX_DYNAMIC_PRESETS = 4
 _KOPEKS_IN_RUBLE = 100
 
 
+@dataclass(frozen=True)
+class PresetEntry:
+    amount_kopeks: int
+    index: int  # позиция цены во входном списке — по ней находится период
+    clamped: bool  # сумма поднята до минимума или опущена до максимума метода
+    balance_deducted: bool
+
+
+def build_topup_preset_entries(
+    prices_kopeks: Sequence[int],
+    *,
+    balance_kopeks: int,
+    deduct_balance: bool,
+    min_kopeks: int,
+    max_kopeks: int,
+    limit: int = MAX_DYNAMIC_PRESETS,
+) -> list[PresetEntry]:
+    """Кнопки быстрых сумм с происхождением: по возрастанию, без повторов, не больше ``limit``.
+
+    - при ``deduct_balance`` из цены вычитается баланс (отрицательный баланс считается нулём:
+      долг не увеличивает сумму кнопки, платёж остаётся ценой продления);
+    - сумма округляется вверх до целого рубля;
+    - сумма зажимается в [min_kopeks, max_kopeks] метода; если границы перевёрнуты — кнопок нет;
+    - цены и остатки <= 0 (период уже покрыт балансом или скидка 100 %) кнопки не дают;
+    - при совпадении сумм остаётся первая цена (короткий период).
+    """
+    if max_kopeks < min_kopeks:
+        return []
+
+    credit = max(0, balance_kopeks) if deduct_balance else 0
+    entries: dict[int, PresetEntry] = {}
+    for index, price in enumerate(prices_kopeks):
+        shortfall = price - credit
+        if shortfall <= 0:
+            continue
+        rounded = math.ceil(shortfall / _KOPEKS_IN_RUBLE) * _KOPEKS_IN_RUBLE
+        amount = min(max(rounded, min_kopeks), max_kopeks)
+        entries.setdefault(
+            amount,
+            PresetEntry(amount_kopeks=amount, index=index, clamped=amount != rounded, balance_deducted=credit > 0),
+        )
+
+    return [entries[amount] for amount in sorted(entries)][:limit]
+
+
 def build_topup_presets(
     prices_kopeks: Sequence[int],
     *,
@@ -48,27 +93,36 @@ def build_topup_presets(
     max_kopeks: int,
     limit: int = MAX_DYNAMIC_PRESETS,
 ) -> list[int]:
-    """Суммы кнопок в копейках: по возрастанию, без повторов, не больше ``limit``.
+    """Суммы кнопок в копейках; правила — в :func:`build_topup_preset_entries`."""
+    return [
+        entry.amount_kopeks
+        for entry in build_topup_preset_entries(
+            prices_kopeks,
+            balance_kopeks=balance_kopeks,
+            deduct_balance=deduct_balance,
+            min_kopeks=min_kopeks,
+            max_kopeks=max_kopeks,
+            limit=limit,
+        )
+    ]
 
-    - при ``deduct_balance`` из цены вычитается баланс (отрицательный баланс считается нулём:
-      долг не увеличивает сумму кнопки, платёж остаётся ценой продления);
-    - сумма округляется вверх до целого рубля;
-    - сумма зажимается в [min_kopeks, max_kopeks] метода; если границы перевёрнуты — кнопок нет;
-    - цены и остатки <= 0 (период уже покрыт балансом или скидка 100 %) кнопки не дают.
-    """
-    if max_kopeks < min_kopeks:
-        return []
 
-    credit = max(0, balance_kopeks) if deduct_balance else 0
-    amounts: set[int] = set()
-    for price in prices_kopeks:
-        shortfall = price - credit
-        if shortfall <= 0:
-            continue
-        rounded = math.ceil(shortfall / _KOPEKS_IN_RUBLE) * _KOPEKS_IN_RUBLE
-        amounts.add(min(max(rounded, min_kopeks), max_kopeks))
+@dataclass(frozen=True)
+class TopupPresetHint:
+    """Пояснение к одной кнопке: за какой период продления эта сумма."""
 
-    return sorted(amounts)[:limit]
+    period_days: int
+    discount_percent: int
+    balance_deducted: bool
+    clamped: bool
+
+    def as_dict(self) -> dict[str, int | bool]:
+        return {
+            'period_days': self.period_days,
+            'discount_percent': self.discount_percent,
+            'balance_deducted': self.balance_deducted,
+            'clamped': self.clamped,
+        }
 
 
 @dataclass(frozen=True)
@@ -78,15 +132,36 @@ class TopupPresetsBasis:
     prices_kopeks: tuple[int, ...] | list[int]
     balance_kopeks: int
     deduct_balance: bool
+    # Период и итоговая скидка каждой цены (в том же порядке). Пусто — пояснений не будет.
+    period_days: tuple[int, ...] = ()
+    discount_percents: tuple[int, ...] = ()
 
-    def amounts_for(self, min_kopeks: int, max_kopeks: int) -> list[int]:
-        return build_topup_presets(
+    def _entries(self, min_kopeks: int, max_kopeks: int) -> list[PresetEntry]:
+        return build_topup_preset_entries(
             self.prices_kopeks,
             balance_kopeks=self.balance_kopeks,
             deduct_balance=self.deduct_balance,
             min_kopeks=min_kopeks,
             max_kopeks=max_kopeks,
         )
+
+    def amounts_for(self, min_kopeks: int, max_kopeks: int) -> list[int]:
+        return [entry.amount_kopeks for entry in self._entries(min_kopeks, max_kopeks)]
+
+    def hints_for(self, min_kopeks: int, max_kopeks: int) -> list[TopupPresetHint] | None:
+        """Пояснения в том же порядке, что и ``amounts_for``; None, если периоды неизвестны."""
+        if len(self.period_days) != len(self.prices_kopeks):
+            return None
+        discounts = self.discount_percents or (0,) * len(self.period_days)
+        return [
+            TopupPresetHint(
+                period_days=self.period_days[entry.index],
+                discount_percent=discounts[entry.index],
+                balance_deducted=entry.balance_deducted,
+                clamped=entry.clamped,
+            )
+            for entry in self._entries(min_kopeks, max_kopeks)
+        ]
 
 
 async def load_topup_presets_basis(db: AsyncSession, user: User) -> TopupPresetsBasis | None:
@@ -111,6 +186,8 @@ async def load_topup_presets_basis(db: AsyncSession, user: User) -> TopupPresets
         return None
     return TopupPresetsBasis(
         prices_kopeks=prices,
+        period_days=tuple(option.period_days for option in options),
+        discount_percents=tuple(option.discount_percent for option in options),
         balance_kopeks=int(user.balance_kopeks or 0),
         deduct_balance=bool(settings.TOPUP_PRESETS_DEDUCT_BALANCE),
     )

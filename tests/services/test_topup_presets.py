@@ -316,3 +316,103 @@ class TestMethodsUseDynamicPresets:
         (method,) = await self._methods(monkeypatch, None, basis)
 
         assert method['quick_amounts'] == [10000, 30000, 50000, 100000]
+
+
+class TestPresetHints:
+    def _basis(
+        self, balance=0, deduct=True, prices=(40000, 100000, 180000), periods=(30, 90, 180), discounts=(0, 10, 20)
+    ):
+        return topup_presets.TopupPresetsBasis(
+            prices_kopeks=list(prices),
+            balance_kopeks=balance,
+            deduct_balance=deduct,
+            period_days=tuple(periods),
+            discount_percents=tuple(discounts),
+        )
+
+    def test_each_button_explains_its_period_and_discount(self):
+        hints = self._basis().hints_for(MIN_KOPEKS, MAX_KOPEKS)
+
+        assert [(h.period_days, h.discount_percent) for h in hints] == [(30, 0), (90, 10), (180, 20)]
+
+    def test_balance_deduction_is_flagged_only_when_balance_was_taken(self):
+        assert all(h.balance_deducted for h in self._basis(balance=15000).hints_for(MIN_KOPEKS, MAX_KOPEKS))
+        assert not any(h.balance_deducted for h in self._basis(balance=0).hints_for(MIN_KOPEKS, MAX_KOPEKS))
+        assert not any(
+            h.balance_deducted for h in self._basis(balance=15000, deduct=False).hints_for(MIN_KOPEKS, MAX_KOPEKS)
+        )
+
+    def test_hints_stay_aligned_with_amounts_after_dropping_covered_periods(self):
+        basis = self._basis(balance=40000)
+
+        assert basis.amounts_for(MIN_KOPEKS, MAX_KOPEKS) == [60000, 140000]
+        assert [h.period_days for h in basis.hints_for(MIN_KOPEKS, MAX_KOPEKS)] == [90, 180]
+
+    def test_clamped_amount_is_marked_so_the_caption_is_not_misleading(self):
+        basis = self._basis(balance=39900, prices=(40000,), periods=(30,), discounts=(0,))
+
+        (hint,) = basis.hints_for(MIN_KOPEKS, MAX_KOPEKS)
+
+        assert hint.clamped is True
+
+    def test_duplicates_keep_the_shortest_period(self):
+        basis = self._basis(prices=(40000, 40000), periods=(30, 90), discounts=(0, 0))
+
+        assert basis.amounts_for(MIN_KOPEKS, MAX_KOPEKS) == [40000]
+        assert [h.period_days for h in basis.hints_for(MIN_KOPEKS, MAX_KOPEKS)] == [30]
+
+    def test_basis_without_period_info_gives_no_hints(self):
+        basis = topup_presets.TopupPresetsBasis(prices_kopeks=[40000], balance_kopeks=0, deduct_balance=True)
+
+        assert basis.hints_for(MIN_KOPEKS, MAX_KOPEKS) is None
+
+    async def test_loader_fills_period_and_discount_from_renewal_options(self, monkeypatch, enabled):
+        tariff = _tariff({'30': 50000, '90': 150000})
+        _patch_subscription(monkeypatch, _sub(tariff))
+
+        basis = await topup_presets.load_topup_presets_basis(MagicMock(), _user(0, promo_offer_discount_percent=20))
+
+        hints = basis.hints_for(MIN_KOPEKS, MAX_KOPEKS)
+        assert [(h.period_days, h.discount_percent) for h in hints] == [(30, 20), (90, 20)]
+
+
+class TestMethodsExposeHints:
+    @pytest.fixture(autouse=True)
+    def _wire(self, monkeypatch):
+        monkeypatch.setattr(
+            method_config,
+            '_get_method_defaults',
+            lambda: {'sample_method': {'is_configured': True, 'default_min': MIN_KOPEKS, 'default_max': MAX_KOPEKS}},
+        )
+
+    async def _methods(self, monkeypatch, quick_amounts, basis):
+        monkeypatch.setattr(method_config, 'get_all_configs', AsyncMock(return_value=[_config(quick_amounts)]))
+        return await method_config.get_enabled_methods_for_user(MagicMock(), user=_user(0), topup_presets=basis)
+
+    async def test_dynamic_presets_carry_hints_aligned_with_amounts(self, monkeypatch):
+        basis = topup_presets.TopupPresetsBasis(
+            prices_kopeks=[40000, 100000],
+            balance_kopeks=15000,
+            deduct_balance=True,
+            period_days=(30, 90),
+            discount_percents=(0, 10),
+        )
+
+        (method,) = await self._methods(monkeypatch, None, basis)
+
+        assert method['quick_amounts'] == [25000, 85000]
+        assert method['quick_amount_hints'] == [
+            {'period_days': 30, 'discount_percent': 0, 'balance_deducted': True, 'clamped': False},
+            {'period_days': 90, 'discount_percent': 10, 'balance_deducted': True, 'clamped': False},
+        ]
+
+    async def test_admin_list_and_fallback_return_no_hints(self, monkeypatch):
+        basis = topup_presets.TopupPresetsBasis(
+            prices_kopeks=[40000], balance_kopeks=0, deduct_balance=True, period_days=(30,), discount_percents=(0,)
+        )
+
+        (admin,) = await self._methods(monkeypatch, [20000], basis)
+        (fallback,) = await self._methods(monkeypatch, None, None)
+
+        assert admin['quick_amount_hints'] is None
+        assert fallback['quick_amount_hints'] is None

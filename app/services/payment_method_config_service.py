@@ -1,6 +1,6 @@
 """Service for managing payment method display configurations in cabinet."""
 
-from typing import Protocol
+from typing import Any, Protocol
 
 import structlog
 from sqlalchemy import func, select
@@ -19,6 +19,8 @@ class TopupPresetsSource(Protocol):
     """
 
     def amounts_for(self, min_kopeks: int, max_kopeks: int) -> list[int]: ...
+
+    def hints_for(self, min_kopeks: int, max_kopeks: int) -> list[Any] | None: ...
 
 
 logger = structlog.get_logger(__name__)
@@ -455,12 +457,14 @@ def _resolve_quick_amounts(
     min_amount_kopeks: int,
     max_amount_kopeks: int,
     topup_presets: 'TopupPresetsSource | None',
-) -> list[int]:
+) -> tuple[list[int], list[dict] | None]:
+    """Суммы кнопок и пояснения к ним (None, если суммы статические)."""
     if quick_amounts is None and topup_presets is not None:
         dynamic = topup_presets.amounts_for(min_amount_kopeks, max_amount_kopeks)
         if dynamic:
-            return dynamic
-    return get_effective_quick_amounts(quick_amounts, min_amount_kopeks, max_amount_kopeks)
+            hints = topup_presets.hints_for(min_amount_kopeks, max_amount_kopeks)
+            return dynamic, [hint.as_dict() for hint in hints] if hints is not None else None
+    return get_effective_quick_amounts(quick_amounts, min_amount_kopeks, max_amount_kopeks), None
 
 
 # ============ Initialization ============
@@ -748,6 +752,9 @@ async def get_enabled_methods_for_user(
             if enabled_options:
                 options = enabled_options
 
+        quick_amounts, quick_amount_hints = _resolve_quick_amounts(
+            config.quick_amounts, min_amount, max_amount, topup_presets
+        )
         result.append(
             {
                 'id': method_id,
@@ -756,7 +763,8 @@ async def get_enabled_methods_for_user(
                 'min_amount_kopeks': min_amount,
                 'max_amount_kopeks': max_amount,
                 'options': options,
-                'quick_amounts': _resolve_quick_amounts(config.quick_amounts, min_amount, max_amount, topup_presets),
+                'quick_amounts': quick_amounts,
+                'quick_amount_hints': quick_amount_hints,
                 'sort_order': config.sort_order,
                 # Если True — кабинет, получив payment_url, делает
                 # window.location.href сразу вместо показа панели с ссылкой.
