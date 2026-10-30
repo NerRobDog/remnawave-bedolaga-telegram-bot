@@ -395,6 +395,8 @@ class BotConfigurationService:
         'PAYMENT_SUBSCRIPTION_TEMPLATE': 'PAYMENT',
         'AUTO_PURCHASE_AFTER_TOPUP_ENABLED': 'PAYMENT',
         'TOPUP_DYNAMIC_PRESETS_ENABLED': 'PAYMENT',
+        'ABROAD_MODE_ENABLED': 'SUBSCRIPTIONS_CORE',
+        'ABROAD_EXTERNAL_SQUAD_UUID': 'SUBSCRIPTIONS_CORE',
         'TOPUP_PRESETS_DEDUCT_BALANCE': 'PAYMENT',
         'SIMPLE_SUBSCRIPTION_ENABLED': 'SIMPLE_SUBSCRIPTION',
         'SIMPLE_SUBSCRIPTION_PERIOD_DAYS': 'SIMPLE_SUBSCRIPTION',
@@ -732,6 +734,22 @@ class BotConfigurationService:
     }
 
     SETTING_HINTS: dict[str, dict[str, str]] = {
+        'ABROAD_MODE_ENABLED': {
+            'description': (
+                'Переключатель «Я в РФ / Я за границей» на главной странице кабинета: меняет внешний сквад '
+                'пользователя в панели Remnawave. Прежний сквад пользователя запоминается и возвращается при выходе из режима.'
+            ),
+            'format': 'Булево значение.',
+            'example': 'false',
+            'warning': 'Без заданного ABROAD_EXTERNAL_SQUAD_UUID переключатель не показывается.',
+            'dependencies': 'ABROAD_EXTERNAL_SQUAD_UUID',
+        },
+        'ABROAD_EXTERNAL_SQUAD_UUID': {
+            'description': 'UUID внешнего сквада «Abroad» в панели Remnawave — к нему привязан шаблон подписки для живущих за границей.',
+            'format': 'UUID внешнего сквада из панели.',
+            'example': '0fbd83c2-7c5d-4267-91d3-aaa9b6415a92',
+            'warning': 'Проверьте, что сквад существует в панели: иначе переключение завершится ошибкой.',
+        },
         'SUPPORT_ADMIN_TICKET_NOTIFICATIONS_ENABLED': {
             'description': 'Сообщать администраторам в Telegram о новых тикетах и ответах пользователей.',
             'format': 'Булево значение (да/нет).',
