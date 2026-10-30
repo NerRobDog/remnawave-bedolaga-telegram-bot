@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import math
+from collections.abc import Coroutine
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import import_module
@@ -29,6 +31,37 @@ from app.utils.user_utils import format_referrer_info
 
 
 renewal_service = SubscriptionRenewalService()
+
+# Сильные ссылки на фоновые задачи: без них event loop может собрать задачу до завершения.
+_background_tasks: set[asyncio.Task[None]] = set()
+
+
+def _log_background_task_result(task: asyncio.Task[None]) -> None:
+    _background_tasks.discard(task)
+    if task.cancelled():
+        return
+    error = task.exception()
+    if error is not None:
+        logger.error(
+            'Фоновая задача CryptoBot завершилась с ошибкой',
+            task_name=task.get_name(),
+            error=error,
+            exc_info=error,
+        )
+
+
+def _spawn_background(coro: Coroutine[Any, Any, None], *, name: str) -> asyncio.Task[None]:
+    """Запускает пост-платёжную работу вне HTTP-запроса, удерживая ссылку на задачу."""
+    task = asyncio.create_task(coro, name=name)
+    _background_tasks.add(task)
+    task.add_done_callback(_log_background_task_result)
+    return task
+
+
+async def wait_for_background_notifications() -> None:
+    """Ждёт завершения фоновых уведомлений (тесты и graceful shutdown)."""
+    while _background_tasks:
+        await asyncio.gather(*list(_background_tasks), return_exceptions=True)
 
 
 @dataclass(slots=True)
@@ -381,24 +414,23 @@ class CryptoBotPaymentMixin:
                     except Exception as error:
                         logger.error('Ошибка подготовки уведомления о пополнении CryptoBot', error=error)
 
+                # Зачисление уже зафиксировано. Telegram, админ-чат и автопокупка корзины
+                # могут занять десятки секунд — провайдер при долгом ответе рвёт соединение
+                # и повторяет вебхук, поэтому уведомления уходят в фон со своими сессиями БД.
                 if admin_notification:
-                    await self._deliver_admin_topup_notification(admin_notification)
-
-                if user_notification and bot_instance:
-                    await self._deliver_user_topup_notification(user_notification)
-
-                # Проверяем наличие сохраненной корзины для возврата к оформлению подписки
-                try:
-                    from app.services.payment.common import send_cart_notification_after_topup
-
-                    await send_cart_notification_after_topup(user, amount_kopeks, db, bot_instance)
-                except Exception as error:
-                    logger.error(
-                        'Ошибка при работе с сохраненной корзиной для пользователя',
-                        user_id=user.id,
-                        error=error,
-                        exc_info=True,
+                    _spawn_background(
+                        self._deliver_admin_topup_notification(admin_notification),
+                        name=f'cryptobot-admin-notify-{invoice_id}',
                     )
+
+                _spawn_background(
+                    self._run_post_topup_followups(
+                        user_notification,
+                        user_id=user.id,
+                        amount_kopeks=amount_kopeks,
+                    ),
+                    name=f'cryptobot-user-followups-{invoice_id}',
+                )
 
             return True
 
@@ -586,6 +618,38 @@ class CryptoBotPaymentMixin:
         )
 
         return True
+
+    async def _run_post_topup_followups(
+        self,
+        user_notification: _UserNotificationPayload | None,
+        *,
+        user_id: int,
+        amount_kopeks: int,
+    ) -> None:
+        """Уведомление пользователю и автодействия после пополнения (корзина, возобновление)."""
+        bot_instance = getattr(self, 'bot', None)
+
+        if user_notification and bot_instance:
+            await self._deliver_user_topup_notification(user_notification)
+
+        # Проверяем наличие сохраненной корзины для возврата к оформлению подписки
+        try:
+            from app.database.crud.user import get_user_by_id
+            from app.services.payment.common import send_cart_notification_after_topup
+
+            async with AsyncSessionLocal() as session:
+                user = await get_user_by_id(session, user_id)
+                if not user:
+                    logger.warning('Пользователь не найден для пост-пополнительных действий', user_id=user_id)
+                    return
+                await send_cart_notification_after_topup(user, amount_kopeks, session, bot_instance)
+        except Exception as error:
+            logger.error(
+                'Ошибка при работе с сохраненной корзиной для пользователя',
+                user_id=user_id,
+                error=error,
+                exc_info=True,
+            )
 
     async def _deliver_admin_topup_notification(self, context: _AdminNotificationContext) -> None:
         bot_instance = getattr(self, 'bot', None)

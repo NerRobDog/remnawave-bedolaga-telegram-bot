@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
+import time
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any
@@ -425,6 +427,7 @@ async def test_process_cryptobot_webhook_success(monkeypatch: pytest.MonkeyPatch
     }
 
     result = await service.process_cryptobot_webhook(fake_session, payload)
+    await cryptobot_module.wait_for_background_notifications()
 
     assert result is True
     assert transactions and transactions[0]['amount_kopeks'] == 14000
@@ -1669,3 +1672,189 @@ async def test_process_yookassa_webhook_rejects_without_api_client(monkeypatch: 
     assert result is False
     get_payment_mock.assert_not_awaited()
     create_mock.assert_not_awaited()
+
+
+def _prepare_cryptobot_topup(
+    monkeypatch: pytest.MonkeyPatch,
+    service: PaymentService,
+    *,
+    admin_delay: float = 0.0,
+    admin_error: Exception | None = None,
+) -> tuple[SimpleNamespace, list[str]]:
+    """Подменяет зависимости CryptoBot-пополнения; возвращает пользователя и журнал порядка событий."""
+    events: list[str] = []
+    payment = SimpleNamespace(
+        invoice_id='inv_bg',
+        user_id=7,
+        status='pending',
+        transaction_id=None,
+        amount='12.50',
+        asset='USDT',
+        amount_float=12.5,
+    )
+
+    async def fake_get_crypto(db, invoice_id):
+        return payment
+
+    async def fake_link(db, invoice_id, transaction_id):
+        payment.transaction_id = transaction_id
+
+    fake_cryptobot_module = ModuleType('app.database.crud.cryptobot')
+    fake_cryptobot_module.get_cryptobot_payment_by_invoice_id = fake_get_crypto
+    fake_cryptobot_module.get_cryptobot_payment_by_invoice_id_for_update = fake_get_crypto
+    fake_cryptobot_module.link_cryptobot_payment_to_transaction = fake_link
+    monkeypatch.setitem(sys.modules, 'app.database.crud.cryptobot', fake_cryptobot_module)
+
+    created: dict[str, SimpleNamespace] = {}
+
+    async def fake_create_transaction(db, **kwargs):
+        created['tx'] = SimpleNamespace(id=999, **kwargs)
+        return created['tx']
+
+    async def fake_get_transaction_by_id(db, transaction_id):
+        return created['tx']
+
+    async def fake_emit_side_effects(db, transaction, **kwargs):
+        return None
+
+    fake_transaction_module = ModuleType('app.database.crud.transaction')
+    fake_transaction_module.create_transaction = fake_create_transaction
+    fake_transaction_module.get_transaction_by_id = fake_get_transaction_by_id
+    fake_transaction_module.emit_transaction_side_effects = fake_emit_side_effects
+    monkeypatch.setitem(sys.modules, 'app.database.crud.transaction', fake_transaction_module)
+    monkeypatch.setattr('app.services.payment_service.create_transaction', fake_create_transaction)
+
+    user = SimpleNamespace(
+        id=7,
+        telegram_id=700,
+        balance_kopeks=0,
+        has_made_first_topup=False,
+        promo_group=None,
+        subscription=None,
+        referred_by_id=None,
+        referrer=None,
+    )
+    user.get_primary_promo_group = lambda: None
+
+    async def fake_get_user(db, user_id):
+        return user
+
+    async def fake_lock_user(db, locked_user):
+        return locked_user
+
+    monkeypatch.setattr('app.services.payment_service.get_user_by_id', fake_get_user)
+    fake_user_module = ModuleType('app.database.crud.user')
+    fake_user_module.get_user_by_id = fake_get_user
+    fake_user_module.lock_user_for_update = fake_lock_user
+    monkeypatch.setitem(sys.modules, 'app.database.crud.user', fake_user_module)
+    monkeypatch.setitem(
+        sys.modules, 'app.services.referral_service', SimpleNamespace(process_referral_topup=AsyncMock())
+    )
+
+    class SlowAdminService:
+        def __init__(self, bot):
+            self.bot = bot
+
+        async def send_balance_topup_notification(self, *args, **kwargs):
+            await asyncio.sleep(admin_delay)
+            if admin_error:
+                raise admin_error
+            events.append('admin')
+
+    monkeypatch.setitem(
+        sys.modules,
+        'app.services.admin_notification_service',
+        SimpleNamespace(AdminNotificationService=SlowAdminService),
+    )
+
+    class DummyAsyncSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def rollback(self):  # pragma: no cover - defensive stub
+            return None
+
+    monkeypatch.setattr(cryptobot_module, 'AsyncSessionLocal', DummyAsyncSession)
+    monkeypatch.setattr('app.services.payment_service.currency_converter.usd_to_rub', AsyncMock(return_value=140.0))
+    monkeypatch.setattr(type(settings), 'format_price', lambda self, amount: f'{amount / 100:.2f}₽', raising=False)
+    service.build_topup_success_keyboard = AsyncMock(return_value=None)
+
+    async def fake_cart_followups(topup_user, amount_kopeks, db, bot):
+        events.append('cart')
+        return False
+
+    monkeypatch.setattr('app.services.payment.common.send_cart_notification_after_topup', fake_cart_followups)
+    return user, events
+
+
+_CRYPTOBOT_BG_PAYLOAD = {
+    'update_type': 'invoice_paid',
+    'payload': {'invoice_id': 'inv_bg', 'paid_at': '2024-01-01T12:00:00Z'},
+}
+
+
+@pytest.mark.anyio('asyncio')
+async def test_cryptobot_webhook_returns_before_slow_notifications_finish(monkeypatch: pytest.MonkeyPatch) -> None:
+    delay = 0.5
+
+    class SlowBot(DummyBot):
+        async def send_message(self, *args: Any, **kwargs: Any) -> None:
+            await asyncio.sleep(delay)
+            await super().send_message(*args, **kwargs)
+
+    bot = SlowBot()
+    service = _make_service(bot)
+    user, events = _prepare_cryptobot_topup(monkeypatch, service, admin_delay=delay)
+
+    started = time.perf_counter()
+    result = await service.process_cryptobot_webhook(FakeSession(), _CRYPTOBOT_BG_PAYLOAD)
+    elapsed = time.perf_counter() - started
+
+    # Начисление уже зафиксировано, а уведомления ещё в полёте: ответ провайдеру не ждёт Telegram.
+    assert result is True
+    assert user.balance_kopeks == 14000
+    assert elapsed < delay / 2, f'webhook blocked on notifications for {elapsed:.3f}s'
+    assert not bot.sent_messages
+    assert 'admin' not in events
+
+    await cryptobot_module.wait_for_background_notifications()
+
+    assert bot.sent_messages
+    assert events == ['admin', 'cart'] or events == ['cart', 'admin']
+
+
+@pytest.mark.anyio('asyncio')
+async def test_cryptobot_webhook_survives_failing_notifications(monkeypatch: pytest.MonkeyPatch) -> None:
+    class BrokenBot(DummyBot):
+        async def send_message(self, *args: Any, **kwargs: Any) -> None:
+            raise RuntimeError('telegram is down')
+
+    service = _make_service(BrokenBot())
+    user, events = _prepare_cryptobot_topup(monkeypatch, service, admin_error=RuntimeError('admin chat is down'))
+
+    result = await service.process_cryptobot_webhook(FakeSession(), _CRYPTOBOT_BG_PAYLOAD)
+    await cryptobot_module.wait_for_background_notifications()
+
+    assert result is True
+    assert user.balance_kopeks == 14000
+    # Падение уведомлений не отменяет остальные побочные эффекты и не оставляет задач в наборе.
+    assert 'cart' in events
+    assert not cryptobot_module._background_tasks
+
+
+@pytest.mark.anyio('asyncio')
+async def test_cryptobot_background_task_logs_unexpected_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    errors: list[dict[str, Any]] = []
+    monkeypatch.setattr(cryptobot_module.logger, 'error', lambda message, **kwargs: errors.append(kwargs))
+
+    async def boom() -> None:
+        raise ValueError('unexpected')
+
+    cryptobot_module._spawn_background(boom(), name='cryptobot-test-boom')
+    await cryptobot_module.wait_for_background_notifications()
+
+    assert errors and 'unexpected' in str(errors[0].get('error'))
+    assert not cryptobot_module._background_tasks
