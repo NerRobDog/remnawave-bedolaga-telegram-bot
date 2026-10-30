@@ -66,6 +66,9 @@ class CryptoBotService:
         description: str | None = None,
         payload: str | None = None,
         expires_in: int | None = None,
+        paid_btn_name: str | None = None,
+        paid_btn_url: str | None = None,
+        hidden_message: str | None = None,
     ) -> dict[str, Any] | None:
         data = {'currency_type': 'crypto', 'asset': asset, 'amount': amount}
 
@@ -77,6 +80,14 @@ class CryptoBotService:
 
         if expires_in:
             data['expires_in'] = expires_in
+
+        # Crypto Pay API: paid_btn_name requires paid_btn_url, which must be http(s).
+        if paid_btn_name and paid_btn_url and paid_btn_url.startswith(('http://', 'https://')):
+            data['paid_btn_name'] = paid_btn_name
+            data['paid_btn_url'] = paid_btn_url
+
+        if hidden_message:
+            data['hidden_message'] = hidden_message
 
         result = await self._make_request('POST', 'createInvoice', data)
 

@@ -151,3 +151,32 @@ async def test_create_cryptobot_payment_handles_empty_response(monkeypatch: pyte
     )
     assert result is None
     assert called is False
+
+
+@pytest.mark.anyio('asyncio')
+@pytest.mark.parametrize(
+    ('return_url', 'expect_button'),
+    [('https://example.com/cabinet/balance/top-up/result?method=cryptobot', True), (None, False)],
+)
+async def test_create_cryptobot_payment_return_url_sets_callback_button(
+    monkeypatch: pytest.MonkeyPatch, return_url: str | None, expect_button: bool
+) -> None:
+    stub = StubCryptoBotService({'invoice_id': 1, 'bot_invoice_url': 'https://t.me/invoice'})
+    service = _make_service(stub)
+
+    async def fake_create_cryptobot_payment(**kwargs: Any) -> DummyLocalPayment:
+        return DummyLocalPayment()
+
+    monkeypatch.setattr(cryptobot_crud, 'create_cryptobot_payment', fake_create_cryptobot_payment, raising=False)
+    monkeypatch.setattr(type(settings), 'get_cryptobot_invoice_expires_seconds', lambda self: 600, raising=False)
+
+    result = await service.create_cryptobot_payment(db=DummySession(), user_id=9, amount_usd=1.0, return_url=return_url)
+
+    assert result is not None
+    call = stub.calls[0]
+    if expect_button:
+        assert call['paid_btn_name'] == 'callback'
+        assert call['paid_btn_url'] == return_url
+    else:
+        assert 'paid_btn_name' not in call
+        assert 'paid_btn_url' not in call
