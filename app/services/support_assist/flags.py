@@ -131,12 +131,10 @@ def compute_flags(s: Snapshot) -> list[Flag]:
         add('some_squad_nodes_down', 'mid', f'Часть нод тарифа недоступна: {down}')
 
     # --- формат подписки
-    if (
-        reqs
-        and reqs[0].get('response_type') == 'XRAY_BASE64'
-        and any(str(r.get('user_agent', '')).lower().startswith('happ') for r in reqs)
-    ):
-        add('happ_base64', 'low', 'Клиент на Happ (базовый формат). Clash Mi даёт правила маршрутизации')
+    # API истории запросов не отдаёт тип ответа (srr_response_type есть только в БД панели),
+    # поэтому судим по User-Agent последнего запроса
+    if reqs and str(reqs[0].get('user_agent') or '').lower().startswith('happ'):
+        add('happ_base64', 'low', 'Клиент на Happ. Clash Mi даёт правила маршрутизации')
 
     # --- трафик: последние сутки неполные, судим по предыдущему полному дню
     if 'usage' not in s.missing:
