@@ -666,7 +666,7 @@
   Классы: нет
   Функции: `run_alembic_upgrade` — Run ``alembic upgrade head``, handling fresh and legacy databases., `stamp_alembic_head` — Stamp the DB as being at head without running migrations (for existing DBs).
 - `app/database/models.py` — Python-модуль
-  Классы: `AwareDateTime` (2 методов), `UserStatus`, `SubscriptionStatus`, `TransactionType`, `PromoCodeType`, `PaymentMethod`, `MainMenuButtonActionType`, `MainMenuButtonVisibility`, `WheelPrizeType`, `WheelSpinPaymentType`, `YooKassaPayment` (6 методов), `SavedPaymentMethod` (1 методов), `CryptoBotPayment` (5 методов), `AppleTransaction` (2 методов), `AppleIAPAccount` (1 методов), `AppleNotification` (1 методов), `AppleIAPAbuseEvent` (1 методов), `HeleketPayment` (5 методов), `MulenPayPayment` (2 методов), `Pal24Payment` (3 методов), `WataPayment` (2 методов), `PlategaPayment` (2 методов), `PlategaSubscription` (1 методов), `LavaSubscription` (1 методов), `CasheraSubscription` (1 методов), `CloudPaymentsPayment` (5 методов), `FreekassaPayment` (5 методов), `KassaAiPayment` (5 методов), `RioPayPayment` (5 методов), `SeverPayPayment` (5 методов), `RollyPayPayment` (5 методов), `OverpayPayment` (5 методов), `AuraPayPayment` (5 методов), `EtoplatezhiPayment` (5 методов), `AntilopayPayment` (5 методов), `JupiterPayment` (5 методов), `DonutPayment` (5 методов), `LavaPayment` (5 методов), `CisPayPayment` (5 методов), `CasheraPayment` (5 методов), `AnorePayment` (4 методов), `AntarcticPayment` (4 методов), `TabPayPayment` (5 методов), `ParityPayPayment` (5 методов), `PromoGroup` (3 методов), `UserPromoGroup` (1 методов), `Tariff` (21 методов), `PartnerStatus`, `User` (12 методов), `Subscription` (15 методов), `GraceAccessSessionModel`, `TrafficPurchase` (1 методов), `Transaction` (1 методов), `PaidTrafficResetIntent`, `SubscriptionConversion` (2 методов), `PromoCode` (2 методов), `PromoCodeUse`, `CouponStatus`, `CouponBatch` (2 методов), `Coupon` (1 методов), `ReferralRewardType`, `ReferralRewardTrigger`, `ReferralRewardMode`, `ReferralRewardLevel` (1 методов), `ReferralEarning` (1 методов), `WithdrawalRequestStatus`, `WithdrawalRequest` (1 методов), `PartnerApplication`, `ReferralContest` (1 методов), `ReferralContestEvent` (1 методов), `ReferralContestVirtualParticipant` (1 методов), `ContestTemplate`, `ContestRound`, `ContestAttempt`, `Squad` (1 методов), `ServiceRule`, `PrivacyPolicy`, `PublicOffer`, `LegalConsent`, `RecurrentPayments`, `FaqSetting`, `FaqPage`, `SystemSetting`, `EmailTemplate`, `MonitoringLog`, `SentNotification`, `SubscriptionEvent`, `DiscountOffer`, `PromoOfferTemplate`, `SubscriptionTemporaryAccess`, `PromoOfferLog`, `BroadcastHistory`, `Poll`, `PollQuestion`, `PollOption`, `PollResponse`, `PollAnswer`, `ServerSquad` (3 методов), `SubscriptionServer`, `SupportAuditLog`, `UserMessage` (1 методов), `WelcomeText`, `PinnedMessage`, `AdvertisingCampaign` (4 методов), `AdvertisingCampaignRegistration` (1 методов), `TicketStatus`, `Ticket` (8 методов), `TicketMessage` (3 методов), `WebApiToken` (1 методов), `MainMenuButton` (3 методов), `MenuLayoutHistory` (1 методов), `ButtonClickLog` (1 методов), `Webhook` (1 методов), `WebhookDelivery` (1 методов), `CabinetRefreshToken` (4 методов), `UserPasskey` (1 методов), `UserRecoveryCode` (1 методов), `TrialIdentityLedger` (1 методов), `AuthLinkBonus` (1 методов), `WheelConfig` (1 методов), `WheelPrize` (1 методов), `WheelSpin` (3 методов), `TicketNotification` (1 методов), `PaymentMethodConfig` (1 методов), `RequiredChannel` (1 методов), `UserChannelSubscription` (1 методов), `AdminRole` (1 методов), `UserRole` (1 методов), `AccessPolicy` (1 методов), `AdminAuditLog` (1 методов), `LandingPage` (1 методов), `GuestPurchaseStatus`, `GuestPurchase` (1 методов), `NewsArticle` (1 методов), `NewsCategory` (1 методов), `NewsTag` (1 методов), `YandexClientIdMap`, `InfoPage`, `UserDeviceAlias`, `SystemErrorEvent`, `EmailQueueItem`, `ReachabilityBatch`, `ReachabilityJob`, `ReachabilityLeg`, `ReachabilityTargetPref`, `DpiCheckerAction`, `UserReminder` (1 методов), `UserReminderState`
+  Классы: `AwareDateTime` (2 методов), `UserStatus`, `SubscriptionStatus`, `TransactionType`, `PromoCodeType`, `PaymentMethod`, `MainMenuButtonActionType`, `MainMenuButtonVisibility`, `WheelPrizeType`, `WheelSpinPaymentType`, `YooKassaPayment` (6 методов), `SavedPaymentMethod` (1 методов), `CryptoBotPayment` (5 методов), `AppleTransaction` (2 методов), `AppleIAPAccount` (1 методов), `AppleNotification` (1 методов), `AppleIAPAbuseEvent` (1 методов), `HeleketPayment` (5 методов), `MulenPayPayment` (2 методов), `Pal24Payment` (3 методов), `WataPayment` (2 методов), `PlategaPayment` (2 методов), `PlategaSubscription` (1 методов), `LavaSubscription` (1 методов), `CasheraSubscription` (1 методов), `CloudPaymentsPayment` (5 методов), `FreekassaPayment` (5 методов), `KassaAiPayment` (5 методов), `RioPayPayment` (5 методов), `SeverPayPayment` (5 методов), `RollyPayPayment` (5 методов), `OverpayPayment` (5 методов), `AuraPayPayment` (5 методов), `EtoplatezhiPayment` (5 методов), `AntilopayPayment` (5 методов), `JupiterPayment` (5 методов), `DonutPayment` (5 методов), `LavaPayment` (5 методов), `CisPayPayment` (5 методов), `CasheraPayment` (5 методов), `AnorePayment` (4 методов), `AntarcticPayment` (4 методов), `TabPayPayment` (5 методов), `ParityPayPayment` (5 методов), `PromoGroup` (3 методов), `UserPromoGroup` (1 методов), `Tariff` (21 методов), `PartnerStatus`, `User` (12 методов), `Subscription` (15 методов), `GraceAccessSessionModel`, `TrafficPurchase` (1 методов), `Transaction` (1 методов), `PaidTrafficResetIntent`, `SubscriptionConversion` (2 методов), `PromoCode` (2 методов), `PromoCodeUse`, `CouponStatus`, `CouponBatch` (2 методов), `Coupon` (1 методов), `ReferralRewardType`, `ReferralRewardTrigger`, `ReferralRewardMode`, `ReferralRewardLevel` (1 методов), `ReferralEarning` (1 методов), `WithdrawalRequestStatus`, `WithdrawalRequest` (1 методов), `PartnerApplication`, `ReferralContest` (1 методов), `ReferralContestEvent` (1 методов), `ReferralContestVirtualParticipant` (1 методов), `ContestTemplate`, `ContestRound`, `ContestAttempt`, `Squad` (1 методов), `ServiceRule`, `PrivacyPolicy`, `PublicOffer`, `LegalConsent`, `RecurrentPayments`, `FaqSetting`, `FaqPage`, `SystemSetting`, `EmailTemplate`, `MonitoringLog`, `SentNotification`, `SubscriptionEvent`, `DiscountOffer`, `PromoOfferTemplate`, `SubscriptionTemporaryAccess`, `PromoOfferLog`, `BroadcastHistory`, `Poll`, `PollQuestion`, `PollOption`, `PollResponse`, `PollAnswer`, `ServerSquad` (3 методов), `SubscriptionServer`, `SupportAuditLog`, `UserMessage` (1 методов), `WelcomeText`, `PinnedMessage`, `AdvertisingCampaign` (4 методов), `AdvertisingCampaignRegistration` (1 методов), `TicketStatus`, `Ticket` (8 методов), `TicketMessage` (3 методов), `SupportAssistCard` (1 методов), `WebApiToken` (1 методов), `MainMenuButton` (3 методов), `MenuLayoutHistory` (1 методов), `ButtonClickLog` (1 методов), `Webhook` (1 методов), `WebhookDelivery` (1 методов), `CabinetRefreshToken` (4 методов), `UserPasskey` (1 методов), `UserRecoveryCode` (1 методов), `TrialIdentityLedger` (1 методов), `AuthLinkBonus` (1 методов), `WheelConfig` (1 методов), `WheelPrize` (1 методов), `WheelSpin` (3 методов), `TicketNotification` (1 методов), `PaymentMethodConfig` (1 методов), `RequiredChannel` (1 методов), `UserChannelSubscription` (1 методов), `AdminRole` (1 методов), `UserRole` (1 методов), `AccessPolicy` (1 методов), `AdminAuditLog` (1 методов), `LandingPage` (1 методов), `GuestPurchaseStatus`, `GuestPurchase` (1 методов), `NewsArticle` (1 методов), `NewsCategory` (1 методов), `NewsTag` (1 методов), `YandexClientIdMap`, `InfoPage`, `UserDeviceAlias`, `SystemErrorEvent`, `EmailQueueItem`, `ReachabilityBatch`, `ReachabilityJob`, `ReachabilityLeg`, `ReachabilityTargetPref`, `DpiCheckerAction`, `UserReminder` (1 методов), `UserReminderState`
   Функции: нет
 
 #### app/database/crud
@@ -860,6 +860,9 @@
 - `app/database/crud/subscription_segments.py` — Python-модуль
   Классы: нет
   Функции: `segment_condition` — SQL-условие «подписка относится к сегменту» (по строке ``subscriptions``)., `subscription_segment` — Python-зеркало ``segment_condition`` для одной подписки (строка списка, чип).
+- `app/database/crud/support_assist.py` — Python-модуль
+  Классы: нет
+  Функции: `create_card`, `last_card_for_ticket`, `claim_card_decision` — Атомарный переход статуса: True только у того, кто реально сменил статус., `mark_auto_ask_sent` — Помечает карточку как отправившую автовопрос. False, если у тикета уже есть такая карточка.
 - `app/database/crud/system_errors.py` — Python-модуль
   Классы: нет
   Функции: `list_error_events` — Постранично отдать события с фильтрами. Возвращает (записи, всего)., `get_error_event`, `get_error_summary` — Сводка для бейджа и шапки страницы., `mark_delivery_result` — Записать исход ручной повторной доставки.
@@ -1682,7 +1685,7 @@
   Классы: нет
   Функции: нет
 - `app/services/monitoring_service.py` — Python-модуль
-  Классы: `AutopayFailState` (2 методов), `MonitoringService` (52 методов)
+  Классы: `AutopayFailState` (2 методов), `MonitoringService` (56 методов)
   Функции: `decide_autopay_fail_notification` — Decide whether/what to send on a failed-autopay tick., `apply_autopay_fail_notification` — Mutate state to record that a notification with `reason` was just sent.
 - `app/services/mulenpay_service.py` — Python-модуль
   Классы: `MulenPayService` (10 методов)
@@ -1700,7 +1703,7 @@
   Классы: `NotificationDeliveryService` (25 методов)
   Функции: нет
 - `app/services/notification_settings_service.py` — Python-модуль
-  Классы: `NotificationSettingsService` (23 методов)
+  Классы: `NotificationSettingsService` (29 методов)
   Функции: нет
 - `app/services/notification_types.py` — Python-модуль
   Классы: `NotificationType`
@@ -1894,6 +1897,7 @@
 - `app/services/subscription_service.py` — Python-модуль
   Классы: `PropagateSquadsResult`, `SubscriptionReissueResult`, `SubscriptionService` (35 методов)
   Функции: `reset_subscription_with_panel` — Обнулить подписку «как будто не оформляли» и снять доступ в панели RemnaWave,
+- `app/services/support_assist/`
 - `app/services/support_settings_service.py` — Python-модуль
   Классы: `SupportSettingsService` (25 методов)
   Функции: нет
@@ -2273,6 +2277,18 @@
 - `app/services/reachability/xray_json.py` — Python-модуль
   Классы: нет
   Функции: `links_from_xray_json` — Ссылки из JSON-подписки; не JSON или без прокси-outbound — пусто.
+
+#### app/services/support_assist
+
+- `app/services/support_assist/__init__.py` — Python-модуль
+  Классы: нет
+  Функции: нет
+- `app/services/support_assist/flags.py` — Python-модуль
+  Классы: `Flag`
+  Функции: `compute_flags`
+- `app/services/support_assist/snapshot.py` — Python-модуль
+  Классы: `Snapshot`
+  Функции: `collect_snapshot` — Собрать снимок. Не бросает исключений: сбои источников идут в ``missing``.
 
 #### app/services/user_reminders
 
@@ -2799,6 +2815,8 @@
 - `docs/postgresql-18-upgrade.md` — файл
 - `docs/project_structure_reference.md` — файл
 - `docs/referral_program_setting.md` — файл
+- `docs/superpowers/`
+- `docs/support-assist-panel-access.md` — файл
 - `docs/traffic-package-expiry.md` — файл
 - `docs/web-admin-integration-guide.md` — файл
 - `docs/web-admin-integration.md` — файл
@@ -2808,6 +2826,19 @@
 
 - `docs/handoffs/handoff-2026-08-31-1659.md` — файл
 - `docs/handoffs/handoff-2026-08-31-1944.md` — файл
+
+### docs/superpowers
+
+- `docs/superpowers/plans/`
+- `docs/superpowers/specs/`
+
+#### docs/superpowers/plans
+
+- `docs/superpowers/plans/2026-11-07-support-assistant.md` — файл
+
+#### docs/superpowers/specs
+
+- `docs/superpowers/specs/2026-11-06-support-assistant-design.md` — файл
 
 ## migrations
 
@@ -3244,6 +3275,9 @@
   Классы: нет
   Функции: `upgrade`, `downgrade`
 - `migrations/alembic/versions/0141_subscription_abroad_mode.py` — Python-модуль
+  Классы: нет
+  Функции: `upgrade`, `downgrade`
+- `migrations/alembic/versions/0142_support_assist.py` — Python-модуль
   Классы: нет
   Функции: `upgrade`, `downgrade`
 
@@ -3996,6 +4030,9 @@
 - `tests/crud/test_subscription_revive.py` — Python-модуль
   Классы: нет
   Функции: `test_revive_expired_starts_fresh_period` — Истёкшую реанимируем: статус active, период с «сейчас», трафик обнулён., `test_revive_alive_extends_from_end_date` — Ещё живую продлеваем от её end_date, накопленный трафик не сбрасываем., `test_create_paid_subscription_revives_existing_in_multitariff` — Мульти-тариф + есть ИСТЁКШАЯ запись тарифа → revive, без вставки дубля., `test_create_paid_subscription_revives_expired_trial` — #3004 (централизовано): ИСТЁКШИЙ ТРИАЛ того же тарифа при платной покупке, `test_revive_expired_trial_converts_to_paid` — Реанимация истёкшего ТРИАЛА: снимаем триальный флаг, обнуляем трафик,, `test_create_paid_subscription_does_not_revive_active` — Активную (не истёкшую) НЕ реанимируем — падаем в обычное создание/IntegrityError., `test_create_paid_subscription_skips_revive_without_tariff` — Классический режим (tariff_id=None) — lookup тарифа не дёргаем, создаём как раньше.
+- `tests/crud/test_support_assist_crud.py` — Python-модуль
+  Классы: нет
+  Функции: `test_claim_card_decision_only_once`, `test_mark_auto_ask_sent_rejects_second_ticket_card`
 - `tests/crud/test_tariff_panel_tag_crud.py` — Python-модуль
   Классы: нет
   Функции: `test_create_upper_cases_tag`, `test_update_blank_clears_and_missing_keeps`, `test_invalid_tag_is_rejected_before_write`, `test_trial_duration_days_persists`
@@ -4922,6 +4959,7 @@
 - `tests/services/dpichecker/`
 - `tests/services/panel_sync/`
 - `tests/services/reachability/`
+- `tests/services/support_assist/`
 - `tests/services/test_abroad_mode_service.py` — Python-модуль
   Классы: `FakePanel` (3 методов)
   Функции: `test_round_trip_restores_home_squad`, `test_exit_prefers_current_tariff_squad`, `test_enable_when_already_on_abroad_keeps_saved_home`, `test_exit_does_not_overwrite_squad_changed_by_admin`, `test_panel_failure_rolls_back_local_state`, `test_silent_stale_retry_counts_as_failure`, `test_deleted_home_squad_falls_back_to_detach`, `test_disabled_flag_blocks_switch`, `test_no_panel_account`, `test_sync_guard_keeps_abroad_over_tariff_squad`
@@ -5633,6 +5671,9 @@
 - `tests/services/test_traffic_monitoring_status_filter.py` — Python-модуль
   Классы: нет
   Функции: `service`, `test_disabled_and_expired_are_filtered_out` — DISABLED/EXPIRED отсекаются, ACTIVE/LIMITED остаются., `test_all_active_pass_through` — Когда все активны — ничего не теряется., `test_all_inactive_returns_empty` — Сплошь DISABLED/EXPIRED → пустой список (никого не проверяем)., `test_filter_applies_across_paginated_batches` — Фильтр работает на каждом батче; пагинация — по сырому размеру страницы.
+- `tests/services/test_trial_end_offer.py` — Python-модуль
+  Классы: нет
+  Функции: `test_offer_settings_defaults_and_clamping`, `test_trial_warning_hours_clamped`, `test_trial_warning_window_uses_setting`, `test_trial_warning_text_mentions_configured_hours`, `test_trial_warning_keeps_trial_2h_dedupe_type`, `test_offer_created_sent_and_recorded`, `test_offer_not_resent_when_already_recorded`, `test_offer_not_recorded_when_send_fails`, `test_offer_skips_ineligible`, `test_offer_respects_global_and_own_switch`, `test_offer_message_text_and_button`
 - `tests/services/test_trial_identity.py` — Python-модуль
   Классы: нет
   Функции: `test_email_normalization`, `test_unusable_email_has_no_identity`, `test_keys_cover_telegram_verified_email_and_google`, `test_keys_skip_what_the_account_does_not_have`, `test_an_unverified_email_is_not_an_identity` — Непроверенный адрес может принадлежать другому человеку: сжигать его ключ нельзя., `test_other_oauth_providers_are_covered_too`, `test_hash_is_a_64_char_hex_digest`, `test_hash_is_stable_and_distinguishes_keys`, `test_hash_depends_on_the_pepper`, `test_hash_does_not_contain_the_plain_value`, `test_claim_stores_only_hashes`, `test_a_known_identity_gets_no_second_trial`, `test_a_refused_claim_stores_nothing_from_that_account` — Если один ключ занят, остальные ключи нового аккаунта в журнал не попадают., `test_unknown_identities_pass_and_do_not_interfere`, `test_an_account_without_any_identity_is_not_blocked_and_records_nothing`, `test_an_admin_trial_reset_bypasses_the_ledger` — Сброс триала администратором открывает его заново, даже если личность уже в журнале., `test_a_failed_claim_leaves_the_session_usable`
@@ -5877,6 +5918,21 @@
 - `tests/services/reachability/test_xray_json.py` — Python-модуль
   Классы: нет
   Функции: `test_balancer_config_expands_into_one_link_per_outbound_with_tag_labels`, `test_trojan_and_shadowsocks_outbounds_and_ws_transport`, `test_not_json_or_no_proxies_gives_empty`
+
+#### tests/services/support_assist
+
+- `tests/services/support_assist/__init__.py` — Python-модуль
+  Классы: нет
+  Функции: нет
+- `tests/services/support_assist/fixtures.py` — Python-модуль
+  Классы: нет
+  Функции: `prev_day`, `healthy` — Здоровый клиент: ничего не должно срабатывать выше info., `s01`, `s02`, `s03`, `s04`, `s05`, `s06`, `s07`, `s08`, `s09`, `s10`, `s11`, `s12`, `s13`, `s14`, `s15`
+- `tests/services/support_assist/test_flags.py` — Python-модуль
+  Классы: нет
+  Функции: `test_scenario_flags`, `test_healthy_has_no_high_or_mid`, `test_disabled_node_not_down`, `test_history_truncated_gives_unavailable_not_never_fetched`, `test_unknown_total_gives_unavailable_not_never_fetched`, `test_no_subscription_snapshot`, `test_daily_paused_suppresses_desync_status`, `test_traffic_uses_previous_full_day`, `test_missing_usage_does_not_claim_zero_traffic`, `test_sub_expiring_soon`, `test_flag_is_frozen`
+- `tests/services/support_assist/test_snapshot.py` — Python-модуль
+  Классы: нет
+  Функции: `test_collect_snapshot_happy`, `test_collect_snapshot_devices_failure_is_isolated`, `test_history_failure_goes_to_missing_not_empty`, `test_no_remnawave_id_means_no_panel_user`, `test_bot_db_failure_is_isolated`
 
 #### tests/services/user_reminders
 
