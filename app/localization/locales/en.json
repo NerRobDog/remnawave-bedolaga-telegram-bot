@@ -1500,6 +1500,7 @@
   "SUBSCRIPTION_EXPIRED_1D": "⛔ <b>Your subscription{tariff_label} expired</b>\n\nAccess was disabled on {end_date}. Renew to return to the service.\n\n💎 Renewal price: {price}",
   "SUBSCRIPTION_EXPIRED_SECOND_WAVE": "🔥 <b>{percent}% discount on renewal{tariff_label}</b>\n\nActivate the offer to get an additional discount. It stacks with your promo group and is valid until {expires_at}.",
   "SUBSCRIPTION_EXPIRED_THIRD_WAVE": "🎁 <b>Personal {percent}% discount{tariff_label}</b>\n\nIt's been {trigger_days} days without a subscription. Come back and activate the extra discount — it stacks with your promo group and is valid until {expires_at}.",
+  "TRIAL_EXPIRED_OFFER": "🎁 <b>Your trial has ended</b>\n\nHere is {percent}% off your first payment. It stacks with your promo group and is valid for {valid_hours} h, until {expires_at}.",
   "SUBSCRIPTION_EXPIRING": "\n⚠️ <b>Subscription expiring!</b>\n\nYour subscription expires in {days} days.\n\nRenew it now so you don't lose access.\n",
   "SUBSCRIPTION_EXPIRING_PAID": "\n⚠️ <b>Subscription{tariff_label} expires in {days_text}!</b>\n\nYour paid subscription ends on {end_date}.\n\n💳 <b>Autopay:</b> {autopay_status}\n\n{action_text}\n",
   "SUBSCRIPTION_EXTEND": "💎 Extend",
