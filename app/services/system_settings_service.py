@@ -841,6 +841,27 @@ class BotConfigurationService:
             'warning': 'Считается с момента отправки предложения.',
             'dependencies': 'NOTIFICATION_EXPIRED_WAVE3_ENABLED',
         },
+        'NOTIFICATION_TRIAL_EXPIRED_OFFER_ENABLED': {
+            'description': 'Разовое предложение скидки в первые 24 часа после окончания пробной подписки (trial_expired_offer).',
+            'format': 'Булево значение (да/нет).',
+            'example': 'true',
+            'warning': 'Только для тех, кто ещё ни разу не платил. Выключено — предложение не создаётся и не отправляется. Действует сразу.',
+            'dependencies': 'NOTIFICATION_TRIAL_EXPIRED_OFFER_PERCENT, NOTIFICATION_TRIAL_EXPIRED_OFFER_VALID_HOURS',
+        },
+        'NOTIFICATION_TRIAL_EXPIRED_OFFER_PERCENT': {
+            'description': 'Размер скидки на первую оплату в предложении после окончания пробной подписки.',
+            'format': 'Целое число от 0 до 100 (процентов).',
+            'example': '20',
+            'warning': 'Скидка суммируется с промогруппой пользователя.',
+            'dependencies': 'NOTIFICATION_TRIAL_EXPIRED_OFFER_ENABLED',
+        },
+        'NOTIFICATION_TRIAL_EXPIRED_OFFER_VALID_HOURS': {
+            'description': 'Сколько часов действует скидка из предложения после окончания пробной подписки.',
+            'format': 'Целое число от 1 до 168 (часов).',
+            'example': '48',
+            'warning': 'Считается с момента отправки предложения.',
+            'dependencies': 'NOTIFICATION_TRIAL_EXPIRED_OFFER_ENABLED',
+        },
         'NOTIFICATION_EXPIRED_WAVE3_TRIGGER_DAYS': {
             'description': 'Через сколько дней после истечения подписки отправлять позднее предложение.',
             'format': 'Целое число от 2 до 60 (дней).',
