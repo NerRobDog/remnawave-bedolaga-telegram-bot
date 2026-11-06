@@ -32,6 +32,9 @@ KEY_WAVE3_ENABLED = 'NOTIFICATION_EXPIRED_WAVE3_ENABLED'
 KEY_WAVE3_PERCENT = 'NOTIFICATION_EXPIRED_WAVE3_DISCOUNT_PERCENT'
 KEY_WAVE3_HOURS = 'NOTIFICATION_EXPIRED_WAVE3_VALID_HOURS'
 KEY_WAVE3_DAYS = 'NOTIFICATION_EXPIRED_WAVE3_TRIGGER_DAYS'
+KEY_TRIAL_OFFER_ENABLED = 'NOTIFICATION_TRIAL_EXPIRED_OFFER_ENABLED'
+KEY_TRIAL_OFFER_PERCENT = 'NOTIFICATION_TRIAL_EXPIRED_OFFER_PERCENT'
+KEY_TRIAL_OFFER_HOURS = 'NOTIFICATION_TRIAL_EXPIRED_OFFER_VALID_HOURS'
 
 PERCENT_RANGE = (0, 100)
 HOURS_RANGE = (1, 168)
@@ -189,6 +192,30 @@ class NotificationSettingsService:
     @classmethod
     async def set_third_wave_trigger_days(cls, db: AsyncSession, days: Any) -> bool:
         return await cls._store_bounded(db, KEY_WAVE3_DAYS, days, DAYS_RANGE)
+
+    @classmethod
+    def is_trial_expired_offer_enabled(cls) -> bool:
+        return bool(settings.NOTIFICATION_TRIAL_EXPIRED_OFFER_ENABLED)
+
+    @classmethod
+    async def set_trial_expired_offer_enabled(cls, db: AsyncSession, enabled: bool) -> bool:
+        return await cls._store(db, KEY_TRIAL_OFFER_ENABLED, bool(enabled))
+
+    @classmethod
+    def get_trial_expired_offer_percent(cls) -> int:
+        return _clamped(settings.NOTIFICATION_TRIAL_EXPIRED_OFFER_PERCENT, PERCENT_RANGE, 20)
+
+    @classmethod
+    async def set_trial_expired_offer_percent(cls, db: AsyncSession, percent: Any) -> bool:
+        return await cls._store_bounded(db, KEY_TRIAL_OFFER_PERCENT, percent, PERCENT_RANGE)
+
+    @classmethod
+    def get_trial_expired_offer_valid_hours(cls) -> int:
+        return _clamped(settings.NOTIFICATION_TRIAL_EXPIRED_OFFER_VALID_HOURS, HOURS_RANGE, 48)
+
+    @classmethod
+    async def set_trial_expired_offer_valid_hours(cls, db: AsyncSession, hours: Any) -> bool:
+        return await cls._store_bounded(db, KEY_TRIAL_OFFER_HOURS, hours, HOURS_RANGE)
 
     @classmethod
     def are_notifications_globally_enabled(cls) -> bool:
