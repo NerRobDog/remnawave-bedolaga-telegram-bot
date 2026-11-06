@@ -4378,6 +4378,8 @@ class TicketMessage(Base):
     media_caption = Column(Text, nullable=True)
     # Multi-media gallery (photos/videos/documents bundled in one bubble)
     media_items = Column(JSONB, nullable=True)
+    # Служебное сообщение (например, автовопрос ассистента), не реплика клиента
+    is_system = Column(Boolean, default=False, nullable=False, server_default=text('false'))
 
     created_at = Column(AwareDateTime(), default=func.now())
 
@@ -4395,6 +4397,47 @@ class TicketMessage(Base):
 
     def __repr__(self):
         return f"<TicketMessage(id={self.id}, ticket_id={self.ticket_id}, is_admin={self.is_from_admin}, text='{self.message_text[:30]}...')>"
+
+
+class SupportAssistCard(Base):
+    """Карточка разбора тикета ассистентом поддержки."""
+
+    __tablename__ = 'support_assist_cards'
+    __table_args__ = (
+        Index(
+            'uq_support_assist_cards_auto_ask',
+            'ticket_id',
+            unique=True,
+            postgresql_where=text('auto_ask_sent_at IS NOT NULL'),
+            sqlite_where=text('auto_ask_sent_at IS NOT NULL'),
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    ticket_id = Column(Integer, ForeignKey('tickets.id', ondelete='CASCADE'), nullable=False, index=True)
+    created_at = Column(AwareDateTime(), default=func.now(), nullable=False)
+    trigger = Column(String(20), nullable=False)  # new_ticket | new_message
+    facts = Column(JSONB, nullable=False, default=dict)
+    flags = Column(JSONB, nullable=False, default=list)
+    card = Column(JSONB, nullable=True)
+    model = Column(String(100), nullable=True)
+    input_tokens = Column(Integer, nullable=True)
+    output_tokens = Column(Integer, nullable=True)
+    cache_read_tokens = Column(Integer, nullable=True)
+    cost_usd = Column(Numeric(10, 5), nullable=True)
+    # shown | sent | edited | dismissed | fallback | failed
+    status = Column(String(20), nullable=False, default='shown')
+    final_text = Column(Text, nullable=True)
+    admin_message_id = Column(BigInteger, nullable=True)
+    auto_ask_question_ids = Column(JSONB, nullable=True)
+    auto_ask_sent_at = Column(AwareDateTime(), nullable=True)
+    decided_by = Column(BigInteger, nullable=True)
+    decided_at = Column(AwareDateTime(), nullable=True)
+
+    ticket = relationship('Ticket')
+
+    def __repr__(self) -> str:
+        return f'<SupportAssistCard id={self.id} ticket_id={self.ticket_id} status={self.status}>'
 
 
 class WebApiToken(Base):

@@ -38,6 +38,7 @@ dependencies = [
     'attrs==26.1.0',
     'pillow==13.0.0',
     'webauthn==3.0.1',
+    'anthropic==2.6.0',
 ]
 
 [dependency-groups]

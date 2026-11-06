@@ -124,6 +124,15 @@ class Settings(BaseSettings):
     SUPPORT_INFO_TEXT_ZH: str = ''
     SUPPORT_INFO_TEXT_FA: str = ''
 
+    # Ассистент поддержки: карточка разбора нового тикета в админском топике.
+    SUPPORT_ASSIST_ENABLED: bool = False
+    SUPPORT_ASSIST_AUTO_ASK_ENABLED: bool = False
+    SUPPORT_ASSIST_SEND_BUTTONS_ENABLED: bool = False
+    ANTHROPIC_API_KEY: str = ''
+    SUPPORT_ASSIST_MODEL: str = 'claude-opus-5-5'
+    SUPPORT_ASSIST_TIMEOUT_SECONDS: int = 90
+    SUPPORT_ASSIST_RECOMPUTE_MINUTES: int = 10
+
     # MiniApp tickets settings
     MINIAPP_TICKETS_ENABLED: bool = True  # Enable/disable tickets section in miniapp
     MINIAPP_SUPPORT_TYPE: str = 'tickets'  # one of: tickets, profile, url
