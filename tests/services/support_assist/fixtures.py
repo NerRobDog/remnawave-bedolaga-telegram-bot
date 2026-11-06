@@ -172,7 +172,7 @@ def s08() -> Snapshot:
 def s09() -> Snapshot:
     return healthy(
         sub_requests=[
-            {'request_at': _ago(hours=h), 'user_agent': 'Happ/3.2.1', 'response_type': 'XRAY_BASE64'}
+            {'request_at': _ago(hours=h), 'user_agent': 'Happ/3.2.1'}
             for h in range(1, 11)
         ],
     )
