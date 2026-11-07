@@ -23,6 +23,7 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 CACHE_TTL_SECONDS = 300.0
+FALLBACK_TTL_SECONDS = 30.0
 
 LEGACY_APP = 'Happ'
 EXTRA_PLATFORMS: tuple[str, ...] = ('router', 'other')
@@ -170,26 +171,41 @@ def _now() -> float:
     return time.monotonic()
 
 
-_cache: tuple[float, FormOptions] | None = None
+# (момент загрузки, варианты, сколько секунд они свежие)
+_cache: tuple[float, FormOptions, float] | None = None
+# Последние варианты из настоящего конфига: при сбое Remnawave отдаём их, а не запасной набор.
+_last_good: FormOptions | None = None
 
 
 def reset_cache() -> None:
-    global _cache
+    global _cache, _last_good
     _cache = None
+    _last_good = None
 
 
 async def get_form_options() -> FormOptions:
-    """Варианты анкеты из кэша процесса; ошибка Remnawave даёт запасной набор, а не исключение."""
-    global _cache
+    """Варианты анкеты из кэша процесса; сбой Remnawave не даёт исключения.
+
+    Годный конфиг живёт ``CACHE_TTL_SECONDS``. Конфиг недоступен (ошибка, пустой ответ): отдаём
+    последние годные варианты, если они были, иначе запасной набор; и то и другое только
+    ``FALLBACK_TTL_SECONDS``, чтобы скоро попробовать снова.
+    """
+    global _cache, _last_good
     now = _now()
-    if _cache is not None and now - _cache[0] < CACHE_TTL_SECONDS:
+    if _cache is not None and now - _cache[0] < _cache[2]:
         return _cache[1]
     try:
         options = build_form_options(await _load_config())
     except Exception as exc:
-        logger.warning('Ticket form options: subscription page config unavailable, using fallback', error=str(exc))
+        logger.warning('Ticket form options: subscription page config unavailable', error=str(exc))
         options = fallback_options()
-    if not options.from_config:
+    if options.from_config:
+        _last_good = options
+        _cache = (now, options, CACHE_TTL_SECONDS)
+    elif _last_good is not None:
+        logger.info('Ticket form options: config unavailable, serving the last good options')
+        _cache = (now, _last_good, FALLBACK_TTL_SECONDS)
+    else:
         logger.info('Ticket form options: using the static fallback')
-    _cache = (now, options)
-    return options
+        _cache = (now, options, FALLBACK_TTL_SECONDS)
+    return _cache[1]

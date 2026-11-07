@@ -22,7 +22,7 @@ from app.database.models import Ticket, TicketMessage, User
 from app.handlers import tickets as bot_tickets
 from app.localization.texts import get_texts
 from app.services.event_emitter import event_emitter
-from app.services.support_assist.form_options import build_form_options, fallback_options
+from app.services.support_assist.form_options import build_form_options
 from app.services.support_assist.ticket_form import (
     FORM_FIELD_IDS,
     OTHER_MAX_LENGTH,
@@ -50,11 +50,10 @@ CONFIG = {
     }
 }
 OPTS = build_form_options(CONFIG)  # конфиг доступен
-DOWN = fallback_options()  # конфиг недоступен
 
 
-def validate_diagnostics(raw, options=OPTS):
-    return _validate(raw, options)
+def validate_diagnostics(raw):
+    return _validate(raw)
 
 
 LOCALE_DIR = Path(__file__).resolve().parents[3] / 'app' / 'localization' / 'locales'
@@ -80,7 +79,7 @@ def test_location_is_required_and_whitelisted(location):
     with pytest.raises(ValueError, match='location'):
         validate_diagnostics({k: v for k, v in FULL.items() if k != 'location'})
     with pytest.raises(ValueError, match='location'):
-        validate_diagnostics({**FULL, 'location': 'mars'}, DOWN)
+        validate_diagnostics({**FULL, 'location': 'mars'})
 
 
 @pytest.mark.parametrize('platform', ['ios', 'android', 'appleTV', 'router'])
@@ -88,37 +87,27 @@ def test_platform_from_the_config_or_extras_is_accepted(platform):
     assert validate_diagnostics({**FULL, 'platform': platform})['platform'] == platform
 
 
-def test_platform_outside_the_config_is_rejected_while_the_config_is_up():
-    with pytest.raises(ValueError, match='platform'):
-        validate_diagnostics({**FULL, 'platform': 'windows'})
+@pytest.mark.parametrize('platform', ['windows', 'androidTV', 'linux'])
+def test_platform_outside_the_current_config_is_still_accepted(platform):
+    """Конфиг задаёт только кнопки: правка конфига или запасной набор не ломают уже данный ответ."""
+    assert validate_diagnostics({**FULL, 'platform': platform})['platform'] == platform
 
 
-@pytest.mark.parametrize('app', ['Clash Mi', 'RabbitHole', 'FlClashX', 'Happ'])
-def test_app_from_any_platform_of_the_config_is_accepted(app):
+@pytest.mark.parametrize('app', ['Clash Mi', 'RabbitHole', 'FlClashX', 'Happ', 'Koala Clash', 'clash_mi'])
+def test_any_well_formed_app_name_is_accepted(app):
     assert validate_diagnostics({**FULL, 'app': app})['app'] == app
 
 
-@pytest.mark.parametrize('app', ['clash_mi', 'Hiddify', 'happ'])
-def test_unknown_app_is_rejected_while_the_config_is_up(app):
-    with pytest.raises(ValueError, match='app'):
-        validate_diagnostics({**FULL, 'app': app})
-
-
-def test_config_down_tolerates_ids_and_names_loaded_earlier():
-    out = validate_diagnostics({**FULL, 'platform': 'androidTV', 'app': 'Koala Clash'}, DOWN)
-    assert out['platform'] == 'androidTV' and out['app'] == 'Koala Clash'
-
-
 @pytest.mark.parametrize('platform', ['1ios', 'i os', 'x' * 33, 'ios;drop', ''])
-def test_config_down_still_rejects_malformed_platform_ids(platform):
+def test_malformed_platform_ids_are_rejected(platform):
     with pytest.raises(ValueError, match='platform'):
-        validate_diagnostics({**FULL, 'platform': platform}, DOWN)
+        validate_diagnostics({**FULL, 'platform': platform})
 
 
 @pytest.mark.parametrize('app', ['A' * 41, 'Line\nBreak', 'Tab\tName', '\x00x', '   '])
-def test_config_down_still_rejects_malformed_app_names(app):
+def test_malformed_app_names_are_rejected(app):
     with pytest.raises(ValueError, match='app'):
-        validate_diagnostics({**FULL, 'app': app}, DOWN)
+        validate_diagnostics({**FULL, 'app': app})
 
 
 def test_validate_returns_full_answers_as_is():
@@ -147,7 +136,7 @@ def test_validate_rejects_a_missing_or_malformed_form(raw):
 @pytest.mark.parametrize('field', list(FORM_FIELD_IDS))
 def test_validate_rejects_an_unknown_option(field):
     with pytest.raises(ValueError, match=field):
-        validate_diagnostics({**FULL, field: 'no_such_option'})
+        validate_diagnostics({**FULL, field: 'no such\noption' + 'x' * 40})
 
 
 @pytest.mark.parametrize('value', [None, 1, ['ios'], {'ios': 1}])
@@ -288,7 +277,6 @@ def _flag(monkeypatch):
 async def _post(monkeypatch, body: dict):
     """Один POST /cabinet/tickets против настоящей SQLite-сессии; возвращает ответ и сохранённый тикет."""
     monkeypatch.setattr(cabinet_tickets.SupportSettingsService, 'is_tickets_enabled', lambda: True)
-    monkeypatch.setattr(cabinet_tickets, 'get_form_options', AsyncMock(return_value=OPTS))
     monkeypatch.setattr(event_emitter, 'emit', AsyncMock())
     monkeypatch.setattr(cabinet_tickets, 'notify_admins_about_new_ticket', AsyncMock())
     monkeypatch.setattr(
@@ -395,6 +383,16 @@ async def test_cabinet_flag_off_drops_broken_diagnostics_but_still_creates(monke
 
 
 @pytest.mark.asyncio
+async def test_cabinet_accepts_an_app_the_current_config_no_longer_offers(monkeypatch, _flag):
+    """Клиент загрузил варианты до правки конфига: тикет всё равно создаётся."""
+    _flag(True)
+    body = {**BASE_BODY, 'diagnostics': {**FULL, 'platform': 'windows', 'app': 'Koala Clash'}}
+    response, stored = await _post(monkeypatch, body)
+    assert response.status_code == 200, response.text
+    assert stored[0].diagnostics['app'] == 'Koala Clash'
+
+
+@pytest.mark.asyncio
 async def test_cabinet_accepts_a_config_app_name_and_location(monkeypatch, _flag):
     _flag(True)
     body = {**BASE_BODY, 'diagnostics': {**FULL, 'platform': 'android', 'app': 'FlClashX', 'location': 'abroad'}}
@@ -405,9 +403,9 @@ async def test_cabinet_accepts_a_config_app_name_and_location(monkeypatch, _flag
 
 
 @pytest.mark.asyncio
-async def test_cabinet_rejects_an_old_static_app_id(monkeypatch, _flag):
+async def test_cabinet_rejects_a_malformed_app_name(monkeypatch, _flag):
     _flag(True)
-    response, stored = await _post(monkeypatch, {**BASE_BODY, 'diagnostics': {**FULL, 'app': 'clash_mi'}})
+    response, stored = await _post(monkeypatch, {**BASE_BODY, 'diagnostics': {**FULL, 'app': 'A' * 41}})
     assert response.status_code == 422
     assert stored == []
 
@@ -433,7 +431,8 @@ def _callback(data: str) -> SimpleNamespace:
         answer=AsyncMock(return_value=SimpleNamespace(chat=SimpleNamespace(id=10), message_id=78)),
         delete=AsyncMock(),
     )
-    return SimpleNamespace(data=data, message=message, answer=AsyncMock(), from_user=SimpleNamespace(id=10))
+    bot = SimpleNamespace(edit_message_text=AsyncMock())
+    return SimpleNamespace(data=data, message=message, answer=AsyncMock(), from_user=SimpleNamespace(id=10), bot=bot)
 
 
 def _buttons(callback: SimpleNamespace) -> list[str]:
@@ -734,20 +733,9 @@ async def test_bot_creates_the_ticket_with_the_answers(bot_env, monkeypatch):
     assert create.await_args.kwargs['diagnostics'] == FULL
 
 
-@pytest.mark.asyncio
-async def test_bot_refuses_a_ticket_without_answers_when_the_flag_is_on(bot_env, monkeypatch):
-    """Флаг включили посреди сценария: состояние осталось от старого потока без анкеты."""
-    state = _state()
-    await state.set_state(bot_tickets.TicketStates.waiting_for_message)
-    await state.update_data(title='Не работает VPN', prompt_chat_id=10, prompt_message_id=77)
-    monkeypatch.setattr(settings, 'SUPPORT_TICKET_FORM_REQUIRED', True)
-    monkeypatch.setattr(bot_tickets.RateLimitCache, 'is_rate_limited', AsyncMock(return_value=False))
-    monkeypatch.setattr(bot_tickets.cache, 'get', AsyncMock(return_value=None))
-    monkeypatch.setattr(bot_tickets.cache, 'set', AsyncMock())
-    create = AsyncMock()
-    monkeypatch.setattr(bot_tickets.TicketCRUD, 'create_ticket', create)
-    message = SimpleNamespace(
-        text='Совсем не открываются сайты уже вторые сутки',
+def _ticket_message(text: str = 'Совсем не открываются сайты уже вторые сутки') -> SimpleNamespace:
+    return SimpleNamespace(
+        text=text,
         caption=None,
         photo=None,
         video=None,
@@ -756,9 +744,99 @@ async def test_bot_refuses_a_ticket_without_answers_when_the_flag_is_on(bot_env,
         answer=AsyncMock(),
         bot=SimpleNamespace(edit_message_text=AsyncMock()),
     )
-    await bot_tickets.handle_ticket_message_input(message, state, bot_env, MagicMock())
+
+
+def _creation_env(monkeypatch) -> AsyncMock:
+    monkeypatch.setattr(settings, 'SUPPORT_TICKET_FORM_REQUIRED', True)
+    monkeypatch.setattr(bot_tickets.RateLimitCache, 'is_rate_limited', AsyncMock(return_value=False))
+    monkeypatch.setattr(bot_tickets.cache, 'get', AsyncMock(return_value=None))
+    monkeypatch.setattr(bot_tickets.cache, 'set', AsyncMock())
+    monkeypatch.setattr(bot_tickets, 'notify_admins_about_new_ticket', AsyncMock())
+    monkeypatch.setattr(bot_tickets, 'schedule_assist', MagicMock())
+    monkeypatch.setattr(bot_tickets, 'format_local_datetime', lambda *a, **k: 'now')
+    create = AsyncMock(return_value=SimpleNamespace(id=9, status='open', status_emoji='🟢', created_at=None))
+    monkeypatch.setattr(bot_tickets.TicketCRUD, 'create_ticket', create)
+    return create
+
+
+@pytest.mark.asyncio
+async def test_bot_without_answers_asks_the_form_and_keeps_title_and_text(bot_env, monkeypatch):
+    """Флаг включили посреди сценария: анкету спрашиваем, а заголовок и текст клиента не теряем."""
+    state = _state()
+    await state.set_state(bot_tickets.TicketStates.waiting_for_message)
+    await state.update_data(title='Не работает VPN', prompt_chat_id=10, prompt_message_id=77)
+    create = _creation_env(monkeypatch)
+    db = MagicMock()
+    await bot_tickets.handle_ticket_message_input(_ticket_message(), state, bot_env, db)
     create.assert_not_awaited()
+    assert await state.get_state() == bot_tickets.TicketStates.waiting_for_form
+    data = await state.get_data()
+    assert data['title'] == 'Не работает VPN'
+    assert data['ticket_draft']['text'] == 'Совсем не открываются сайты уже вторые сутки'
+
+    for field, option in FULL.items():
+        callback = _callback(_data(field, option))
+        await bot_tickets.handle_ticket_form_answer(callback, state, bot_env, db)
+    create.assert_awaited_once()
+    args = create.await_args
+    assert args.args[2] == 'Не работает VPN'
+    assert args.args[3] == 'Совсем не открываются сайты уже вторые сутки'
+    assert args.kwargs['diagnostics'] == FULL
     assert await state.get_state() is None
+
+
+@pytest.mark.asyncio
+async def test_bot_invalid_saved_answer_re_asks_that_field_only(bot_env, monkeypatch):
+    state = _state()
+    await state.set_state(bot_tickets.TicketStates.waiting_for_message)
+    broken = {**FULL, 'app': 'A' * 41}  # негодное название в сохранённом состоянии
+    await state.update_data(title='Не работает VPN', diagnostics=broken, prompt_chat_id=10, prompt_message_id=77)
+    create = _creation_env(monkeypatch)
+    message = _ticket_message()
+    db = MagicMock()
+    await bot_tickets.handle_ticket_message_input(message, state, bot_env, db)
+    create.assert_not_awaited()
+    assert await state.get_state() == bot_tickets.TicketStates.waiting_for_form
+    assert (await state.get_data())['diagnostics'] == {k: v for k, v in FULL.items() if k != 'app'}
+    shown = message.bot.edit_message_text.await_args.kwargs
+    buttons = [b.callback_data for row in shown['reply_markup'].inline_keyboard for b in row]
+    assert 'tf:app:0' in buttons  # спрашиваем именно приложение
+
+    await bot_tickets.handle_ticket_form_answer(_callback('tf:app:0'), state, bot_env, db)
+    create.assert_awaited_once()
+    assert create.await_args.kwargs['diagnostics'] == {**FULL, 'app': 'Clash Mi'}
+
+
+def test_keep_valid_answers_drops_only_the_broken_field():
+    from app.services.support_assist.ticket_form import answered_fields, keep_valid_answers
+
+    raw = {**FULL, 'platform': 'other', 'platform_other': '   ', 'app': 'A' * 41, 'telegram_id': 1}
+    assert keep_valid_answers(raw) == {k: v for k, v in FULL.items() if k not in ('platform', 'app')}
+    assert 'platform' not in answered_fields(raw)  # «Другое» без текста спросим снова
+    assert keep_valid_answers({**FULL, 'app': 'other', 'app_other': ' Hiddify '})['app_other'] == 'Hiddify'
+    assert keep_valid_answers(None) == {}
+
+
+@pytest.mark.asyncio
+async def test_bot_resolves_a_tapped_index_against_the_list_that_was_shown(bot_env, monkeypatch):
+    """Конфиг сменился, пока экран был открыт: нажатый номер разбираем по показанному списку."""
+    state = _state()
+    await _start_at_platform(bot_env, state, monkeypatch)
+    await _answer(state, bot_env, 'platform', 'android')  # показаны FlClashX, Happ
+    changed = build_form_options({'platforms': {'android': {'apps': [{'name': 'Koala Clash'}, {'name': 'Flowvy'}]}}})
+    monkeypatch.setattr(bot_tickets, 'get_form_options', AsyncMock(return_value=changed))
+    await _answer(state, bot_env, 'app', 'tf:app:0')
+    assert (await state.get_data())['diagnostics']['app'] == 'FlClashX'
+
+
+@pytest.mark.asyncio
+async def test_bot_platform_index_is_resolved_against_the_shown_list(bot_env, monkeypatch):
+    state = _state()
+    await _start_at_platform(bot_env, state, monkeypatch)  # показаны ios, android, appleTV, router, other
+    changed = build_form_options({'platforms': {'linux': {'apps': [{'name': 'Flowvy'}]}}})
+    monkeypatch.setattr(bot_tickets, 'get_form_options', AsyncMock(return_value=changed))
+    await _answer(state, bot_env, 'platform', 'tf:platform:1')
+    assert (await state.get_data())['diagnostics']['platform'] == 'android'
 
 
 @pytest.mark.asyncio

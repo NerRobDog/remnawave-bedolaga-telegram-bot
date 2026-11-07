@@ -78,30 +78,47 @@ def looks_valid(field: str, value: Any) -> bool:
     return value in STATIC_OPTIONS.get(field, ())
 
 
+def _answer_ok(field: str, raw: dict) -> bool:
+    """Ответ на поле годен: значение по форме, а у «Другое» есть непустой текст."""
+    value = raw.get(field)
+    if not looks_valid(field, value):
+        return False
+    if value == OTHER_OPTION and has_other(field):
+        text = raw.get(other_key(field))
+        return isinstance(text, str) and bool(clean_other_text(text))
+    return True
+
+
 def answered_fields(raw: Any) -> set[str]:
-    """Поля, на которые в сохранённой анкете есть годный по форме ответ (мусор в колонке не считается)."""
+    """Поля, на которые в сохранённой анкете есть годный ответ (мусор в колонке не считается)."""
     if not isinstance(raw, dict):
         return set()
-    return {field for field in FORM_FIELD_IDS if looks_valid(field, raw.get(field))}
+    return {field for field in FORM_FIELD_IDS if _answer_ok(field, raw)}
 
 
-def _accepts(field: str, value: str, options: FormOptions) -> bool:
-    if field == 'platform':
-        if value in options.platform_ids():
-            return True
-        # Конфиг сейчас недоступен, а клиент мог загрузить варианты раньше: принимаем любой годный id.
-        return not options.from_config and is_platform_id(value)
-    if field == 'app':
-        if value == OTHER_OPTION or value in options.all_apps():
-            return True
-        return not options.from_config and is_app_name(value)
-    return value in STATIC_OPTIONS[field]
+def keep_valid_answers(raw: Any) -> dict:
+    """Только годные ответы (для повторного вопроса по негодному полю вместо ошибки)."""
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, str] = {}
+    for field in FORM_FIELD_IDS:
+        if not _answer_ok(field, raw):
+            continue
+        out[field] = raw[field]
+        if raw[field] == OTHER_OPTION and has_other(field):
+            out[other_key(field)] = clean_other_text(raw[other_key(field)])
+    return out
 
 
-def validate_diagnostics(raw: dict | None, options: FormOptions) -> dict:
+def validate_diagnostics(raw: dict | None) -> dict:
     """Проверить ответы анкеты и вернуть их в каноническом виде.
 
-    ``ValueError`` — анкеты нет, поле пропущено или вариант не из списка. Лишние ключи отбрасываются.
+    Устройство и приложение проверяются только по форме (id платформы, название приложения), а не
+    по текущему конфигу Remnawave: конфиг лишь задаёт, какие кнопки показать. Иначе правка конфига
+    или переход на запасной набор оставили бы клиента с ответом, который уже не проходит. Остальные
+    поля — статичные списки.
+
+    ``ValueError`` — анкеты нет, поле пропущено или значение негодно. Лишние ключи отбрасываются.
     Текст «Другое» берётся только если «Другое» выбрано, и тогда он обязателен (как и в боте): пустой
     или из одних пробелов отклоняется.
     """
@@ -112,7 +129,7 @@ def validate_diagnostics(raw: dict | None, options: FormOptions) -> dict:
         value = raw.get(field)
         if value is None or value == '':
             raise ValueError(f'diagnostics.{field} is required')
-        if not isinstance(value, str) or not _accepts(field, value, options):
+        if not looks_valid(field, value):
             raise ValueError(f'diagnostics.{field}: unknown option')
         out[field] = value
         if value == OTHER_OPTION and has_other(field):

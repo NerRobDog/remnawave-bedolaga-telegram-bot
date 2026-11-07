@@ -127,13 +127,44 @@ async def test_options_are_cached_for_five_minutes(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_fallback_is_also_cached(monkeypatch):
-    """Лежащий Remnawave не дёргаем на каждое открытие страницы поддержки."""
+async def test_pure_fallback_is_cached_for_30_seconds(monkeypatch):
+    """Лежащий Remnawave не дёргаем на каждое открытие страницы, но и не ждём 5 минут."""
     loader = AsyncMock(return_value=None)
     monkeypatch.setattr(form_options, '_load_config', loader)
+    clock = [1000.0]
+    monkeypatch.setattr(form_options, '_now', lambda: clock[0])
     await get_form_options()
+    clock[0] += 29
     await get_form_options()
     assert loader.await_count == 1
+    clock[0] += 2
+    await get_form_options()
+    assert loader.await_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('failure', [RuntimeError('remnawave down'), None])
+async def test_remnawave_failure_keeps_serving_the_last_good_config(monkeypatch, failure):
+    clock = [1000.0]
+    monkeypatch.setattr(form_options, '_now', lambda: clock[0])
+    monkeypatch.setattr(form_options, '_load_config', AsyncMock(return_value=FAKE_CONFIG))
+    good = await get_form_options()
+
+    clock[0] += 301
+    broken = AsyncMock(side_effect=failure) if failure else AsyncMock(return_value=None)
+    monkeypatch.setattr(form_options, '_load_config', broken)
+    assert await get_form_options() is good  # не запасной набор
+    clock[0] += 29
+    assert await get_form_options() is good
+    assert broken.await_count == 1  # устаревшее держим 30 с, потом пробуем снова
+    clock[0] += 2
+    await get_form_options()
+    assert broken.await_count == 2
+
+    recovered = AsyncMock(return_value={'platforms': {'linux': {'apps': [{'name': 'Flowvy'}]}}})
+    monkeypatch.setattr(form_options, '_load_config', recovered)
+    clock[0] += 31
+    assert (await get_form_options()).platform_ids()[0] == 'linux'
 
 
 def test_lookup_helpers():
