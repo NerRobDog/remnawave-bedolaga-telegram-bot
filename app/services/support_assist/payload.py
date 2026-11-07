@@ -17,6 +17,7 @@ from typing import Any
 
 from app.services.support_assist.flags import Flag
 from app.services.support_assist.snapshot import Snapshot
+from app.services.support_assist.ticket_form import FORM_FIELDS, OTHER_OPTION, clean_other_text, other_key
 
 
 FORBIDDEN_KEYS: frozenset[str] = frozenset(
@@ -115,6 +116,26 @@ def _usage(by_day: dict) -> dict[str, int]:
     }
 
 
+def _diagnostics(raw: Any) -> dict[str, str] | None:
+    """Ответы анкеты по белому списку: поля и варианты из ``FORM_FIELDS``, текст «Другое» коротким.
+
+    Это слова клиента из кнопок, а не измеренные факты. Значения вне списка вариантов и лишние
+    ключи (что бы ни лежало в колонке тикета) в нагрузку не идут.
+    """
+    if not isinstance(raw, dict):
+        return None
+    out: dict[str, str] = {}
+    for field, options in FORM_FIELDS.items():
+        value = raw.get(field)
+        if not isinstance(value, str) or value not in options:
+            continue
+        out[field] = value
+        extra = raw.get(other_key(field))
+        if value == OTHER_OPTION and isinstance(extra, str) and clean_other_text(extra):
+            out[other_key(field)] = clean_other_text(extra)
+    return out or None
+
+
 def build_payload(s: Snapshot, flags: list[Flag]) -> dict:
     """Собрать JSON-совместимую нагрузку для LLM по белому списку полей."""
     return {
@@ -143,6 +164,7 @@ def build_payload(s: Snapshot, flags: list[Flag]) -> dict:
         'past_tickets': _pick_all(s.past_tickets, plain=('status',), dates=('created_at',)),
         'other_tickets_2h': s.other_tickets_2h,
         'restrictions': [str(r) for r in s.restrictions],
+        'diagnostics': _diagnostics(s.diagnostics),
         'missing': [str(m) for m in s.missing],
         'flags': [{'code': f.code, 'sev': f.sev, 'text': f.text} for f in flags],
     }

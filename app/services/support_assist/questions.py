@@ -13,6 +13,7 @@ import re
 from app.localization.texts import get_texts
 from app.services.support_assist.flags import Flag
 from app.services.support_assist.snapshot import Snapshot
+from app.services.support_assist.ticket_form import ANSWERED_QUESTIONS, answered_fields
 
 
 QUESTION_IDS = ('device', 'app', 'since_when', 'network', 'scope', 'sites', 'screenshot')
@@ -205,6 +206,8 @@ def pick_questions(text: str, has_media: bool, s: Snapshot, flags: list[Flag]) -
         skip.add('screenshot')
     if any(name in low for name in _APP_NAMES):
         skip.add('app')
+    # Анкета перед тикетом уже спросила своё: повторно не спрашиваем.
+    skip.update(ANSWERED_QUESTIONS[field] for field in answered_fields(s.diagnostics))
     return [q for q in QUESTION_IDS if q not in skip]
 
 

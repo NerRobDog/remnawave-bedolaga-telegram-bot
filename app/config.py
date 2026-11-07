@@ -132,6 +132,9 @@ class Settings(BaseSettings):
     SUPPORT_ASSIST_MODEL: str = 'claude-opus-5-5'
     SUPPORT_ASSIST_TIMEOUT_SECONDS: int = 90
     SUPPORT_ASSIST_RECOMPUTE_MINUTES: int = 10
+    # Обязательная анкета перед тикетом (бот и кабинет). Включать после утверждения текстов вариантов
+    # и после выката кабинета с формой: старый клиент API без анкеты получит 422.
+    SUPPORT_TICKET_FORM_REQUIRED: bool = False
 
     # MiniApp tickets settings
     MINIAPP_TICKETS_ENABLED: bool = True  # Enable/disable tickets section in miniapp

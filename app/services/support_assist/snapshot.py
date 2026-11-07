@@ -63,6 +63,8 @@ class Snapshot:
     other_tickets_2h: int = 0
     restrictions: list[str] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)
+    # Ответы обязательной анкеты из тикета (id вариантов); None — анкеты нет (старый тикет, флаг выключен).
+    diagnostics: dict | None = None
 
 
 def _dt(value: Any) -> datetime | None:
@@ -259,7 +261,9 @@ async def _fetch_accessible(api: RemnaWaveAPI, panel_id: int) -> list[dict]:
 
 async def collect_snapshot(db: AsyncSession, api: RemnaWaveAPI, ticket: Ticket, now: datetime) -> Snapshot:
     """Собрать снимок. Не бросает исключений: сбои источников идут в ``missing``."""
-    snap = Snapshot(as_of=now)
+    # Анкета лежит в самом тикете, а не в источниках: читаем её первой, пока ORM-объект не протух.
+    diagnostics = getattr(ticket, 'diagnostics', None)
+    snap = Snapshot(as_of=now, diagnostics=dict(diagnostics) if isinstance(diagnostics, dict) else None)
     missing = snap.missing
 
     bot = await _guard('bot_db', missing, lambda: _load_bot_data(db, ticket, now))

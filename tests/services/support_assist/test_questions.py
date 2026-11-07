@@ -87,3 +87,54 @@ def test_render_all_ids_resolve_in_both_languages():
     for lang in ('ru', 'en'):
         out = render_questions(list(QUESTION_IDS), lang)
         assert 'SUPPORT_ASSIST_Q' not in out
+
+
+# --- анкета перед тикетом ----------------------------------------------------
+
+FORM_ANSWERS = {'platform': 'ios', 'app': 'happ', 'network': 'wifi', 'symptom': 'nothing', 'since': 'today'}
+
+
+def test_form_answers_drop_the_questions_they_cover():
+    s = healthy(devices=[], diagnostics={'platform': 'ios', 'app': 'happ', 'network': 'wifi'})
+    ids = pick_questions('не работает', False, s, [])
+    assert 'device' not in ids and 'app' not in ids and 'network' not in ids
+    assert 'since_when' in ids and 'sites' in ids  # анкета на них не отвечала
+
+
+def test_every_form_field_maps_to_its_question():
+    base = pick_questions('не работает', False, healthy(devices=[]), [])
+    for field, question in (
+        ('platform', 'device'),
+        ('app', 'app'),
+        ('network', 'network'),
+        ('symptom', 'sites'),
+        ('since', 'since_when'),
+    ):
+        assert question in base
+        s = healthy(devices=[], diagnostics={field: FORM_ANSWERS[field]})
+        assert question not in pick_questions('не работает', False, s, [])
+
+
+def test_full_form_leaves_only_scope_and_screenshot():
+    s = healthy(devices=[], diagnostics=dict(FORM_ANSWERS))
+    assert pick_questions('не работает', False, s, []) == ['scope', 'screenshot']
+
+
+def test_other_answer_still_counts_as_answered():
+    s = healthy(devices=[], diagnostics={'platform': 'other', 'platform_other': 'Steam Deck'})
+    assert 'device' not in pick_questions('не работает', False, s, [])
+
+
+def test_no_form_changes_nothing():
+    s = healthy(devices=[])
+    assert pick_questions('не работает', False, s, []) == pick_questions(
+        'не работает', False, healthy(devices=[], diagnostics=None), []
+    )
+    assert pick_questions('не работает', False, healthy(devices=[], diagnostics={}), []) == pick_questions(
+        'не работает', False, s, []
+    )
+
+
+def test_garbage_diagnostics_do_not_break_the_picker():
+    for garbage in ('x', 5, ['platform']):
+        assert 'device' in pick_questions('не работает', False, healthy(devices=[], diagnostics=garbage), [])

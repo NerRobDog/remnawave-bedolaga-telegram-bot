@@ -4313,6 +4313,8 @@ class Ticket(Base):
     closed_at = Column(AwareDateTime(), nullable=True)
     # SLA reminders
     last_sla_reminder_at = Column(AwareDateTime(), nullable=True)
+    # Ответы обязательной анкеты перед тикетом: id вариантов (support_assist/ticket_form.py)
+    diagnostics = Column(JSON, nullable=True)
 
     # Связи
     user = relationship('User', backref='tickets')

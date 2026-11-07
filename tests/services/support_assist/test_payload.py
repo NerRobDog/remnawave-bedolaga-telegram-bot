@@ -183,3 +183,51 @@ def test_flag_text_built_from_leaky_snapshot_carries_no_marker():
     payload = build_payload(snap, flags)
     assert payload['flags']
     assert LEAK not in json.dumps(payload['flags'], ensure_ascii=False)
+
+
+# --- анкета перед тикетом ----------------------------------------------------
+
+FORM_ANSWERS = {'platform': 'ios', 'app': 'happ', 'network': 'wifi', 'symptom': 'nothing', 'since': 'today'}
+
+
+def test_payload_includes_the_form_answers_and_stays_clean():
+    snap = healthy(diagnostics=dict(FORM_ANSWERS))
+    payload = build_payload(snap, [])
+    assert payload['diagnostics'] == FORM_ANSWERS
+    assert find_forbidden_keys(payload) == []
+    json.dumps(payload)
+
+
+def test_payload_diagnostics_is_none_without_a_form():
+    assert build_payload(healthy(), [])['diagnostics'] is None
+    assert build_payload(healthy(diagnostics={}), [])['diagnostics'] is None
+
+
+def test_payload_diagnostics_is_an_allowlist():
+    """Лишние ключи и значения вне списка вариантов в нагрузку не попадают, даже если лежат в тикете."""
+    dirty = {
+        **FORM_ANSWERS,
+        'telegram_id': LEAK,
+        'email': LEAK,
+        'network': 'no_such_option',
+        'platform_other': LEAK,  # ``other`` не выбран: текст не идёт
+    }
+    payload = build_payload(healthy(diagnostics=dirty), [])
+    assert payload['diagnostics'] == {k: v for k, v in FORM_ANSWERS.items() if k != 'network'}
+    assert LEAK not in json.dumps(payload, ensure_ascii=False)
+    assert find_forbidden_keys(payload) == []
+
+
+def test_payload_diagnostics_keeps_the_short_other_text_only_when_other_was_chosen():
+    snap = healthy(diagnostics={**FORM_ANSWERS, 'platform': 'other', 'platform_other': 'Steam Deck' + 'x' * 200})
+    out = build_payload(snap, [])['diagnostics']
+    assert out['platform'] == 'other'
+    assert out['platform_other'].startswith('Steam Deck')
+    assert len(out['platform_other']) == 100
+
+
+def test_payload_diagnostics_survives_garbage_in_the_column():
+    for garbage in ('x', 5, ['ios'], {'platform': ['ios']}):
+        payload = build_payload(healthy(diagnostics=garbage), [])
+        assert payload['diagnostics'] in (None, {})
+        json.dumps(payload)
