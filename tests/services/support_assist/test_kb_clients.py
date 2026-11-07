@@ -12,7 +12,7 @@ from app.services.support_assist import card
 ROOT = Path(__file__).resolve().parents[3]
 KB_DIR = ROOT / 'docs' / 'support-kb'
 GENERATED = ROOT / 'app' / 'services' / 'support_assist' / 'kb_clients.md'
-SIZE_CAP = 13_000
+SIZE_CAP = 20_000  # ~6-7k tokens, sits in the cached system block
 
 
 def _builder():
@@ -74,6 +74,21 @@ def test_system_blocks_contain_client_knowledge():
     assert 'Мои профили' not in text
     assert blocks[-1].get('cache_control') == {'type': 'ephemeral'}
     assert clients in blocks[-1]['text']
+
+
+def test_global_mode_is_not_described_as_full_vpn():
+    # Live 2026-11-07: GLOBAL group defaults to DIRECT in Clash Mi and FlClashX.
+    text = '\n'.join(b['text'] for b in card._system_blocks())
+    assert 'весь трафик через VPN' not in text
+    assert 'everything via VPN' not in text
+    assert 'GLOBAL' in GENERATED.read_text(encoding='utf-8')
+
+
+def test_live_android_entries_present():
+    content = GENERATED.read_text(encoding='utf-8')
+    for header in ('### Clash Mi android 1.0.31', '### FlClashX android 0.4.2', '### Happ android 4.9.0'):
+        assert header in content
+    assert 'Слишком дофига устройств' in content
 
 
 def test_prompt_has_client_app_rule():

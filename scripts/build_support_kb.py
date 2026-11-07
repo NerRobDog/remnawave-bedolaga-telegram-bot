@@ -293,7 +293,7 @@ def live_sections(clients: dict[str, Any]) -> tuple[list[str], set[str]]:
     return lines, texts
 
 
-SHOWN_SCREENS = {'main', 'proxies', 'network_check', 'my_profiles', 'add_profile_sheet', 'profile_menu'}
+SHOWN_SCREENS = {'main', 'proxies', 'network_check', 'my_profiles', 'add_profile_sheet', 'profile_menu', 'add_menu'}
 
 HEADER = """\
 <!-- GENERATED FILE: do not edit. Source: docs/support-kb/clients.yaml and docs/support-kb/source/*.json.
@@ -305,7 +305,13 @@ HEADER = """\
 
 def build() -> str:
     clients = yaml.safe_load((KB_DIR / 'clients.yaml').read_text(encoding='utf-8'))
-    out = [HEADER, '## Проверено вживую']
+    out = [HEADER]
+    facts = clients.get('facts') or []
+    if facts:
+        out.append('## Важно (проверено вживую)')
+        out += [f'- {f["text"]}' for f in facts]
+        out.append('')
+    out.append('## Проверено вживую')
     live, live_texts = live_sections(clients)
     out += live
     out.append('')
