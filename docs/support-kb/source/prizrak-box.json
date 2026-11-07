@@ -1,0 +1,718 @@
+{
+ "app": "Prizrak-Box",
+ "source_available": true,
+ "repo": "https://github.com/legiz-ru/Prizrak-Box",
+ "release_tag": "v2.0.0-rc01",
+ "release_date": "2026-10-26T08:02:57Z",
+ "commit_sha": "707bc34727883751bb0f078ba194eca7f3b5100a",
+ "ru_locale_present": true,
+ "languages_available": [
+  "zh (简体中文)",
+  "en (English)",
+  "ru (Русский)"
+ ],
+ "locale_files": [
+  "src/locales/en.yaml",
+  "src/locales/ru.yaml",
+  "src/locales/zh.yaml"
+ ],
+ "provenance": "read from the app's source/locale files at the release tag (closed-source apps: official docs or installed bundle), then adversarially re-checked by a second agent; NOT a live UI check",
+ "labels": [
+  {
+   "flow": "connect/disconnect",
+   "key": "proxy-switch",
+   "en": "Proxy",
+   "ru": "Прокси",
+   "file": "src/locales/en.yaml:20; ru.yaml:20; used src/components/menu/MyProxy.vue:459 (sidebar button, left menu, below mode pill)",
+   "screen": "Sidebar (visible on every page)",
+   "state": "both",
+   "platform_note": "Desktop only. The label does not change between states; state is shown by a dot (mode-dot is-on) and aria-pressed. There is no 'Connect'/'Disconnect' button or timer in the desktop app. Android has a separate VPN UI that was not analysed.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "connect/disconnect",
+   "key": "proxy-switch-on",
+   "en": "Proxy is ON",
+   "ru": "Прокси ВКЛЮЧЕН",
+   "file": "src/locales/en.yaml:21; ru.yaml:21; used MyProxy.vue:96,435",
+   "screen": "Toast after clicking the Proxy button",
+   "state": "connected",
+   "platform_note": "Toast only",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "connect/disconnect",
+   "key": "proxy-switch-off",
+   "en": "Proxy is OFF",
+   "ru": "Прокси ВЫКЛЮЧЕН",
+   "file": "src/locales/en.yaml:22; ru.yaml:22; used MyProxy.vue:110,437",
+   "screen": "Toast after clicking the Proxy button",
+   "state": "disconnected",
+   "platform_note": "Toast only",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "connect/disconnect",
+   "key": "switch.ing",
+   "en": "Switching...",
+   "ru": "Переключение...",
+   "file": "src/locales/en.yaml:101; ru.yaml:101; used MyProxy.vue:124",
+   "screen": "Loading toast while toggling Proxy",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "connect/disconnect",
+   "key": "no-profile-warning",
+   "en": "Please add the profile and then open Tun",
+   "ru": "Пожалуйста, добавьте профиль, а затем откройте Tun",
+   "file": "src/locales/en.yaml:18; ru.yaml:18; used MyProxy.vue:56",
+   "screen": "Warning toast when toggling with no profiles",
+   "state": "disconnected",
+   "platform_note": "The text says 'open Tun' even when the Proxy button was pressed.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "connect/disconnect",
+   "key": "select-profile-warning",
+   "en": "Please select the profile and then open Tun",
+   "ru": "Пожалуйста, выберите профиль, а затем откройте Tun",
+   "file": "src/locales/en.yaml:19; ru.yaml:19; used MyProxy.vue:66",
+   "screen": "Warning toast when profiles exist but none is selected",
+   "state": "disconnected",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "tun toggle",
+   "key": "tun-switch",
+   "en": "Tun",
+   "ru": "Tun",
+   "file": "src/locales/en.yaml:23; ru.yaml:23; used MyProxy.vue:472; the CSS class mode-label--tun uppercases it (MyProxy.vue:553-554)",
+   "screen": "Sidebar button under Proxy",
+   "state": "both",
+   "platform_note": "Shown as TUN on screen (uppercase CSS); the locale text is 'Tun'. The shield icon is filled when ON (MyProxy.vue:468-469).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "tun toggle",
+   "key": "tun-switch-on",
+   "en": "Tun is ON",
+   "ru": "Tun ВКЛЮЧЕН",
+   "file": "src/locales/en.yaml:24; ru.yaml:24; used src-rs/src/app.rs:1601",
+   "screen": "Toast",
+   "state": "connected",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "tun toggle",
+   "key": "tun-switch-off",
+   "en": "Tun is OFF",
+   "ru": "Tun ВЫКЛЮЧЕН",
+   "file": "src/locales/en.yaml:25; ru.yaml:25; used src-rs/src/app.rs:1603",
+   "screen": "Toast",
+   "state": "disconnected",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "tun toggle",
+   "key": "tun-unavailable",
+   "en": "Couldn't enable Tun — the service is unavailable. Run as administrator or reinstall the service.",
+   "ru": "Не удалось включить Tun — служба недоступна. Запустите от имени администратора или переустановите службу.",
+   "file": "src/locales/en.yaml:26; ru.yaml:26; used MyProxy.vue:407. The RU text was cut by my 230-char display and the tail is inferred, so re-read ru.yaml:26 before quoting it.",
+   "screen": "Warning toast",
+   "state": "disconnected",
+   "platform_note": "The RU text is partly unverified, see the file reference.",
+   "verify": "refuted",
+   "verify_problem": "RU text differs. ru.yaml:26 is 'Не удалось включить Tun — служба недоступна. Запустите от администратора или переустановите службу.' The claim says 'от имени администратора', which is not in the file. EN is verbatim. Note the toast fires on app start when TUN was on before and px is not privileged (MyProxy.vue:407-414). Pressing Tun without rights opens the service dialog instead.",
+   "ru_corrected": "Не удалось включить Tun — служба недоступна. Запустите от администратора или переустановите службу.",
+   "en_corrected": "Couldn't enable Tun — the service is unavailable. Run as administrator or reinstall the service."
+  },
+  {
+   "flow": "tun toggle",
+   "key": "tun-warning",
+   "en": "The tun mode requires administrator privileges",
+   "ru": "Для режима Tun требуются права администратора",
+   "file": "src/locales/en.yaml:27; ru.yaml:27",
+   "screen": "Warning",
+   "state": "disconnected",
+   "platform_note": "I did not find where this key is used. It may be an orphan.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "tun toggle",
+   "key": "service.dialog-title",
+   "en": "TUN Mode",
+   "ru": "Режим TUN",
+   "file": "src/locales/en.yaml:549; ru.yaml:549; used MyProxy.vue:480",
+   "screen": "Dialog shown when pressing Tun without admin rights and without the service",
+   "state": "disconnected",
+   "platform_note": "Mostly Windows and macOS. Not analysed per OS.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "tun toggle",
+   "key": "service.dialog-message",
+   "en": "TUN mode requires administrator privileges",
+   "ru": "Для использования TUN режима требуются права администратора",
+   "file": "src/locales/en.yaml:550; ru.yaml:550; used MyProxy.vue:484",
+   "screen": "Same dialog",
+   "state": "disconnected",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "tun toggle",
+   "key": "service.install-btn",
+   "en": "Install Service",
+   "ru": "Установить сервис",
+   "file": "src/locales/en.yaml:558; ru.yaml:558; used MyProxy.vue:489 and src/components/setting/MyService.vue:~193",
+   "screen": "Dialog button; also on the Settings > App Settings 'Service Mode' row",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "tun toggle",
+   "key": "service.admin-run-btn",
+   "en": "Start TUN",
+   "ru": "Запустить TUN",
+   "file": "src/locales/en.yaml:556; ru.yaml:556; used MyProxy.vue:503",
+   "screen": "Dialog 'TUN Mode' when the app is already running as administrator",
+   "state": "disconnected",
+   "platform_note": "",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "tun toggle",
+   "key": "service.mode",
+   "en": "Service Mode",
+   "ru": "Режим сервиса",
+   "file": "src/locales/en.yaml:572; ru.yaml:572; used src/components/setting/MyService.vue:~188",
+   "screen": "Settings > App Settings (gear tab), row in the card",
+   "state": "both",
+   "platform_note": "Related buttons: service.install-btn 'Install Service' / 'Установить сервис', service.uninstall-btn 'Uninstall Service' / 'Удалить сервис', service.check-status 'Check service status' / 'Проверка статуса сервиса'.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "proxy mode",
+   "key": "rules.rule",
+   "en": "Rule",
+   "ru": "Правило",
+   "file": "src/locales/en.yaml:11; ru.yaml:11; used src/components/menu/MyRule.vue:46",
+   "screen": "Sidebar mode pill (aria-label 'Routing mode' / 'Режим маршрутизации', ui.mode-label)",
+   "state": "both",
+   "platform_note": "Desktop sidebar. A profile can hide the whole switch with the HTTP header global-mode: false (MyRule.vue:35-41).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "proxy mode",
+   "key": "rules.global",
+   "en": "Global",
+   "ru": "Глобальный",
+   "file": "src/locales/en.yaml:12; ru.yaml:12; used MyRule.vue:50",
+   "screen": "Sidebar mode pill",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "proxy mode",
+   "key": "rules.direct",
+   "en": "Direct",
+   "ru": "Прямой",
+   "file": "src/locales/en.yaml:13; ru.yaml:13; used MyRule.vue:56-59 only when t('lang') != 'ru'",
+   "screen": "Sidebar mode pill",
+   "state": "both",
+   "platform_note": "IMPORTANT: with the interface language set to Russian the 'Прямой' button is NOT shown in the sidebar (MyRule.vue:55; same in the Rust build, src-rs/src/app.rs:365 and src-rs/ui/shell.slint:131). Direct mode is reachable in the tray menu (tray.direct 'Прямой').",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "proxy mode",
+   "key": "tray.rule/global/direct",
+   "en": "Rule / Global / Direct",
+   "ru": "Правило / Глобальный / Прямой",
+   "file": "src/locales/en.yaml:527-529; ru.yaml:527-529; sent to the tray by src/components/menu/Language.vue:49-60",
+   "screen": "System tray menu",
+   "state": "both",
+   "platform_note": "Tray menu items: tray.show 'Show window'/'Показать окно', tray.profiles 'Profiles'/'Профили', tray.proxyGroups 'Proxy Groups'/'Группы прокси', tray.dashboard 'Open dashboard'/'Открыть панель', tray.proxy 'Proxy'/'Прокси', tray.tun 'TUN'/'TUN', tray.quit 'Quit'/'Выйти'.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "add subscription",
+   "key": "profiles.add",
+   "en": "Add",
+   "ru": "Добавить",
+   "file": "src/locales/en.yaml:299; ru.yaml:299; used src/views/Profiles.vue:878 and src/components/home/ProfileToolbar.vue:205-211",
+   "screen": "Profiles page (icon button with + in the page header), Home toolbar dropdown (+), dialog title",
+   "state": "both",
+   "platform_note": "This is an icon button; the text appears as a tooltip/aria-label. It opens a dialog with one input field.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "key": "profiles.placeholder",
+   "en": "Subscription, ShareLink, Yaml, Base64, Json",
+   "ru": "Подписка, ShareLink, Yaml, Base64, Json",
+   "file": "src/locales/en.yaml:319; ru.yaml:319; used src/components/profile/AddProfileDialog.vue:54-55",
+   "screen": "Input in the 'Add' dialog (paste a subscription URL, share link or config text)",
+   "state": "both",
+   "platform_note": "Dialog buttons: cancel 'Cancel'/'Отмена' (AddProfileDialog.vue:79), add 'Add'/'Добавить' (AddProfileDialog.vue:82).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "key": "profiles.paste",
+   "en": "Import from Clipboard",
+   "ru": "Импорт из буфера обмена",
+   "file": "src/locales/en.yaml:300; ru.yaml:300; used Profiles.vue:881, ProfileToolbar.vue:214, WelcomeScreen.vue:228",
+   "screen": "Profiles page header (clipboard icon), Home '+' dropdown, welcome screen",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "key": "profiles.open",
+   "en": "Import from file",
+   "ru": "Импорт из файла",
+   "file": "src/locales/en.yaml:301; ru.yaml:301; used Profiles.vue:884, ProfileToolbar.vue:217, WelcomeScreen.vue:231",
+   "screen": "Profiles page header (folder icon), Home '+' dropdown, welcome screen",
+   "state": "both",
+   "platform_note": "Accepted formats per drag.formats: '.yaml, .yml or .age' / '.yaml, .yml или .age'.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "key": "drag.hear",
+   "en": "Drag the profile here to import",
+   "ru": "Перетащите профиль сюда для импорта",
+   "file": "src/locales/en.yaml:106; ru.yaml:106; overlay src/components/MyDrop.vue",
+   "screen": "Drag-and-drop overlay (drop a file onto the window)",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "key": "onboarding.welcome.add-profile",
+   "en": "Add Profile",
+   "ru": "Добавить профиль",
+   "file": "src/locales/en.yaml:579; ru.yaml:579; used src/components/home/WelcomeScreen.vue:217-221",
+   "screen": "Home with no profiles yet (title 'Welcome!' / 'Добро пожаловать!', subtitle 'Add your first profile to get started' / 'Добавьте свой первый профиль для начала работы')",
+   "state": "disconnected",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "key": "onboarding.active-profile.clipboard-empty",
+   "en": "Clipboard is empty",
+   "ru": "Буфер обмена пуст",
+   "file": "src/locales/en.yaml:585; ru.yaml:585; used ProfileToolbar.vue:92, WelcomeScreen.vue:31",
+   "screen": "Toast on clipboard import",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "key": "deeplink",
+   "en": "Importing profile...",
+   "ru": "Импорт профиля...",
+   "file": "src/locales/en.yaml:345 (profiles.deeplink.importing); ru.yaml:345; scheme prizrak-box registered in forge.config.ts:66",
+   "screen": "Import overlay when opening a prizrak-box:// link",
+   "state": "both",
+   "platform_note": "The URL scheme is prizrak-box://. Failure text profiles.deeplink.invalid-url: 'Invalid profile URL' / 'Неверный URL профиля'.",
+   "verify": "refuted",
+   "verify_problem": "No top-level key 'deeplink' exists. The real key is profiles.deeplink.importing (en.yaml:345; used main.ts:341). Texts are correct. This was a label, not a verbatim key.",
+   "ru_corrected": "Импорт профиля...",
+   "en_corrected": "Importing profile..."
+  },
+  {
+   "flow": "add subscription",
+   "key": "hwid.not-supported.title",
+   "en": "HWID Not Supported",
+   "ru": "Ошибка добавления профиля",
+   "file": "src/locales/en.yaml:615; ru.yaml:615; src/components/HwidNotSupportedDialog.vue",
+   "screen": "Dialog when the subscription requires HWID and sending is off",
+   "state": "disconnected",
+   "platform_note": "EN and RU titles differ in meaning. Button hwid.not-supported.go-settings: 'Go to Settings' / 'В настройки'. The HWID switch is in Settings > App Settings, labelled 'HWID' in both languages (MyConfig.vue:585-590). Device limit dialog: hwid.max-devices.title 'Device Limit Reached' / 'Лимит устройств исчерпан'.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "add subscription",
+   "key": "QR",
+   "en": "(none)",
+   "ru": "(none)",
+   "file": "grep for qr/qrcode in src/ returned nothing",
+   "screen": "-",
+   "state": "unknown",
+   "platform_note": "The desktop app has no QR scan or QR display. Subscription import goes through the text field, clipboard, file or a prizrak-box:// deeplink.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "update subscription",
+   "key": "onboarding.active-profile.refresh-profile",
+   "en": "Refresh profile",
+   "ru": "Обновить профиль",
+   "file": "src/locales/en.yaml:583; ru.yaml:583; used ProfileToolbar.vue:199",
+   "screen": "Home, toolbar above the active profile (icon button with circular arrow)",
+   "state": "both",
+   "platform_note": "This is the refresh for ONE profile (the active one). Progress toast profiles.refresh.ing 'Updating...' / 'Обновление...', result profiles.refresh.success 'Update Success' / 'Успешно обновлено' (ActiveProfile.vue:45,64; Profiles.vue:451,461).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "update subscription",
+   "key": "refresh",
+   "en": "Refresh",
+   "ru": "Обновить",
+   "file": "src/locales/en.yaml:58; ru.yaml:58; used Profiles.vue:928",
+   "screen": "Profiles page, circular-arrow icon in a profile card header; only on URL subscriptions (data.type == 1)",
+   "state": "both",
+   "platform_note": "No 'refresh all subscriptions' button was found in Profiles.vue (grep for refreshAll and updateAll gave no matches). The key rule.providers.updateAll 'Update all' / 'Обновить все' belongs to rule providers, not to subscriptions. A subscription also updates automatically on the interval set in 'Update Interval (hour)' / 'Интервал обновления (часы)' (profiles.edit.update, en.yaml:329) under the edit button.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "update subscription",
+   "key": "edit",
+   "en": "Edit",
+   "ru": "Редактировать",
+   "file": "src/locales/en.yaml:60; ru.yaml:60; used Profiles.vue:~1020 (pencil icon on the profile card)",
+   "screen": "Profiles page, profile card",
+   "state": "both",
+   "platform_note": "The edit dialog (Profiles.vue:~642) has fields profiles.edit.title 'Title'/'Название', profiles.edit.url 'URL'/'URL', profiles.edit.update 'Update Interval (hour)'/'Интервал обновления (часы)', profiles.edit.template 'Rule Grouping Template'/'Шаблон группировки правил'.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "update subscription",
+   "key": "profiles.update / profiles.use / available / expire",
+   "en": "Update / Used / Available / Expiration",
+   "ru": "Обновлено / Использовано / Доступно / Истекает",
+   "file": "src/locales/en.yaml:316-318; ru.yaml:316-318; used Profiles.vue:935-947. On Home the keys are onboarding.active-profile.stats.* (en.yaml:587-590: 'Used','Available','Expiration','Updated' / 'Использовано','Доступно','Истекает','Обновлено'), ProfileStats.vue:27-45",
+   "screen": "Profile card on the Profiles page and the stats block on Home",
+   "state": "both",
+   "platform_note": "The profiles.update key has EN 'Update' and RU 'Обновлено' (different part of speech). Home uses 'Updated'.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "choose server",
+   "key": "proxySelector.group / proxySelector.proxy",
+   "en": "Group / Proxy",
+   "ru": "Группа / Прокси",
+   "file": "src/locales/en.yaml:538-539; ru.yaml:538-539; used src/components/MySearch.vue:277,314",
+   "screen": "Pill with two dropdowns at the top of the window (shown on every page except Proxies, App.vue:9)",
+   "state": "both",
+   "platform_note": "The first dropdown picks the proxy group, the second picks the node in it. Each node shows a latency dot colour.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "choose server",
+   "key": "nav.proxies",
+   "en": "Proxies",
+   "ru": "Прокси",
+   "file": "src/locales/en.yaml:7; ru.yaml:7; src/components/menu/MyNav.vue:12,28 (rocket icon)",
+   "screen": "Sidebar tab -> Proxies page (title proxies.title 'Proxies'/'Прокси', Proxies.vue:726)",
+   "state": "both",
+   "platform_note": "The word 'Прокси' in Russian is also the label of the Proxy on/off button (proxy-switch). Distinguish them as 'sidebar tab with the rocket icon' vs 'toggle under the mode pill'.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "latency test",
+   "key": "proxies.test",
+   "en": "Latency Test",
+   "ru": "Тест задержки",
+   "file": "src/locales/en.yaml:250; ru.yaml:250; used Proxies.vue:732; src-rs/ui/proxies.slint:300",
+   "screen": "Proxies page header (icon button; tests all groups)",
+   "state": "both",
+   "platform_note": "Icon button, the text is a tooltip. In-progress text proxies.loading 'Testing...' / 'Тестирование...' (Proxies.vue:828).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "latency test",
+   "key": "proxies.test-group",
+   "en": "Test Group Latency",
+   "ru": "Тест задержки группы",
+   "file": "src/locales/en.yaml:269; ru.yaml:269; used Proxies.vue:814",
+   "screen": "Proxies page, per group",
+   "state": "both",
+   "platform_note": "Result toast proxies.test-result: '{name}: {succeeded}/{total} nodes reachable' / '{name}: доступно {succeeded}/{total} узлов' (Proxies.vue:472).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "choose server",
+   "key": "proxies header buttons",
+   "en": "Collapse all / Expand all / Display bad nodes / Hide bad nodes / Sort by default / Sort by latency / Jump to group / Selected",
+   "ru": "Свернуть все / Развернуть все / Показывать плохие узлы / Скрывать плохие узлы / Сортировать по умолчанию / Сортировать по задержке / Перейти к группе / Выбрано",
+   "file": "src/locales/en.yaml:251-254,260,292-294; ru.yaml same lines; used Proxies.vue:728-754,808",
+   "screen": "Proxies page",
+   "state": "both",
+   "platform_note": "The hide-on/sort-on key names are inverted: the label shown is the action that the next click performs.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "choose server",
+   "key": "proxies.auto-group-no-manual-select",
+   "en": "This group is automatic — manual proxy selection is not allowed.",
+   "ru": "Данная группа является автоматической (RU text truncated in my output; re-read ru.yaml:270)",
+   "file": "src/locales/en.yaml:270; ru.yaml:270",
+   "screen": "Toast on a click in a URLTest/Fallback-type group",
+   "state": "both",
+   "platform_note": "RU tail not verified.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "system proxy",
+   "key": "setting.px.systemProxyMode",
+   "en": "System Proxy Mode",
+   "ru": "Режим системного прокси",
+   "file": "src/locales/en.yaml:178; ru.yaml:178; used src/components/setting/MyConfig.vue:602-604; src-rs/ui/settings.slint:510",
+   "screen": "Settings > App Settings (gear icon tab), switch row",
+   "state": "both",
+   "platform_note": "There is NO separate 'System proxy' button. The system proxy is set when you turn the sidebar 'Proxy' button ON and this switch is ON (MyProxy.vue:94 applySystemProxyMode(settingStore.systemProxyMode)). Turning Proxy OFF always removes the system proxy (MyProxy.vue:108). Changing this switch while Proxy is ON applies it immediately (MyProxy.vue:~418).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "tun toggle",
+   "key": "setting.mihomo.port / tun stack",
+   "en": "Mixed-Port",
+   "ru": "Смешанный порт",
+   "file": "src/locales/en.yaml:158; ru.yaml:158; src/components/setting/MyPort.vue; Tun settings row src/components/setting/MyTun.vue:34 has a hard-coded label 'Tun Stack' (not localised)",
+   "screen": "Settings > Core Settings (CPU icon tab)",
+   "state": "both",
+   "platform_note": "The Tun settings row label 'Tun Stack' is not localised and shows in English in the Russian UI.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "language",
+   "key": "ui.language",
+   "en": "Language",
+   "ru": "Язык",
+   "file": "src/locales/en.yaml:651; ru.yaml:651; used src/components/menu/Language.vue:7-8; src-rs/ui/shell.slint:269",
+   "screen": "Sidebar bottom row, first of three round icon buttons (globe/language icon); the other two are Theme and Quit",
+   "state": "both",
+   "platform_note": "Hovering opens the list: 简体中文, English, Русский (Language.vue:42-46). First-run default follows the OS language: zh -> zh, en -> en, ru -> ru, anything else -> en (src/util/menu.ts:14-20). Russian is available.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "language",
+   "key": "language (names)",
+   "en": "English",
+   "ru": "Русский",
+   "file": "src/locales/en.yaml:1; ru.yaml:1",
+   "screen": "Language list",
+   "state": "both",
+   "platform_note": "Language names in the list are hard-coded in Language.vue:42-46, not taken from the locale file.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "share/copy subscription",
+   "key": "copy.title",
+   "en": "Copy",
+   "ru": "Копировать",
+   "file": "src/locales/en.yaml:97; ru.yaml:97; used MyConfig.vue:436 (Api row)",
+   "screen": "Settings > Core Settings (copies the core API URL, not a subscription)",
+   "state": "both",
+   "platform_note": "No button to copy or show a subscription link/QR was found. The edit dialog shows the URL field (profiles.edit.url) and lets you select the text. Only 'Send profile to Prizrak-Box Android TV' exists as a share function: profiles.tv-send 'Send profile to Prizrak-Box Android TV' / 'Отправить профиль на Prizrak-Box Android TV' (Profiles.vue:966), profiles.tv-dialog.title 'Send Profile to Android TV' / 'Отправка профиля на Android TV'.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "logs/diagnostics",
+   "key": "sec-nav.log",
+   "en": "Log",
+   "ru": "Журнал",
+   "file": "src/locales/en.yaml:33; ru.yaml:33; used src/components/setting/SettingsHeader.vue:28; src-rs/ui/settings.slint:161",
+   "screen": "Settings page, the tab with the document icon (file-text). Tab title in the page header is setting.section.log 'Log' / 'Журнал'",
+   "state": "both",
+   "platform_note": "The five tabs in the Settings header are icon-only and the names appear as tooltips: setting.tab.app 'App Settings'/'Настройки приложения', setting.tab.core 'Core Settings'/'Настройки ядра', sec-nav.rule 'Rule'/'Правило', sec-nav.conn 'Connections'/'Соединения', sec-nav.log 'Log'/'Журнал'. Page title of each tab: setting.section.app 'Application'/'Приложение', core 'Core'/'Ядро', rule 'Rules'/'Правила', connection 'Connections'/'Соединения', log 'Log'/'Журнал'.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "logs/diagnostics",
+   "key": "logs.*",
+   "en": "Log level / Search / Autoscroll / Copy all / Export .log / Clear log",
+   "ru": "Уровень логирования / Поиск / Автопрокрутка / Копировать всё / Экспорт в .log / Очистить журнал",
+   "file": "src/locales/en.yaml:691-696 (logs.level, logs.search, logs.autoscroll, logs.copy-all, logs.export, logs.clear); ru.yaml:691-696; used src/components/LogLevelSelect.vue:43, src/components/setting/LogTab.vue:140,155,158,161,164",
+   "screen": "Settings > Log tab",
+   "state": "both",
+   "platform_note": "The key logs.search has the EN text 'Search logs' / RU 'Поиск по журналу'. A different key log.search exists with EN 'Search' / RU 'Поиск' (en.yaml:500); LogTab.vue uses logs.search. Empty state: empty.logs.title 'Log is empty' / 'Журнал пуст'.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "connected-only data",
+   "key": "connections.*",
+   "en": "Close all / Pause / Resume / {n} connections",
+   "ru": "Закрыть все / Пауза / Возобновить / {n} соединений",
+   "file": "src/locales/en.yaml:432,445,446,497; ru.yaml same lines; actual EN pause/resume used by ConnectionTab.vue:478 are the top-level keys pause 'Pause'/'Пауза' and resume 'Resume'/'Resume' = 'Продолжить' (en.yaml:702-703; ru.yaml:702-703); ConnectionTab.vue:458 (Close all), :320-322 (List/Topology/Processes)",
+   "screen": "Settings > Connections tab (wifi icon). Views: connections.list 'List'/'Список', connections.topology-view 'Topology'/'Топология', connections.process-view 'Processes'/'Процессы'",
+   "state": "connected",
+   "platform_note": "The list shows only while traffic goes through the core. Columns/details in the connection dialog: upload-speed 'Upload speed'/'Скорость загрузки', download-speed 'Download speed'/'Скорость скачивания', upload 'Upload'/'Отправка', download 'Download'/'Загрузка', duration 'Duration'/'Длительность', host 'Host'/'Хост', rule 'Rule'/'Правило', proxy-chain 'Proxy chain'/'Цепочка прокси'. Note the RU quirk: 'Скорость загрузки' is used for UPLOAD speed (en.yaml:461) while the download speed is 'Скорость скачивания'. Sort keys: connections.sort.label 'Sorting'/'Сортировка'. Confirm dialog: confirm.close-all.title 'Close all connections?'/'Закрыть все соединения?'.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "connected-only data",
+   "key": "home.download / home.upload / home.memory",
+   "en": "Download / Upload / Memory",
+   "ru": "Загрузка / Отправка / Память",
+   "file": "src/locales/en.yaml:115-117; ru.yaml:115-117",
+   "screen": "-",
+   "state": "unknown",
+   "platform_note": "ORPHAN: grep found no use in src/ or src-rs/. Do NOT tell users the Home page shows a traffic/speed counter. Home shows the IP block (home.ip.title 'IP [FYI]', 'Real IP'/'Реальный IP', 'City'/'Город', 'Country'/'Страна', 'ISP'/'Провайдер') and the system block (home.system.title 'System'/'Система', 'Runtime'/'Время работы', 'Mixed-Port'/'Смешанный порт'), MyIp.vue:203-246. The IP block refresh button is the key 'refresh'.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "navigation",
+   "key": "nav.home / nav.setting / nav.proxies / nav.profiles",
+   "en": "Home / Setting / Proxies / Profiles",
+   "ru": "Главная / Настройки / Прокси / Профили",
+   "file": "src/locales/en.yaml:5-8; ru.yaml:5-8; used src/components/menu/MyNav.vue:10-13; src-rs/ui/shell.slint:327",
+   "screen": "Left sidebar, vertical list. Icons: home, gear, rocket, user-cog",
+   "state": "both",
+   "platform_note": "EN 'Setting' is singular, as in the source. Sidebar order: Home, Setting, Proxies, Profiles.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "quit",
+   "key": "quit.label",
+   "en": "Quit",
+   "ru": "Выйти",
+   "file": "src/locales/en.yaml:62; ru.yaml:62; used src/components/menu/Off.vue:4",
+   "screen": "Sidebar bottom row, the third round button; confirm dialog title 'Quit Prizrak-Box?' / 'Выйти из Prizrak-Box?'",
+   "state": "both",
+   "platform_note": "Quitting stops the core and turns Proxy and TUN off (quit.confirm.text 'The core will stop, and Proxy and TUN will be turned off.' / 'Ядро будет остановлено, прокси и TUN отключатся.').",
+   "verify": "not_checked"
+  }
+ ],
+ "menu_paths": [
+  {
+   "task": "Add a subscription by URL or text",
+   "path_en": "Profiles (sidebar) > Add (+ icon in the header) > paste into the field 'Subscription, ShareLink, Yaml, Base64, Json' > Add",
+   "path_ru": "Профили (боковое меню) > Добавить (иконка +) > вставить в поле 'Подписка, ShareLink, Yaml, Base64, Json' > Добавить",
+   "evidence": "src/views/Profiles.vue:865,878; src/components/profile/AddProfileDialog.vue:45,54,82; src/components/menu/MyNav.vue:13"
+  },
+  {
+   "task": "Add a subscription from the clipboard",
+   "path_en": "Profiles > Import from Clipboard (clipboard icon). Alternative: Home > + (dropdown) > Import from Clipboard",
+   "path_ru": "Профили > Импорт из буфера обмена (иконка буфера). Альтернатива: Главная > + (выпадающее меню) > Импорт из буфера обмена",
+   "evidence": "src/views/Profiles.vue:881; src/components/home/ProfileToolbar.vue:205-215"
+  },
+  {
+   "task": "Add a subscription from a file",
+   "path_en": "Profiles > Import from file (folder icon), or drag a .yaml, .yml or .age file into the window ('Drag the profile here to import')",
+   "path_ru": "Профили > Импорт из файла (иконка папки), либо перетащить файл .yaml, .yml или .age в окно ('Перетащите профиль сюда для импорта')",
+   "evidence": "src/views/Profiles.vue:884; src/components/MyDrop.vue; src/locales/en.yaml:106,113"
+  },
+  {
+   "task": "Add a subscription by QR",
+   "path_en": "Not available: no QR feature in the desktop source (grep found nothing)",
+   "path_ru": "Недоступно: в исходниках десктопной версии нет функции QR",
+   "evidence": "grep for qr/qrcode over src/ and src-rs/ returned no matches at tag v2.0.0-rc01"
+  },
+  {
+   "task": "Turn the VPN on or off",
+   "path_en": "Sidebar > Proxy (toggle button; the dot lights up). For a full-device tunnel use sidebar > Tun. A profile must be added and selected first.",
+   "path_ru": "Боковое меню > Прокси (кнопка-переключатель, загорается точка). Для туннеля всего устройства: боковое меню > Tun. Сначала нужно добавить и выбрать профиль.",
+   "evidence": "src/components/menu/MyProxy.vue:450-473,72-121; src/App.vue:21"
+  },
+  {
+   "task": "Enable the system proxy",
+   "path_en": "Settings (sidebar) > App Settings tab (gear) > turn on 'System Proxy Mode', then turn on sidebar > Proxy",
+   "path_ru": "Настройки > вкладка 'Настройки приложения' (шестерёнка) > включить 'Режим системного прокси', затем включить в боковом меню 'Прокси'",
+   "evidence": "src/components/setting/MyConfig.vue:602-604; src/components/menu/MyProxy.vue:94,108"
+  },
+  {
+   "task": "Switch the routing mode",
+   "path_en": "Sidebar mode pill: Rule / Global / Direct. Direct is hidden when the app language is Russian; use the tray menu > Direct.",
+   "path_ru": "Переключатель режима в боковом меню: Правило / Глобальный (кнопки 'Прямой' в русском интерфейсе нет; режим доступен в меню трея > Прямой)",
+   "evidence": "src/components/menu/MyRule.vue:43-60; src-rs/ui/shell.slint:131; src-rs/src/app.rs:365; src/locales/en.yaml:527-529"
+  },
+  {
+   "task": "Choose a server/group",
+   "path_en": "Top pill: Group dropdown > pick a group, then Proxy dropdown > pick a node. Or Proxies (sidebar, rocket icon) > pick a node in a group card",
+   "path_ru": "Верхняя панель: список 'Группа' > выбрать группу, затем список 'Прокси' > выбрать узел. Или Прокси (боковое меню, иконка ракеты) > выбрать узел в карточке группы",
+   "evidence": "src/components/MySearch.vue:270-320; src/App.vue:9; src/views/Proxies.vue:726-864"
+  },
+  {
+   "task": "Test latency",
+   "path_en": "Proxies > Latency Test (header icon) for all groups, or Test Group Latency in a group",
+   "path_ru": "Прокси > Тест задержки (иконка в шапке) для всех групп, либо Тест задержки группы в нужной группе",
+   "evidence": "src/views/Proxies.vue:732,814"
+  },
+  {
+   "task": "Update one subscription",
+   "path_en": "Home > Refresh profile (toolbar above the active profile), or Profiles > Refresh (circular arrow on the profile card)",
+   "path_ru": "Главная > Обновить профиль (панель над активным профилем), либо Профили > Обновить (круглая стрелка на карточке профиля)",
+   "evidence": "src/components/home/ProfileToolbar.vue:199; src/views/Profiles.vue:928"
+  },
+  {
+   "task": "Update all subscriptions at once",
+   "path_en": "No such button found. Only the per-profile refresh and the automatic 'Update Interval (hour)' in the profile edit dialog",
+   "path_ru": "Кнопки 'обновить все' нет. Есть обновление по одному профилю и автообновление по полю 'Интервал обновления (часы)' в окне редактирования профиля",
+   "evidence": "grep refreshAll/updateAll in src/views/Profiles.vue found nothing; src/locales/en.yaml:329"
+  },
+  {
+   "task": "Change the language",
+   "path_en": "Sidebar bottom row > Language (globe icon) > English / Русский / 简体中文",
+   "path_ru": "Нижний ряд бокового меню > Язык (иконка глобуса) > English / Русский / 简体中文",
+   "evidence": "src/components/menu/Language.vue:1-27,42-46; src/components/menu/MyBottom.vue:20-24"
+  },
+  {
+   "task": "Open the logs",
+   "path_en": "Settings > Log tab (document icon in the header; tooltip 'Log')",
+   "path_ru": "Настройки > вкладка 'Журнал' (иконка документа; подсказка 'Журнал')",
+   "evidence": "src/components/setting/SettingsHeader.vue:23-29; src/views/Setting.vue:66; src/components/setting/LogTab.vue:133-170"
+  },
+  {
+   "task": "See live connections and traffic (only while connected)",
+   "path_en": "Settings > Connections tab (wifi icon) > List / Topology / Processes",
+   "path_ru": "Настройки > вкладка 'Соединения' (иконка wifi) > Список / Топология / Процессы",
+   "evidence": "src/components/setting/SettingsHeader.vue:27; src/components/setting/ConnectionTab.vue:320-322"
+  },
+  {
+   "task": "Install the TUN service (so TUN works without admin rights)",
+   "path_en": "Settings > App Settings > Service Mode > Install Service, or press Tun in the sidebar and choose Install Service in the dialog 'TUN Mode'",
+   "path_ru": "Настройки > Настройки приложения > Режим сервиса > Установить сервис, либо нажать Tun в боковом меню и в окне 'Режим TUN' выбрать 'Установить сервис'",
+   "evidence": "src/components/setting/MyService.vue:187-205; src/components/menu/MyProxy.vue:480-504"
+  }
+ ],
+ "menu_path_issues": [
+  "Every EN path says 'Settings'. The sidebar item in EN is 'Setting' (nav.setting, en.yaml:6, singular). RU 'Настройки' is correct.",
+  "Language path: the dropdown order in Language.vue:42-46 is 简体中文, English, Русский. The paths list 'English / Русский / 简体中文'. The button icon is tabler 'language', not a globe, and the list opens on hover or click. The first-run default (menu.ts detectLanguage) is zh, en or ru by OS language, otherwise en.",
+  "Add subscription: the dialog has a multi-line textarea (AddProfileDialog.vue), not a single input. Its title is 'Add'/'Добавить'. The footer has Cancel and Add buttons. The Home '+' menu also has an 'Add'/'Добавить' item with a pencil icon, so a user sees two 'Add' labels in the Home dropdown.",
+  "Turn the VPN on or off: the Proxy button needs a profile that is selected, otherwise a warning toast appears. Both warnings say 'open Tun' even for the Proxy button (verified). Turning Proxy OFF shows a warning-style toast. Toggling Settings > System Proxy Mode while Proxy is ON also shows the toast 'Proxy is ON/OFF' (MyProxy.vue:435-437), which can confuse users.",
+  "Switch routing mode: confirmed that RU hides Direct in the sidebar (MyRule.vue:55), and that the pill is hidden entirely when the profile header global-mode is false (MyRule.vue:35). The same condition removes Rule/Global/Direct from the Rust tray (tray.rs:177 global_mode_disabled). The path 'tray menu > Direct' is therefore not available for those profiles either.",
+  "Install the TUN service: the claim 'dialog 'TUN Mode' when pressing Tun in the sidebar' is correct only without admin rights. If the app is already elevated and the service is not, the dialog is service.admin-title (also 'TUN Mode') with the buttons 'Start TUN'/'Install Service'/'Cancel'. The two dialogs are different (MyProxy.vue:480 vs :495).",
+  "Choose a server: the path does not mention that URLTest/Fallback-type groups refuse manual selection (toast proxies.auto-group-no-manual-select), so 'pick a node' does not work for all groups.",
+  "Settings tabs: the menu_path entries for the Log and Connections tabs are correct. The tab tooltips (setting.tab.app, setting.tab.core, sec-nav.*) are verified. The Rules tab has sub-tabs (Now/Group/Providers/Ignore) not covered."
+ ],
+ "missing_flows": [
+  "Mode-switch confirmation toasts: rules.rule-switch 'Switched to Rule mode' / 'Переключено в режим Правил', rules.global-switch 'Switched to Global mode' / 'Переключено в Глобальный режим', rules.direct-switch 'Switched to Direct mode' / 'Переключено в Прямой режим' (en/ru.yaml:14-16, used MyRule.vue:~80).",
+  "Switch the active profile: Home toolbar icon 'Switch profiles' / 'Переключить профили' (onboarding.active-profile.switch-profiles, :582) and Profiles page multi-select ('Enable multi-select', 'Select for multi-profile' / 'Выбрать для мультивыбора', 'Primary' / 'Основной'). Without a selected profile Proxy and Tun do not start.",
+  "Delete profile: 'Delete' / 'Удалить' (key delete, :36, Profiles.vue:984) and 'In use, cannot be deleted' / 'Используется, нельзя удалить' (profiles.del-tip :325).",
+  "Subscription extras on the profile card: 'Visit the Subscription Home Page' / 'Перейти на страницу подписки' (profiles.home :320), 'Renew subscription' / 'Продлить подписку' (:323), 'Announcement' (profiles.announce).",
+  "Tray menu as a connect/disconnect and mode path: tray.proxy / tray.tun toggle items exist (Proxy/Прокси, TUN/TUN). The tray menu also has a Proxy Groups submenu for node choice. Only partly in the table.",
+  "Real connected-state indicators: the dot (mode-dot is-on) and aria-pressed on Proxy/Tun, and the toasts. There is no Home traffic counter or timer (home.download/upload/memory are orphans). Home shows the IP block, which is a connected-state signal: 'IP [FYI]', 'Real IP'/'Реальный IP' with a refresh button.",
+  "Latency colour dot next to the node in the top selector; Proxies page text proxies.direct 'Currently in direct mode' / 'В настоящее время прямой режим' (:258) is shown in Direct mode.",
+  "Quit dialog buttons: 'Cancel'/'Отмена' and 'Quit'/'Выйти' (quit.confirm.ok :66).",
+  "Logs: the log level dropdown (LogLevelSelect, logs.level) and the toast logs.cleared are present; the clear action opens a confirm dialog titled 'Clear log' / 'Очистить журнал'.",
+  "RU-specific untranslated or hard-coded UI strings (checked): 'Tun Stack' (MyTun.vue:34) and 'HWID' (MyConfig.vue:586) are English in the RU UI; 'Api', 'Mihomo' and 'Prizrak-Box' section titles are also hard-coded. ru.yaml has all 703 keys of en.yaml; identical EN=RU values are only IP [FYI], Prizrak-Box, DSCP and two placeholders.",
+  "Note on UI shells: the repo contains 3 desktop shells (Wails, Electron, and an experimental Rust+Slint 'src-rs' marked TEST in its README) sharing the same locale files. All label paths checked in Vue (src/) match the Slint code for the cited keys."
+ ],
+ "caveats": [
+  "Official repo: legiz-ru/Prizrak-Box (README links docs.prizrak.app and the Releases page there). The repo legiz-ru/pxd-src is empty. Many GitHub repos with names like Prizrak-box-GIThub, prizrak-box-windows and PRIzrak_box_GIthuB (other owners, copying the description 'A Simple desktop GUI client for mihomo') look like clones/fakes; I did not open them. Do not link users to them.",
+  "The latest published release v2.0.0-rc01 is a PRERELEASE. The latest non-prerelease according to GitHub is v1.0.20, which I did not read. UI strings for the stable v1.0.20 may differ from those listed here.",
+  "In v2.0.0-rc01 the default desktop download (windows-amd64.msi, macos-*.dmg, linux-*.deb without a suffix) is a new Rust + Slint build. It uses the same src/locales/*.yaml (src-rs/src/i18n.rs:11-13) and mirrors the Vue UI. The *-wails and *-electron builds use the Vue UI directly. Citations here are to the Vue files and, where checked, Slint files. I did not run the app, so layout and hidden/visible states come from source reading.",
+  "The desktop app has no 'Connect/Disconnect' button, no connection timer, and no 'Connected/Disconnected' text. The on/off state is the sidebar buttons 'Proxy' and 'Tun' (dot indicator) plus toasts like 'Proxy is ON'. Android and Android TV have a separate VPN UI (release notes mention 'Play/Pause toggles VPN'); it is not covered here and the Android sources were not read.",
+  "The task hint 'Proxy section (rocket icon)' is a mismatch: the rocket icon belongs to the Proxies navigation tab (MyNav.vue:28), not to the Proxy on/off button (access-point icon, MyProxy.vue:457). The 'TUN switch' is the sidebar button 'Tun' (shown uppercase by CSS).",
+  "RU: with the interface language set to Russian the Direct mode button 'Прямой' is hidden in the sidebar (MyRule.vue:55). A user following a Russian-language guide will not see 'Прямой' in the mode pill.",
+  "Several Settings tabs and many header buttons are icon-only; the quoted names are tooltip/aria-label texts, shown on hover.",
+  "Some long RU strings were cut by my line limit and are marked as such: tun-unavailable (ru.yaml:26) and proxies.auto-group-no-manual-select (ru.yaml:270). All other quoted EN/RU pairs were read in full from en.yaml/ru.yaml at tag v2.0.0-rc01. The en.yaml and ru.yaml files are line-for-line aligned (703 lines each) so no key falls back to EN, but I did not run a programmatic key-set diff (no yaml module available).",
+  "Orphan keys (defined, not found in UI code): home.download, home.upload, home.memory, tun-warning (not found). Do not mention these as UI elements.",
+  "Hard-coded non-localised labels seen in the UI: 'Tun Stack' (MyTun.vue:34), 'HWID', 'Api', 'Secret', 'IPv6', 'Mihomo' (MyConfig.vue). They stay in English in the RU UI.",
+  "No 'refresh all subscriptions' control, no QR code, and no 'copy subscription link' button exist in the desktop UI at this tag, as far as my grep shows. The only per-profile share function is 'Send profile to Prizrak-Box Android TV'.",
+  "Per-OS differences (Windows UAC, macOS admin prompt, Linux privileges for TUN) were not examined; the TUN dialog and 'Service Mode' texts are generic."
+ ]
+}

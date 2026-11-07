@@ -1,0 +1,538 @@
+{
+ "app": "Flowvy",
+ "source_available": false,
+ "repo": "https://github.com/flowvy/desktop (release-only, proprietary; docs at https://docs.flowvy.io)",
+ "release_tag": "0.3.5",
+ "release_date": "2026-08-27",
+ "commit_sha": "4adaec4fe3875c9efa0be0a3c004bca273af6d04",
+ "ru_locale_present": true,
+ "languages_available": [
+  "Russian",
+  "English"
+ ],
+ "locale_files": [],
+ "provenance": "read from the app's source/locale files at the release tag (closed-source apps: official docs or installed bundle), then adversarially re-checked by a second agent; NOT a live UI check",
+ "labels": [
+  {
+   "flow": "connect",
+   "key": "popup.connect",
+   "screen": "Popup (tray window)",
+   "en": "Connect",
+   "ru": "Подключиться",
+   "file": "https://docs.flowvy.io/home/en/popup/popup.md ; https://docs.flowvy.io/popup/popup.md",
+   "state": "disconnected",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "connect",
+   "key": "popup.disconnect",
+   "screen": "Popup (tray window)",
+   "en": "Disconnect",
+   "ru": "Отключиться",
+   "file": "https://docs.flowvy.io/home/en/popup/popup.md ; https://docs.flowvy.io/popup/popup.md",
+   "state": "connected",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "connect",
+   "key": "popup.pin",
+   "screen": "Popup",
+   "en": "Pin popup",
+   "ru": "Закрепить окно",
+   "file": "https://docs.flowvy.io/home/en/popup/popup.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "connect",
+   "key": "popup.dashboard",
+   "screen": "Popup bottom bar",
+   "en": "Dashboard",
+   "ru": "Dashboard",
+   "file": "https://docs.flowvy.io/home/en/popup/popup.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "mode",
+   "key": "mode.rule",
+   "screen": "Popup",
+   "en": "Rule",
+   "ru": "По правилам",
+   "file": "https://docs.flowvy.io/home/en/popup/popup.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "mode",
+   "key": "mode.global",
+   "screen": "Popup",
+   "en": "Global",
+   "ru": "Глобальный",
+   "file": "https://docs.flowvy.io/home/en/popup/popup.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "mode",
+   "key": "mode.direct",
+   "screen": "Popup",
+   "en": "Direct",
+   "ru": "Прямой",
+   "file": "https://docs.flowvy.io/home/en/popup/popup.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "key": "profiles.add",
+   "screen": "Profiles",
+   "en": "Add",
+   "ru": "Добавить",
+   "file": "https://docs.flowvy.io/home/en/dashboard/profiles.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "key": "profiles.check",
+   "screen": "Profiles > Add dialog",
+   "en": "Check",
+   "ru": "Проверить",
+   "file": "https://docs.flowvy.io/home/en/dashboard/profiles.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "key": "profiles.import",
+   "screen": "Profiles > Add dialog",
+   "en": "Import",
+   "ru": "Импортировать",
+   "file": "https://docs.flowvy.io/home/en/dashboard/profiles.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "key": "device.allow_continue",
+   "screen": "Device verification",
+   "en": "Allow & Continue",
+   "ru": "Разрешить и продолжить",
+   "file": "https://docs.flowvy.io/home/en/dashboard/profiles.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "key": "device.manage",
+   "screen": "Device verification",
+   "en": "Manage devices",
+   "ru": "Управление устройствами",
+   "file": "https://docs.flowvy.io/home/en/dashboard/profiles.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "update subscription",
+   "key": "profiles.update_all",
+   "screen": "Profiles",
+   "en": "Update All",
+   "ru": "Обновить все",
+   "file": "https://docs.flowvy.io/home/en/dashboard/profiles.md",
+   "state": "both",
+   "platform_note": "Single-profile refresh is an update button on the profile card; its text label is not documented.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "update subscription",
+   "key": "profiles.allow_update",
+   "screen": "Device verification on update",
+   "en": "Allow & Update",
+   "ru": "Разрешить и обновить",
+   "file": "https://docs.flowvy.io/home/en/dashboard/profiles.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "profile settings",
+   "key": "profiles.edit",
+   "screen": "Profile card menu",
+   "en": "Edit profile",
+   "ru": "Редактировать",
+   "file": "https://docs.flowvy.io/home/en/dashboard/profiles.md ; https://docs.flowvy.io/dashboard/profiles.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "profile settings",
+   "key": "profiles.autoupdate",
+   "screen": "Edit profile",
+   "en": "Auto-update",
+   "ru": "Автообновление",
+   "file": "https://docs.flowvy.io/home/en/dashboard/profiles.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "profile settings",
+   "key": "profiles.send_hwid",
+   "screen": "Edit profile",
+   "en": "Send HWID",
+   "ru": "Отправлять HWID",
+   "file": "https://docs.flowvy.io/home/en/dashboard/profiles.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "profile settings",
+   "key": "profiles.delete",
+   "screen": "Profile card menu",
+   "en": "Delete",
+   "ru": "Удалить",
+   "file": "https://docs.flowvy.io/home/en/dashboard/profiles.md",
+   "state": "both",
+   "platform_note": "RU text for Delete is inferred, not read from RU page; verify.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "choose server",
+   "key": "popup.auto_select",
+   "screen": "Popup group",
+   "en": "Auto select",
+   "ru": "Автовыбор",
+   "file": "https://docs.flowvy.io/home/en/popup/popup.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "latency test",
+   "key": "popup.test_all",
+   "screen": "Popup group",
+   "en": "Test All",
+   "ru": "Пинг всех",
+   "file": "https://docs.flowvy.io/home/en/popup/popup.md",
+   "state": "both",
+   "platform_note": "Per-host test is a lightning icon next to the host (no text).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "latency test",
+   "key": "popup.timeout",
+   "screen": "Popup latency result",
+   "en": "Timeout",
+   "ru": "Таймаут",
+   "file": "https://docs.flowvy.io/home/en/popup/popup.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "settings tabs",
+   "key": "settings.tabs",
+   "screen": "Settings",
+   "en": "Connection / Appearance / Startup / Tools",
+   "ru": "Подключение / Интерфейс / Запуск / Инструменты",
+   "file": "https://docs.flowvy.io/home/en/dashboard/settings.md ; https://docs.flowvy.io/dashboard/settings.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "system proxy",
+   "key": "settings.system_proxy",
+   "screen": "Settings > Connection",
+   "en": "System Proxy",
+   "ru": "Системный прокси",
+   "file": "https://docs.flowvy.io/home/en/dashboard/system-proxy.md",
+   "state": "both",
+   "platform_note": "Switch becomes unavailable while connected through TUN.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "system proxy",
+   "key": "settings.local_proxy_access",
+   "screen": "Settings > Connection",
+   "en": "Local proxy access",
+   "ru": "Доступ к локальному прокси",
+   "file": "https://docs.flowvy.io/home/en/dashboard/settings.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "tun",
+   "key": "settings.tun_mode",
+   "screen": "Settings > Connection",
+   "en": "TUN mode",
+   "ru": "Режим TUN",
+   "file": "https://docs.flowvy.io/home/en/dashboard/tun-mode.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "tun",
+   "key": "tun.from_subscription",
+   "screen": "Settings > Connection > TUN mode",
+   "en": "From subscription",
+   "ru": "Из подписки",
+   "file": "https://docs.flowvy.io/home/en/dashboard/tun-mode.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "tun",
+   "key": "tun.enabled",
+   "screen": "Settings > Connection > TUN mode",
+   "en": "Enabled",
+   "ru": "Включён",
+   "file": "https://docs.flowvy.io/home/en/dashboard/tun-mode.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "tun",
+   "key": "tun.disabled",
+   "screen": "Settings > Connection > TUN mode",
+   "en": "Disabled",
+   "ru": "Выключен",
+   "file": "https://docs.flowvy.io/home/en/dashboard/tun-mode.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "tun",
+   "key": "tun.helper_service",
+   "screen": "Settings > Connection",
+   "en": "Helper service",
+   "ru": "Вспомогательная служба",
+   "file": "https://docs.flowvy.io/home/en/dashboard/tun-mode.md",
+   "state": "both",
+   "platform_note": "macOS may need approval: Open System Settings (RU: Открыть Системные настройки) then Login Items & Extensions (RU: Объекты входа и расширения).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "tun",
+   "key": "tun.later",
+   "screen": "Helper service prompt",
+   "en": "Later",
+   "ru": "Позже",
+   "file": "https://docs.flowvy.io/home/en/dashboard/profiles.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "language",
+   "key": "settings.language",
+   "screen": "Settings > Appearance",
+   "en": "Language",
+   "ru": "Язык",
+   "file": "https://docs.flowvy.io/home/en/dashboard/settings.md",
+   "state": "both",
+   "platform_note": "Options: Russian or English (RU doc: русский или английский).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "startup",
+   "key": "settings.auto_connect",
+   "screen": "Settings > Startup",
+   "en": "Auto-connect",
+   "ru": "Автоподключение",
+   "file": "https://docs.flowvy.io/home/en/dashboard/settings.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "logs",
+   "key": "nav.logs",
+   "screen": "Dashboard sidebar",
+   "en": "Logs",
+   "ru": "Логи",
+   "file": "https://docs.flowvy.io/home/en/dashboard/logs.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "logs",
+   "key": "logs.sources",
+   "screen": "Logs",
+   "en": "All / Client / Core",
+   "ru": "Все / Клиент / Ядро",
+   "file": "https://docs.flowvy.io/home/en/dashboard/logs.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "logs",
+   "key": "logs.pause_resume",
+   "screen": "Logs",
+   "en": "Pause stream / Resume stream",
+   "ru": "Приостановить поток / Возобновить поток",
+   "file": "https://docs.flowvy.io/home/en/dashboard/logs.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "diagnostics",
+   "key": "logs.diagnostics",
+   "screen": "Logs",
+   "en": "Diagnostics",
+   "ru": "Диагностика",
+   "file": "https://docs.flowvy.io/home/en/dashboard/logs.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "diagnostics",
+   "key": "logs.stop_save",
+   "screen": "Logs diagnostics",
+   "en": "Stop & save",
+   "ru": "Остановить и сохранить",
+   "file": "https://docs.flowvy.io/home/en/dashboard/logs.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "logs",
+   "key": "logs.menu",
+   "screen": "Logs > More actions",
+   "en": "More actions: App logs / Service logs / Clear all",
+   "ru": "Ещё действия: Логи приложения / Логи службы / Очистить все",
+   "file": "https://docs.flowvy.io/home/en/dashboard/logs.md",
+   "state": "both",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "connected-only",
+   "key": "nav.connections",
+   "screen": "Dashboard sidebar",
+   "en": "Connections",
+   "ru": "Соединения",
+   "file": "https://docs.flowvy.io/home/en/dashboard/connections.md",
+   "state": "connected",
+   "platform_note": "Presumed populated only while connected; not stated explicitly.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "connected-only",
+   "key": "connections.columns",
+   "screen": "Connections",
+   "en": "Process / Host, Chain, Rule, Net, DL, UL, Time",
+   "ru": "Процесс / Хост, Цепочка, Правило, Сеть, DL, UL, Время",
+   "file": "https://docs.flowvy.io/home/en/dashboard/connections.md",
+   "state": "connected",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "connected-only",
+   "key": "popup.speed_ip",
+   "screen": "Popup top",
+   "en": "download and upload speeds, along with the IP address (descriptive text, no fixed label)",
+   "ru": "скорость загрузки и отправки, а также IP-адрес (описание, не фиксированная надпись)",
+   "file": "https://docs.flowvy.io/home/en/popup/popup.md",
+   "state": "connected",
+   "verify": "confirmed"
+  }
+ ],
+ "menu_paths": [
+  {
+   "task": "Connect",
+   "path_en": "Tray icon > Popup > Connect",
+   "path_ru": "Значок в трее > Popup > Подключиться",
+   "evidence": "https://docs.flowvy.io/home/en/popup/popup.md (Connection section; select a profile in Dashboard first)"
+  },
+  {
+   "task": "Disconnect",
+   "path_en": "Popup > Disconnect",
+   "path_ru": "Popup > Отключиться",
+   "evidence": "https://docs.flowvy.io/popup/popup.md"
+  },
+  {
+   "task": "Switch mode",
+   "path_en": "Popup > Rule / Global / Direct",
+   "path_ru": "Popup > По правилам / Глобальный / Прямой",
+   "evidence": "https://docs.flowvy.io/home/en/popup/popup.md (Modes)"
+  },
+  {
+   "task": "Add subscription by link",
+   "path_en": "Dashboard > Profiles > Add > paste link > Check > Import",
+   "path_ru": "Dashboard > Профили > Добавить > вставить ссылку > Проверить > Импортировать",
+   "evidence": "https://docs.flowvy.io/dashboard/profiles.md (Добавление профиля); deep link flowvy://import?url=... per https://docs.flowvy.io/integraciya/deep-links.md. No documented QR, file, or clipboard-button import."
+  },
+  {
+   "task": "Update subscriptions",
+   "path_en": "Dashboard > Profiles > update button on card, or Update All",
+   "path_ru": "Dashboard > Профили > кнопка обновления на карточке, или Обновить все",
+   "evidence": "https://docs.flowvy.io/dashboard/profiles.md (Обновление профиля)"
+  },
+  {
+   "task": "Choose server and test latency",
+   "path_en": "Popup > open group > click host; lightning icon or Test All",
+   "path_ru": "Popup > открыть группу > выбрать хост; значок молнии или Пинг всех",
+   "evidence": "https://docs.flowvy.io/home/en/popup/popup.md (Groups and hosts, Latency tests)"
+  },
+  {
+   "task": "Toggle System Proxy",
+   "path_en": "Settings > Connection > System Proxy",
+   "path_ru": "Настройки > Подключение > Системный прокси",
+   "evidence": "https://docs.flowvy.io/home/en/dashboard/system-proxy.md"
+  },
+  {
+   "task": "Enable TUN",
+   "path_en": "Settings > Connection > TUN mode > Enabled",
+   "path_ru": "Настройки > Подключение > Режим TUN > Включён",
+   "evidence": "https://docs.flowvy.io/home/en/dashboard/tun-mode.md (Enabling TUN, steps 2-3)"
+  },
+  {
+   "task": "Change language",
+   "path_en": "Settings > Appearance > Language",
+   "path_ru": "Настройки > Интерфейс > Язык",
+   "evidence": "https://docs.flowvy.io/home/en/dashboard/settings.md"
+  },
+  {
+   "task": "Diagnostics for support",
+   "path_en": "Logs > Diagnostics > reproduce > Stop & save",
+   "path_ru": "Логи > Диагностика > воспроизвести проблему > Остановить и сохранить",
+   "evidence": "https://docs.flowvy.io/dashboard/logs.md (Диагностика)"
+  },
+  {
+   "task": "View active connections",
+   "path_en": "Dashboard sidebar > Connections",
+   "path_ru": "Боковая панель Dashboard > Соединения",
+   "evidence": "https://docs.flowvy.io/home/en/dashboard/connections.md"
+  }
+ ],
+ "menu_path_issues": [
+  "Every RU string, including 'profiles.delete' (Удалить), was found verbatim in the RU docs (dashboard/profiles.md, popup/popup.md, dashboard/settings.md, dashboard/logs.md and others). The 'inferred' note on profiles.delete can be dropped.",
+  "All 11 menu paths match the docs. The only wrinkle is the System Proxy path, where the EN docs write 'Settings → Connection → System proxy' (lowercase p) and the Settings page heading is 'System Proxy'.",
+  "Source caveat: every label comes from bold text in the docs. Only the bold text in the docs backs the claim that the labels are the real UI strings. Popup items such as 'Pin popup' and 'Закрепить окно' could be tooltips or aria-labels, not visible text.",
+  "'nav.connections' is tagged state=connected, but the docs never say the page is empty or disabled while disconnected. They say only that it lists the 'current connections handled by the core'. Treat the 'connected only' tag as unverified.",
+  "'Dashboard' stays in English in the RU UI. The RU docs confirm this: 'Dashboard — открыть основное окно'.",
+  "The TUN doc says 'Profiles → card menu → Edit profile → Override', but the Profiles page names the section 'Overrides' (RU 'Переопределение'). The docs are inconsistent here. Do not cite the TUN-doc form.",
+  "The 'Update subscriptions' path is accurate. The single-profile update button has no documented text label (docs say only 'кнопка обновления на карточке'), and the table already says so.",
+  "The RU Connect path 'Значок в трее' omits the macOS wording. The docs say 'значок Flowvy в трее или строке меню'. On macOS, tell the user it is the menu bar icon."
+ ],
+ "missing_flows": [
+  "Deep-link import: flowvy://import?url=<encoded subscription URL> (also flowvy://install-config, and flowvy-beta:// for Beta) opens the Add dialog. Source: integraciya/deep-links.md.",
+  "Popup with no profiles: a plus button opens the add-profile dialog.",
+  "Profile widget: Settings > Appearance > Profile widget (RU: Настройки > Интерфейс > Виджет профиля) replaces the mode selector with subscription status. It cannot be turned off if the provider enabled it.",
+  "Primary Group (RU: Основная группа), in Edit profile: picks the group used for the IP indicator in Rule mode. Changes need Save (RU: Сохранить).",
+  "Proxy port, in Settings > Connection (RU: Порт прокси): Automatic (RU: Автоматически) or Custom port (RU: Задать порт), then Apply (RU: Применить) or Cancel (RU: Отмена).",
+  "Connections on host change (RU: Соединения при смене хоста): Never / Changed group / All groups (RU: Не закрывать / Выбранной группы / Всех групп), plus Keep connections exclusions.",
+  "Helper service management: 'Uninstall service' (RU: Удалить службу) in Settings > Connection. macOS approval: Open System Settings, then General > Login Items & Extensions (RU: Основные > Объекты входа и расширения). The table covers the macOS approval only as a platform note.",
+  "Connections page actions: Close All / Close found (RU: Закрыть все / Закрыть найденные), the '+' button to create a rule, and Back (RU: Назад).",
+  "Profile overrides: Edit profile > Overrides > Override provider settings (RU: Редактировать > Переопределение > Переопределить настройки провайдера). Covers Log Level, TUN Stack, Parallel TCP, Unified Delay and Process Matching. Also Edit Rules / Edit Config (RU: Изменить правила / Изменить конфиг).",
+  "Other Settings > Appearance and Startup items: Theme (Тема), Window size, Tray icon background (macOS: Menu bar icon background), Launch at login (Запуск при входе), Launch without a window (Запуск без окна).",
+  "About page: Check, Install, Later (RU: Проверить, Установить, Позже) for client updates, plus Auto-check updates and Geo databases. Source: dashboard/about.md.",
+  "Settings > Tools > TUN bypass (RU: Обход TUN) and VLESS converter (RU: Конвертер VLESS).",
+  "Logs level filters DEBUG/INFO/WARN/ERROR, Search (RU: Поиск), Auto-scroll (RU: Автопрокрутка), Expand/Collapse all rows (RU: Развернуть/Свернуть все строки).",
+  "Share link: no share-link or export feature is documented anywhere in the docs I read (popup, profiles, settings, tools, about, deep-links, llms.txt index). It is likely absent and should not be written into instructions. The only 'import from file' in the docs is for TUN-bypass address lists, not subscriptions."
+ ],
+ "caveats": [
+  "Flowvy desktop is proprietary: github.com/flowvy/desktop holds only README, assets and releases. No source or locale files exist, so nothing was grepped for key usage; all labels come from official docs (docs.flowvy.io, EN under /home/en/, RU at root), not from the app binary. The key field is a synthetic name, not a real i18n key.",
+  "Latest stable release is 0.3.5 (2026-08-27). Betas 1.0.0-beta.7 to beta.9 (Sep-Oct 2026) are newer prereleases, and the UI may differ from the docs.",
+  "ru_locale_present=true is based on docs (Settings > Appearance > Language: Russian or English) and fully Russian docs; no locale file was inspected.",
+  "No documented share/copy subscription link or QR feature, no add by QR/file/clipboard button, and no cumulative traffic counter beyond speed in Popup and DL/UL data volumes in Connections. Do not name such buttons.",
+  "No fixed 'Connected'/'Disconnected' status text or timer is documented; only the Connect/Disconnect button text and the speed/IP display while connected.",
+  "Per-host latency icon (lightning), single-profile update button and plus button in Popup have no documented text label.",
+  "Docs are not pinned to tag 0.3.5 and may describe newer behavior. RU for Delete is unverified. The RU mode names, Profiles and Settings labels come from the RU docs pages.",
+  "Platform differences: desktop only (Windows, macOS Apple Silicon and Intel, Linux Debian/Ubuntu x64). On macOS the tray is the menu bar; 'Tray icon background' is called 'Menu bar icon background' there, and 'DNS system' (Settings > Connection) is macOS only. No mobile client."
+ ]
+}
