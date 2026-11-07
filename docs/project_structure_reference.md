@@ -2302,6 +2302,7 @@
   Классы: `FormOptions` (5 методов)
   Функции: `is_platform_id` — Строка похожа на id платформы (как ключи конфига: ``ios``, ``appleTV``)., `is_app_name` — Строка годится как название приложения: 1..40 знаков, без управляющих символов и переводов строк., `fallback_options`, `build_form_options` — Варианты из конфига страницы подписки; негодный или пустой конфиг — запасной набор., `reset_cache`, `get_form_options` — Варианты анкеты из кэша процесса; сбой Remnawave не даёт исключения.
 - `app/services/support_assist/kb.md` — файл
+- `app/services/support_assist/kb_clients.md` — файл
 - `app/services/support_assist/payload.py` — Python-модуль
   Классы: нет
   Функции: `find_forbidden_keys` — Обойти структуру рекурсивно и вернуть найденные запрещённые ключи (для тестов и самопроверок)., `build_payload` — Собрать JSON-совместимую нагрузку для LLM по белому списку полей.
@@ -2850,6 +2851,7 @@
 - `docs/superpowers/`
 - `docs/support-assist-panel-access.md` — файл
 - `docs/support-assist.md` — файл
+- `docs/support-kb/`
 - `docs/traffic-package-expiry.md` — файл
 - `docs/web-admin-integration-guide.md` — файл
 - `docs/web-admin-integration.md` — файл
@@ -2872,6 +2874,63 @@
 #### docs/superpowers/specs
 
 - `docs/superpowers/specs/2026-11-06-support-assistant-design.md` — файл
+
+### docs/support-kb
+
+- `docs/support-kb/clients.yaml` — файл
+- `docs/support-kb/evidence/`
+- `docs/support-kb/source/`
+
+#### docs/support-kb/evidence
+
+- `docs/support-kb/evidence/clashmi-macos-1.0.22/`
+- `docs/support-kb/evidence/clashmi-macos-1.0.22-ru/`
+- `docs/support-kb/evidence/flclash-macos-0.9.3-ru/`
+
+##### docs/support-kb/evidence/clashmi-macos-1.0.22
+
+- `docs/support-kb/evidence/clashmi-macos-1.0.22/01-main-disconnected.jpg` — файл
+- `docs/support-kb/evidence/clashmi-macos-1.0.22/02-my-profiles.jpg` — файл
+- `docs/support-kb/evidence/clashmi-macos-1.0.22/03-add-profile-sheet.jpg` — файл
+- `docs/support-kb/evidence/clashmi-macos-1.0.22/04-profile-menu.jpg` — файл
+- `docs/support-kb/evidence/clashmi-macos-1.0.22/05-app-settings.jpg` — файл
+- `docs/support-kb/evidence/clashmi-macos-1.0.22/06-app-settings-bottom.jpg` — файл
+- `docs/support-kb/evidence/clashmi-macos-1.0.22/07-core-settings.jpg` — файл
+- `docs/support-kb/evidence/clashmi-macos-1.0.22/08-tun.jpg` — файл
+
+##### docs/support-kb/evidence/clashmi-macos-1.0.22-ru
+
+- `docs/support-kb/evidence/clashmi-macos-1.0.22-ru/00-app-settings-ru.jpg` — файл
+- `docs/support-kb/evidence/clashmi-macos-1.0.22-ru/01-main-disconnected.jpg` — файл
+- `docs/support-kb/evidence/clashmi-macos-1.0.22-ru/02-profiles.jpg` — файл
+- `docs/support-kb/evidence/clashmi-macos-1.0.22-ru/03-add-profile-sheet.jpg` — файл
+- `docs/support-kb/evidence/clashmi-macos-1.0.22-ru/04-profile-menu.jpg` — файл
+- `docs/support-kb/evidence/clashmi-macos-1.0.22-ru/05-core-settings.jpg` — файл
+- `docs/support-kb/evidence/clashmi-macos-1.0.22-ru/06-core-settings-bottom.jpg` — файл
+- `docs/support-kb/evidence/clashmi-macos-1.0.22-ru/07-tun.jpg` — файл
+- `docs/support-kb/evidence/clashmi-macos-1.0.22-ru/08-main-connected.jpg` — файл
+- `docs/support-kb/evidence/clashmi-macos-1.0.22-ru/09-proxies-connected.jpg` — файл
+- `docs/support-kb/evidence/clashmi-macos-1.0.22-ru/10-network-check.jpg` — файл
+- `docs/support-kb/evidence/clashmi-macos-1.0.22-ru/11-runtime-config.jpg` — файл
+
+##### docs/support-kb/evidence/flclash-macos-0.9.3-ru
+
+- `docs/support-kb/evidence/flclash-macos-0.9.3-ru/01-panel-connected.jpg` — файл
+- `docs/support-kb/evidence/flclash-macos-0.9.3-ru/02-proxies-connected.jpg` — файл
+- `docs/support-kb/evidence/flclash-macos-0.9.3-ru/03-profiles.jpg` — файл
+- `docs/support-kb/evidence/flclash-macos-0.9.3-ru/04-profiles-add-menu.jpg` — файл
+- `docs/support-kb/evidence/flclash-macos-0.9.3-ru/05-tools.jpg` — файл
+- `docs/support-kb/evidence/flclash-macos-0.9.3-ru/06-panel-stopped.jpg` — файл
+
+#### docs/support-kb/source
+
+- `docs/support-kb/source/clash-mi.json` — файл
+- `docs/support-kb/source/flclashx.json` — файл
+- `docs/support-kb/source/flowvy.json` — файл
+- `docs/support-kb/source/happ.json` — файл
+- `docs/support-kb/source/koala-clash.json` — файл
+- `docs/support-kb/source/prizrak-box.json` — файл
+- `docs/support-kb/source/rabbithole.json` — файл
 
 ## migrations
 
@@ -3325,6 +3384,9 @@
 - `scripts/backfill_remnawave_ids.py` — Python-модуль
   Классы: нет
   Функции: `main`
+- `scripts/build_support_kb.py` — Python-модуль
+  Классы: нет
+  Функции: `categories_of`, `tokens`, `issue_lead`, `path_contradicted`, `flow_name`, `platform_tag`, `refuted_texts`, `label_pair`, `fmt_label`, `source_section`, `live_sections`, `build`, `main`
 - `scripts/check_release_pr_override.mjs` — файл
 - `scripts/generate_structure_reference.py` — Python-модуль
   Классы: нет
@@ -5999,6 +6061,9 @@
 - `tests/services/support_assist/test_form_options.py` — Python-модуль
   Классы: нет
   Функции: `test_platforms_keep_config_order_then_router_and_other`, `test_apps_per_platform_dedup_keep_order_and_append_happ`, `test_router_and_other_get_the_union_of_all_apps_plus_happ`, `test_locations_are_static`, `test_bad_entries_in_the_config_are_skipped`, `test_unusable_config_gives_the_fallback`, `test_loader_exception_gives_the_fallback`, `test_options_are_cached_for_five_minutes`, `test_pure_fallback_is_cached_for_30_seconds` — Лежащий Remnawave не дёргаем на каждое открытие страницы, но и не ждём 5 минут., `test_remnawave_failure_keeps_serving_the_last_good_config`, `test_lookup_helpers`
+- `tests/services/support_assist/test_kb_clients.py` — Python-модуль
+  Классы: нет
+  Функции: `test_generated_file_is_up_to_date`, `test_no_refuted_label_text_in_output`, `test_no_unverified_markers_or_happ_buttons`, `test_size_cap`, `test_system_blocks_contain_client_knowledge`, `test_prompt_has_client_app_rule`
 - `tests/services/support_assist/test_payload.py` — Python-модуль
   Классы: нет
   Функции: `test_forbidden_keys_cover_the_privacy_list`, `test_walker_finds_nested_forbidden_keys`, `test_payload_has_no_forbidden_keys`, `test_every_scenario_payload_is_clean_and_json_serialisable`, `test_payload_keeps_device_model_and_flags`, `test_dates_are_iso_strings`, `test_transactions_keep_only_type_status_at`, `test_account_and_subscription_drop_identifiers`, `test_past_tickets_have_no_ticket_id`, `test_sub_requests_keep_time_and_app_only`, `test_usage_by_day_keeps_only_dates_with_numeric_values`, `test_cabinet_action_path_loses_opaque_segments` — Числовые id кабинет сворачивает сам, а hwid устройства в пути остаётся: прятать надо здесь., `test_missing_sections_stay_none_or_empty`, `test_flag_text_built_from_leaky_snapshot_carries_no_marker`, `test_payload_includes_the_form_answers_and_stays_clean`, `test_payload_diagnostics_is_none_without_a_form`, `test_payload_diagnostics_is_an_allowlist` — Лишние ключи и значения вне списка вариантов в нагрузку не попадают, даже если лежат в тикете., `test_payload_diagnostics_keeps_the_short_other_text_only_when_other_was_chosen`, `test_payload_diagnostics_carries_location_app_name_and_config_platform`, `test_payload_diagnostics_drops_malformed_names_and_locations`, `test_payload_diagnostics_survives_garbage_in_the_column`, `test_restrictions_in_payload_and_flag_text_are_kinds_only` — Даже если в снимок попал текст причины (@ник, id), в нагрузку к LLM уходят только виды запретов.
