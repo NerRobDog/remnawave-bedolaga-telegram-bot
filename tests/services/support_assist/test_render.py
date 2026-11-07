@@ -180,3 +180,16 @@ def test_keyboard_for_a_truncated_draft_has_edit_but_no_send():
 def test_keyboard_flag_is_irrelevant_when_send_buttons_are_off():
     kb = build_card_keyboard(5, show_send=False, draft_truncated=True)
     assert [b.callback_data for row in kb.inline_keyboard for b in row] == ['sa:skip:5']
+
+
+def test_fallback_card_marks_low_flags_as_note_not_ok():
+    """«low» — совет или заметка («клиент на Happ, Clash Mi даёт правила»), а не «всё в порядке»."""
+    flags = [Flag('happ_basic', 'low', 'Клиент на Happ (базовый формат)'), Flag('traffic_flows', 'info', 'Трафик идёт')]
+    text = render_card(None, flags, 7)
+    assert 'ℹ️ Клиент на Happ (базовый формат)' in text
+    assert '✅ Трафик идёт' in text
+
+
+def test_model_card_accepts_note_icon():
+    card = Card(facts=[CardFact(icon='ℹ️', text='Клиент на Happ')], cause='c', owner_action='', ask_client=[], draft='d')
+    assert 'ℹ️ Клиент на Happ' in render_card(card, [], 7)
