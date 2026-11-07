@@ -202,3 +202,35 @@ async def test_panel_sources_run_concurrently_and_total_wait_is_bounded(monkeypa
     elapsed = time.monotonic() - started
     assert set(s.missing) == {'panel_user', 'sub_requests', 'devices', 'usage', 'squad_nodes', 'nodes'}
     assert elapsed < 0.2 * 3  # последовательно вышло бы 1.2 с
+
+
+FORM = {'platform': 'ios', 'app': 'happ', 'network': 'wifi', 'symptom': 'nothing', 'since': 'today'}
+
+
+@pytest.mark.asyncio
+async def test_snapshot_carries_the_ticket_form_answers(monkeypatch):
+    _patch_bot(monkeypatch)
+    ticket = MagicMock(user_id=7, id=1, diagnostics=dict(FORM))
+    s = await snap.collect_snapshot(AsyncMock(), _api(), ticket, NOW)
+    assert s.diagnostics == FORM
+    assert s.diagnostics is not ticket.diagnostics  # копия: откат сессии тикет не трогает снимок
+
+
+@pytest.mark.asyncio
+async def test_snapshot_keeps_the_form_answers_when_the_bot_db_source_fails(monkeypatch):
+    async def boom(db, ticket, now):
+        raise RuntimeError('db down')
+
+    monkeypatch.setattr(snap, '_load_bot_data', boom)
+    ticket = MagicMock(user_id=7, id=1, diagnostics=dict(FORM))
+    s = await snap.collect_snapshot(AsyncMock(), _api(), ticket, NOW)
+    assert 'bot_db' in s.missing
+    assert s.diagnostics == FORM
+
+
+@pytest.mark.asyncio
+async def test_snapshot_without_a_form_has_no_diagnostics(monkeypatch):
+    _patch_bot(monkeypatch)
+    for value in (None, 'x', ['ios']):
+        s = await snap.collect_snapshot(AsyncMock(), _api(), MagicMock(user_id=7, id=1, diagnostics=value), NOW)
+        assert s.diagnostics is None

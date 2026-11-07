@@ -1,6 +1,7 @@
 """Support tickets schemas for cabinet."""
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -122,6 +123,14 @@ class TicketCreateRequest(BaseModel):
     media_file_id: str | None = Field(None, description='Telegram file_id of uploaded media')
     media_caption: str | None = Field(None, max_length=1000, description='Media caption')
     media_items: list[TicketMediaItem] | None = Field(None, description='Multi-media attachments')
+    diagnostics: dict[str, Any] | None = Field(
+        None,
+        description=(
+            'Answers of the pre-ticket form: platform, app, network, symptom, since (option ids; '
+            'platform_other / app_other carry a short text for "other"). '
+            'Required when SUPPORT_TICKET_FORM_REQUIRED is on.'
+        ),
+    )
 
     @model_validator(mode='after')
     def validate_has_content(self) -> 'TicketCreateRequest':

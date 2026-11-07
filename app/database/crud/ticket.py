@@ -26,9 +26,16 @@ class TicketCRUD:
         media_file_id: str | None = None,
         media_caption: str | None = None,
         media_items: list[dict] | None = None,
+        diagnostics: dict | None = None,
     ) -> Ticket:
         """Создать новый тикет с первым сообщением"""
-        ticket = Ticket(user_id=user_id, title=title, status=TicketStatus.OPEN.value, priority=priority)
+        ticket = Ticket(
+            user_id=user_id,
+            title=title,
+            status=TicketStatus.OPEN.value,
+            priority=priority,
+            diagnostics=diagnostics,
+        )
         db.add(ticket)
         await db.flush()  # Получаем ID тикета
 

@@ -11,11 +11,13 @@ from sqlalchemy.orm import selectinload
 
 from app.cabinet.routes.media import make_media_token
 from app.cabinet.routes.websocket import notify_admins_new_ticket, notify_admins_ticket_reply
+from app.config import settings
 from app.database.crud.ticket import TicketCRUD
 from app.database.crud.ticket_notification import TicketNotificationCRUD
 from app.database.models import Ticket, TicketMessage, User
 from app.handlers.tickets import notify_admins_about_new_ticket, notify_admins_about_ticket_reply
 from app.services.support_assist.pipeline import notification_bot, schedule_assist
+from app.services.support_assist.ticket_form import validate_diagnostics
 from app.services.support_settings_service import SupportSettingsService
 from app.utils.timezone import format_local_datetime
 
@@ -52,6 +54,30 @@ def _ensure_tickets_enabled() -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail='Support tickets are disabled',
         )
+
+
+def _resolve_diagnostics(raw: dict | None) -> dict | None:
+    """Ответы анкеты из запроса в каноническом виде.
+
+    При ``SUPPORT_TICKET_FORM_REQUIRED`` анкета обязательна: нет её или она неполна — 422 в том же
+    формате, что у валидации FastAPI, и тикет не создаётся. Флаг выключен: годная анкета
+    сохраняется, битая отбрасывается, потому что тикет клиента важнее необязательного поля.
+    """
+    if settings.SUPPORT_TICKET_FORM_REQUIRED:
+        try:
+            return validate_diagnostics(raw)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=[{'loc': ['body', 'diagnostics'], 'msg': str(exc), 'type': 'value_error'}],
+            ) from exc
+    if raw is None:
+        return None
+    try:
+        return validate_diagnostics(raw)
+    except ValueError as exc:
+        logger.warning('Ticket diagnostics dropped: invalid form', error=str(exc))
+        return None
 
 
 async def _ensure_not_blocked(db: AsyncSession, user: User) -> None:
@@ -173,6 +199,8 @@ async def create_ticket(
 ):
     """Create a new support ticket."""
     _ensure_tickets_enabled()
+    # Чистая проверка входа, без БД: раньше блокировок и записи.
+    diagnostics = _resolve_diagnostics(request.diagnostics)
     await _ensure_not_blocked(db, user)
 
     # Один незакрытый тикет на пользователя — паритет с бот-путём
@@ -188,6 +216,7 @@ async def create_ticket(
         title=request.title,
         status='open',
         priority='normal',
+        diagnostics=diagnostics,
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
     )

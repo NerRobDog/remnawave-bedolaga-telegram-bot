@@ -10,6 +10,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InaccessibleMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database.crud.ticket import TicketCRUD, TicketMessageCRUD
 from app.database.crud.user import get_user_by_id
 from app.database.models import Ticket, TicketStatus, User
@@ -23,6 +24,16 @@ from app.keyboards.inline import (
 from app.localization.texts import get_texts
 from app.services.admin_notification_service import AdminNotificationService
 from app.services.support_assist.pipeline import schedule_assist
+from app.services.support_assist.ticket_form import (
+    FORM_FIELDS,
+    OTHER_MAX_LENGTH,
+    answered_fields,
+    clean_other_text,
+    has_other,
+    other_key,
+    render_diagnostics,
+    validate_diagnostics,
+)
 from app.utils.cache import RateLimitCache, cache, cache_key
 from app.utils.formatters import format_username_link
 from app.utils.miniapp_buttons import build_admin_ticket_cabinet_button
@@ -44,6 +55,10 @@ class TicketStates(StatesGroup):
     waiting_for_title = State()
     waiting_for_message = State()
     waiting_for_reply = State()
+    # Обязательная анкета перед заголовком (SUPPORT_TICKET_FORM_REQUIRED): вопросы кнопками,
+    # текст принимается только в «Другое».
+    waiting_for_form = State()
+    waiting_for_form_other = State()
 
 
 async def show_ticket_priority_selection(
@@ -75,6 +90,10 @@ async def show_ticket_priority_selection(
         )
         return
 
+    if settings.SUPPORT_TICKET_FORM_REQUIRED:
+        await _start_ticket_form(callback, state, db_user)
+        return
+
     prompt_text = texts.t('TICKET_TITLE_INPUT', 'Введите заголовок тикета:')
     cancel_kb = get_ticket_cancel_keyboard(db_user.language)
     prompt_msg = callback.message
@@ -91,6 +110,158 @@ async def show_ticket_priority_selection(
     await state.update_data(prompt_chat_id=prompt_msg.chat.id, prompt_message_id=prompt_msg.message_id)
     await state.set_state(TicketStates.waiting_for_title)
     await callback.answer()
+
+
+def _next_form_field(diagnostics: dict | None) -> str | None:
+    """Первое поле анкеты без ответа; ``None`` — анкета заполнена."""
+    done = answered_fields(diagnostics)
+    return next((field for field in FORM_FIELDS if field not in done), None)
+
+
+def _form_keyboard(field: str, language: str) -> types.InlineKeyboardMarkup:
+    texts = get_texts(language)
+    rows = [
+        [
+            types.InlineKeyboardButton(
+                text=texts.t(f'TICKET_FORM_{field.upper()}_{option.upper()}'),
+                callback_data=f'tf:{field}:{option}',
+            )
+        ]
+        for option in FORM_FIELDS[field]
+    ]
+    rows.append(
+        [
+            types.InlineKeyboardButton(
+                text=texts.t('CANCEL_TICKET_CREATION', '❌ Отменить создание тикета'),
+                callback_data='cancel_ticket_creation',
+            )
+        ]
+    )
+    return types.InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _form_screen(language: str, diagnostics: dict | None) -> tuple[str, types.InlineKeyboardMarkup, State]:
+    """Следующий экран: очередной вопрос анкеты, а когда ответы собраны, обычный запрос заголовка."""
+    texts = get_texts(language)
+    field = _next_form_field(diagnostics)
+    if field is None:
+        return (
+            texts.t('TICKET_TITLE_INPUT', 'Введите заголовок тикета:'),
+            get_ticket_cancel_keyboard(language),
+            TicketStates.waiting_for_title,
+        )
+    step = list(FORM_FIELDS).index(field) + 1
+    text = (
+        f'{texts.t("TICKET_FORM_STEP").format(step=step, total=len(FORM_FIELDS))}\n\n'
+        f'{texts.t(f"TICKET_FORM_{field.upper()}_PROMPT")}'
+    )
+    return text, _form_keyboard(field, language), TicketStates.waiting_for_form
+
+
+async def _edit_form_prompt(
+    callback: types.CallbackQuery, state: FSMContext, text: str, keyboard: types.InlineKeyboardMarkup
+) -> None:
+    """Показать экран анкеты в сообщении с кнопкой; не вышло (например, там фото) — отправить новое."""
+    prompt_msg = callback.message
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard)
+    except TelegramBadRequest:
+        # Предыдущее сообщение — фото (нет текста для edit_text), удаляем и шлём новое
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        prompt_msg = await callback.message.answer(text, reply_markup=keyboard)
+    # Дальше редактируем именно это сообщение, а не шлём новые (как в обычном потоке тикета).
+    await state.update_data(prompt_chat_id=prompt_msg.chat.id, prompt_message_id=prompt_msg.message_id)
+
+
+async def _start_ticket_form(callback: types.CallbackQuery, state: FSMContext, db_user: User) -> None:
+    """Первый вопрос анкеты вместо запроса заголовка (блокировки и открытый тикет уже проверены)."""
+    text, keyboard, next_state = _form_screen(db_user.language, {})
+    await _edit_form_prompt(callback, state, text, keyboard)
+    await state.update_data(diagnostics={}, form_other_field=None)
+    await state.set_state(next_state)
+    await callback.answer()
+
+
+async def handle_ticket_form_answer(callback: types.CallbackQuery, state: FSMContext, db_user: User):
+    """Ответ на вопрос анкеты: кнопка ``tf:<поле>:<вариант>``."""
+    if await state.get_state() != TicketStates.waiting_for_form:
+        # Кнопка от прошлого сценария или отменённого тикета.
+        await callback.answer()
+        return
+    parts = (callback.data or '').split(':')
+    data = await state.get_data()
+    diagnostics = dict(data.get('diagnostics') or {})
+    field = _next_form_field(diagnostics)
+    # Принимаем только ответ на текущий вопрос: двойной тап или старый экран не пропускают вопросов.
+    if len(parts) != 3 or field is None or parts[1] != field or parts[2] not in FORM_FIELDS[field]:
+        await callback.answer()
+        return
+    option = parts[2]
+    language = db_user.language
+
+    if option == 'other' and has_other(field):
+        await state.update_data(form_other_field=field)
+        await state.set_state(TicketStates.waiting_for_form_other)
+        await _edit_form_prompt(
+            callback,
+            state,
+            get_texts(language).t('TICKET_FORM_OTHER_PROMPT').format(limit=OTHER_MAX_LENGTH),
+            get_ticket_cancel_keyboard(language),
+        )
+        await callback.answer()
+        return
+
+    diagnostics[field] = option
+    await _advance_ticket_form(state, diagnostics)
+    text, keyboard, next_state = _form_screen(language, diagnostics)
+    await state.set_state(next_state)
+    await _edit_form_prompt(callback, state, text, keyboard)
+    await callback.answer()
+
+
+async def _advance_ticket_form(state: FSMContext, diagnostics: dict) -> None:
+    """Сохранить ответы; собранную анкету приводим к каноническому виду."""
+    if _next_form_field(diagnostics) is None:
+        diagnostics = validate_diagnostics(diagnostics)
+    await state.update_data(diagnostics=diagnostics, form_other_field=None)
+
+
+async def handle_ticket_form_other_input(message: types.Message, state: FSMContext, db_user: User):
+    """Короткий текст к варианту «Другое»."""
+    if await state.get_state() != TicketStates.waiting_for_form_other:
+        return
+    asyncio.create_task(_try_delete_message_later(message.bot, message.chat.id, message.message_id, 2.0))
+    data = await state.get_data()
+    field = data.get('form_other_field')
+    prompt_chat_id = data.get('prompt_chat_id')
+    prompt_message_id = data.get('prompt_message_id')
+    language = db_user.language
+
+    text = clean_other_text(message.text) if message.text else ''
+    # Длинный текст не режем молча (как и текст тикета): просим сократить.
+    too_long = bool(message.text) and len(' '.join(message.text.split())) > OTHER_MAX_LENGTH
+    if field not in FORM_FIELDS or not text or too_long:
+        invalid = get_texts(language).t('TICKET_FORM_OTHER_INVALID').format(limit=OTHER_MAX_LENGTH)
+        await _edit_or_send(message, prompt_chat_id, prompt_message_id, invalid, language)
+        return
+
+    diagnostics = dict(data.get('diagnostics') or {})
+    diagnostics[field] = 'other'
+    diagnostics[other_key(field)] = text
+    await _advance_ticket_form(state, diagnostics)
+    screen_text, keyboard, next_state = _form_screen(language, diagnostics)
+    await state.set_state(next_state)
+    await _edit_or_send(message, prompt_chat_id, prompt_message_id, screen_text, language, reply_markup=keyboard)
+
+
+async def handle_ticket_form_stray_message(message: types.Message, state: FSMContext):
+    """Текст вместо кнопки на вопросе анкеты: вопрос остаётся на экране, лишнее сообщение убираем."""
+    if await state.get_state() != TicketStates.waiting_for_form:
+        return
+    asyncio.create_task(_try_delete_message_later(message.bot, message.chat.id, message.message_id, 2.0))
 
 
 async def handle_ticket_title_input(message: types.Message, state: FSMContext, db_user: User, db: AsyncSession):
@@ -266,6 +437,23 @@ async def handle_ticket_message_input(message: types.Message, state: FSMContext,
     title = data.get('title')
     priority = 'normal'
 
+    diagnostics = None
+    try:
+        diagnostics = validate_diagnostics(data.get('diagnostics'))
+    except ValueError:
+        if settings.SUPPORT_TICKET_FORM_REQUIRED:
+            # Анкета обязательна, а состояние осталось от потока без неё (флаг включили посреди сценария).
+            await state.clear()
+            texts = get_texts(db_user.language)
+            await _edit_or_send(
+                message,
+                data.get('prompt_chat_id'),
+                data.get('prompt_message_id'),
+                texts.t('TICKET_FORM_RESTART'),
+                db_user.language,
+            )
+            return
+
     try:
         ticket = await TicketCRUD.create_ticket(
             db,
@@ -276,6 +464,7 @@ async def handle_ticket_message_input(message: types.Message, state: FSMContext,
             media_type=media_type,
             media_file_id=media_file_id,
             media_caption=media_caption,
+            diagnostics=diagnostics,
         )
         # Включим временное подавление лишних сообщений пользователя (на случай разбиения длинного текста)
         try:
@@ -662,20 +851,25 @@ async def _edit_or_send(
     message_id: int | None,
     text: str,
     language: str,
+    reply_markup: types.InlineKeyboardMarkup | None = None,
 ) -> None:
-    """Попытаться отредактировать prompt-сообщение, при неудаче — отправить новое."""
+    """Попытаться отредактировать prompt-сообщение, при неудаче — отправить новое.
+
+    Без ``reply_markup`` под сообщением кнопка отмены создания тикета.
+    """
+    markup = reply_markup or get_ticket_cancel_keyboard(language)
     if chat_id and message_id:
         try:
             await message.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message_id,
                 text=text,
-                reply_markup=get_ticket_cancel_keyboard(language),
+                reply_markup=markup,
             )
             return
         except TelegramBadRequest:
             pass
-    await message.answer(text, reply_markup=get_ticket_cancel_keyboard(language))
+    await message.answer(text, reply_markup=markup)
 
 
 async def _try_delete_message_later(bot: Bot, chat_id: int, message_id: int, delay_seconds: float = 1.0):
@@ -1067,6 +1261,12 @@ async def notify_admins_about_new_ticket(ticket: Ticket, db: AsyncSession):
         if message_preview:
             notification_text += f'\n📩 <b>Сообщение:</b>\n{html.escape(message_preview)}\n'
 
+        # Ответы обязательной анкеты (текст «Другое» пишет клиент: экранируем).
+        diagnostics_text = render_diagnostics(getattr(ticket, 'diagnostics', None), 'ru')
+        if diagnostics_text:
+            form_title = get_texts('ru').t('TICKET_FORM_TITLE')
+            notification_text += f'\n📋 <b>{html.escape(form_title)}:</b>\n{html.escape(diagnostics_text)}\n'
+
         notification_text += f'\n📅 <b>Создан:</b> {format_local_datetime(ticket.created_at, "%d.%m.%Y %H:%M")}\n'
 
         from app.services.maintenance_service import maintenance_service
@@ -1155,6 +1355,11 @@ def register_handlers(dp: Dispatcher):
 
     # Создание тикета (теперь без приоритета)
     dp.callback_query.register(show_ticket_priority_selection, F.data == 'create_ticket')
+
+    # Обязательная анкета (SUPPORT_TICKET_FORM_REQUIRED): кнопки tf:<поле>:<вариант>
+    dp.callback_query.register(handle_ticket_form_answer, F.data.startswith('tf:'))
+    dp.message.register(handle_ticket_form_other_input, TicketStates.waiting_for_form_other)
+    dp.message.register(handle_ticket_form_stray_message, TicketStates.waiting_for_form)
 
     dp.message.register(handle_ticket_title_input, TicketStates.waiting_for_title)
 
