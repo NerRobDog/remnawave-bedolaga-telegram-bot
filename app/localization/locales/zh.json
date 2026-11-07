@@ -2338,5 +2338,13 @@
   "TOPUP_RETRY_TOO_HIGH": "❌ 最高充值金额：{maximum} 卢布。\n\n如需继续，请向机器人发送一条消息，输入 {minimum} 至 {maximum} 卢布之间的充值金额。",
   "TOPUP_RETRY_EXAMPLE": "例如，发送：{amount}",
   "TOPUP_RETRY_NO_RANGE": "❌ 此方式没有可手动输入的有效金额（最低 {minimum} 卢布，最高 {maximum} 卢布）。请选择其他支付方式。",
-  "AUTH_LINK_BONUS_GRANTED": "🎁 <b>登录方式绑定奖励</b>\n\n您已绑定第二种登录方式，感谢！您的订阅已增加 {days} 天，现有效期至 {until}。"
+  "AUTH_LINK_BONUS_GRANTED": "🎁 <b>登录方式绑定奖励</b>\n\n您已绑定第二种登录方式，感谢！您的订阅已增加 {days} 天，现有效期至 {until}。",
+  "SUPPORT_ASSIST_Q_INTRO": "为了更快解决问题，请在一条消息中回答以下问题：",
+  "SUPPORT_ASSIST_Q_DEVICE": "哪台设备出现问题（型号和系统版本）？",
+  "SUPPORT_ASSIST_Q_APP": "您使用哪个应用进行连接？",
+  "SUPPORT_ASSIST_Q_SINCE_WHEN": "问题何时开始？之前您做了什么操作？",
+  "SUPPORT_ASSIST_Q_NETWORK": "您使用的是移动网络还是 Wi-Fi？请说明运营商和所在地区。",
+  "SUPPORT_ASSIST_Q_SCOPE": "所有设备都有问题，还是只有一台？",
+  "SUPPORT_ASSIST_Q_SITES": "具体哪些网站或应用无法打开？",
+  "SUPPORT_ASSIST_Q_SCREENSHOT": "如果可以，请附上错误截图。"
 }
