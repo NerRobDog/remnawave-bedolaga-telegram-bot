@@ -52,7 +52,11 @@ def _cut(value: str, excess: int) -> str:
     return value[:keep].rstrip() + ('…' if keep else '')
 
 
-def render_card(card: Card | None, flags: list[Flag], ticket_id: int) -> str:
+def render_card(card: Card | None, flags: list[Flag], ticket_id: int, limit: int = TELEGRAM_LIMIT) -> str:
+    """HTML карточки не длиннее ``limit`` знаков (по умолчанию лимит Telegram).
+
+    Меньший ``limit`` оставляет место под строку решения, которую владелец потом дописывает.
+    """
     if card is None:
         facts = [(_SEV_ICON[f.sev], f.text) for f in flags]
         cause = owner_action = draft = None
@@ -67,8 +71,8 @@ def render_card(card: Card | None, flags: list[Flag], ticket_id: int) -> str:
 
     text = build()
     # Порядок урезания: черновик, факты, вопросы, действие, причина.
-    while len(text) > TELEGRAM_LIMIT:
-        excess = len(text) - TELEGRAM_LIMIT
+    while len(text) > limit:
+        excess = len(text) - limit
         if draft:
             draft = _cut(draft, excess) or None
         elif facts:
@@ -89,7 +93,7 @@ def render_card(card: Card | None, flags: list[Flag], ticket_id: int) -> str:
         elif cause:
             cause = _cut(cause, excess) or None
         else:
-            return text[:TELEGRAM_LIMIT]
+            return text[:limit]
         text = build()
     return text
 

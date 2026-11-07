@@ -99,25 +99,50 @@ def test_support_ws_reply_stores_actor_id_for_admin() -> None:
     assert 'ticket.user_id' in orelse_src, 'для владельца тикета семантика должна остаться прежней'
 
 
+def _function(tree: ast.AST, name: str) -> ast.AsyncFunctionDef:
+    for node in ast.walk(tree):
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == name:
+            return node
+    raise AssertionError(f'async function {name!r} не найдена в handlers/admin/tickets.py')
+
+
+def _calls(func: ast.AST, attr_or_name: str) -> list[ast.Call]:
+    found = []
+    for node in ast.walk(func):
+        if not isinstance(node, ast.Call):
+            continue
+        callee = node.func
+        if (isinstance(callee, ast.Attribute) and callee.attr == attr_or_name) or (
+            isinstance(callee, ast.Name) and callee.id == attr_or_name
+        ):
+            found.append(node)
+    return found
+
+
 def test_bot_admin_reply_still_stores_admin_id() -> None:
-    """Пин существующей (корректной) семантики бот-пути: add_message получает
+    """Пин существующей (корректной) семантики бот-пути: в add_message уходит
     db_user.id — id админа, вызвавшего обработчик. Cabinet/ws выровнены по ней;
-    если бот-путь изменится, смешанная семантика вернётся."""
+    если бот-путь изменится, смешанная семантика вернётся.
+
+    Последовательность «сообщение админа + уведомление клиента» живёт в общей
+    ``send_admin_reply`` (её же зовут кнопки карточки ассистента), поэтому пин в два
+    шага: обработчик отдаёт ей db_user.id, а она кладёт этот id автором в add_message.
+    """
     source = (APP_DIR / 'handlers' / 'admin' / 'tickets.py').read_text(encoding='utf-8')
     tree = ast.parse(source)
 
-    for node in ast.walk(tree):
-        if not (
-            isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == 'add_message'
-        ):
-            continue
-        has_admin_flag = any(
+    handler_calls = _calls(_function(tree, 'handle_admin_ticket_reply'), 'send_admin_reply')
+    assert handler_calls, 'handle_admin_ticket_reply должен отвечать через общую send_admin_reply'
+    handler_args = ', '.join(ast.unparse(a) for a in handler_calls[0].args)
+    assert 'db_user.id' in handler_args, 'бот-путь должен продолжать писать id ответившего админа (db_user.id)'
+
+    admin_adds = [
+        call
+        for call in _calls(_function(tree, 'send_admin_reply'), 'add_message')
+        if any(
             kw.arg == 'is_from_admin' and isinstance(kw.value, ast.Constant) and kw.value.value is True
-            for kw in node.keywords
+            for kw in call.keywords
         )
-        if not has_admin_flag:
-            continue
-        args_src = ', '.join(ast.unparse(a) for a in node.args)
-        assert 'db_user.id' in args_src, 'бот-путь должен продолжать писать id ответившего админа (db_user.id)'
-        return
-    raise AssertionError('в handlers/admin/tickets.py не найден admin-вызов add_message')
+    ]
+    assert admin_adds, 'в send_admin_reply не найден admin-вызов add_message'
+    assert 'author_id' in ', '.join(ast.unparse(a) for a in admin_adds[0].args)

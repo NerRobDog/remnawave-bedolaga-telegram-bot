@@ -49,18 +49,48 @@ async def last_card_for_ticket(db: AsyncSession, ticket_id: int) -> SupportAssis
     return result.scalar_one_or_none()
 
 
+async def get_card(db: AsyncSession, card_id: int) -> SupportAssistCard | None:
+    result = await db.execute(select(SupportAssistCard).where(SupportAssistCard.id == card_id))
+    return result.scalar_one_or_none()
+
+
 async def claim_card_decision(
     db: AsyncSession,
     card_id: int,
     to_status: str,
     admin_id: int,
     from_status: str = 'shown',
+    final_text: str | None = None,
 ) -> bool:
-    """Атомарный переход статуса: True только у того, кто реально сменил статус."""
+    """Атомарный переход статуса: True только у того, кто реально сменил статус.
+
+    ``final_text`` — текст, который уходит клиенту; пишется тем же UPDATE, чтобы статус и текст не расходились.
+    """
+    values: dict[str, Any] = {'status': to_status, 'decided_by': admin_id, 'decided_at': datetime.now(UTC)}
+    if final_text is not None:
+        values['final_text'] = final_text
     result = await db.execute(
         update(SupportAssistCard)
         .where(SupportAssistCard.id == card_id, SupportAssistCard.status == from_status)
-        .values(status=to_status, decided_by=admin_id, decided_at=datetime.now(UTC))
+        .values(**values)
+    )
+    await db.commit()
+    return result.rowcount == 1
+
+
+async def release_card_decision(db: AsyncSession, card_id: int, from_status: str, admin_id: int) -> bool:
+    """Вернуть карточку в 'shown', если отправка после claim не удалась.
+
+    Откатывает только свой же claim (тот же статус и тот же админ): чужое решение не трогаем.
+    """
+    result = await db.execute(
+        update(SupportAssistCard)
+        .where(
+            SupportAssistCard.id == card_id,
+            SupportAssistCard.status == from_status,
+            SupportAssistCard.decided_by == admin_id,
+        )
+        .values(status='shown', decided_by=None, decided_at=None, final_text=None)
     )
     await db.commit()
     return result.rowcount == 1

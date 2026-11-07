@@ -7,7 +7,8 @@
 
 Единственный источник для фильтра: сторожа в тестах сверяют с ним каждую кнопку
 групповых карточек (тикет — ``get_ticket_notification_keyboard(fsm_enabled=False)``,
-заявка на вывод — ``get_withdrawal_request_keyboard(role='group')``), чтобы новая
+заявка на вывод — ``get_withdrawal_request_keyboard(role='group')``, карточка ассистента —
+``build_card_keyboard``), чтобы новая
 кнопка не оказалась нарисованной, но мёртвой.
 """
 
@@ -21,6 +22,11 @@ GROUP_SAFE_CALLBACK_PREFIXES: tuple[str, ...] = (
     'admin_close_ticket_',
     'admin_block_user_perm_ticket_',
     'admin_unblock_user_ticket_',
+    # карточка ассистента поддержки; «Править» сама в группе ничего не вводит — она пишет админу в личку
+    # и ждёт его текст в личном FSM (app/handlers/admin/support_assist.py)
+    'sa:send:',
+    'sa:edit:',
+    'sa:skip:',
     # заявка на вывод реферального баланса
     'admin_withdrawal_approve_',
     'admin_withdrawal_reject_',
