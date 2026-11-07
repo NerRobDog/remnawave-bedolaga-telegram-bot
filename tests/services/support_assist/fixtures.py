@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
+from app.services.support_assist.payload import FORBIDDEN_KEYS
 from app.services.support_assist.snapshot import Snapshot
 
 
@@ -171,10 +172,7 @@ def s08() -> Snapshot:
 
 def s09() -> Snapshot:
     return healthy(
-        sub_requests=[
-            {'request_at': _ago(hours=h), 'user_agent': 'Happ/3.2.1'}
-            for h in range(1, 11)
-        ],
+        sub_requests=[{'request_at': _ago(hours=h), 'user_agent': 'Happ/3.2.1'} for h in range(1, 11)],
     )
 
 
@@ -211,6 +209,47 @@ def s14() -> Snapshot:
 
 def s15() -> Snapshot:
     return s01()
+
+
+LEAK = 'LEAK'
+
+
+def _with_forbidden(row: dict) -> dict:
+    """Копия словаря, в которую подмешан каждый запрещённый ключ со значением-маркером."""
+    return {**row, **dict.fromkeys(FORBIDDEN_KEYS, LEAK)}
+
+
+def leaky_snapshot() -> Snapshot:
+    """Полностью заполненный клиент: каждый словарь снимка несёт все запрещённые ключи.
+
+    Значение ``LEAK`` не должно встретиться в нагрузке к LLM ни под каким ключом.
+    Здесь же здоровые данные с одним из каждого вида записей, чтобы все ветки сборщика
+    нагрузки отработали.
+    """
+    base = healthy(
+        cabinet_actions_7d=[{'button_id': 'POST /cabinet/subscription/revoke', 'at': _ago(minutes=15)}],
+        transactions_48h=[{'type': 'deposit', 'status': 'pending', 'at': _ago(minutes=40)}],
+        past_tickets=[{'created_at': _ago(days=3), 'status': 'closed'}],
+        restrictions=['restriction_subscription: chargeback'],
+    )
+    return Snapshot(
+        as_of=base.as_of,
+        account=_with_forbidden({**base.account, 'auth_type': 'telegram', 'created_at': _ago(days=90)}),
+        subscription=_with_forbidden(base.subscription),
+        panel_user=_with_forbidden(base.panel_user),
+        devices=[_with_forbidden(d) for d in base.devices],
+        sub_requests=[_with_forbidden(r) for r in base.sub_requests],
+        sub_requests_total=base.sub_requests_total,
+        usage_by_day=_with_forbidden(base.usage_by_day),
+        squad_nodes=[_with_forbidden(n) for n in base.squad_nodes],
+        cabinet_actions_7d=[_with_forbidden(a) for a in base.cabinet_actions_7d],
+        transactions_48h=[_with_forbidden(t) for t in base.transactions_48h],
+        bot_errors_24h=2,
+        past_tickets=[_with_forbidden(p) for p in base.past_tickets],
+        other_tickets_2h=1,
+        restrictions=base.restrictions,
+        missing=['nodes'],
+    )
 
 
 # code -> (builder, must contain, must not contain)
