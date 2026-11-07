@@ -23,6 +23,11 @@ def _e(value: str) -> str:
     return html.escape(value, quote=False)
 
 
+def flag_facts(flags: list[Flag]) -> list[tuple[str, str]]:
+    """Факты карточки без модели: по строке на флаг, значок по тяжести (так же, как их рисует Telegram)."""
+    return [(_SEV_ICON.get(f.sev, _SEV_ICON['unknown']), f.text) for f in flags]
+
+
 def _compose(
     ticket_id: int,
     facts: list[tuple[str, str]],
@@ -71,7 +76,7 @@ class RenderedCard:
 def _fit(card: Card | None, flags: list[Flag], ticket_id: int, limit: int) -> tuple[str, bool]:
     """Текст карточки не длиннее ``limit`` знаков и признак «черновик урезан или выброшен целиком»."""
     if card is None:
-        facts = [(_SEV_ICON[f.sev], f.text) for f in flags]
+        facts = flag_facts(flags)
         cause = owner_action = draft = None
         ask: list[str] = []
         original_draft = ''

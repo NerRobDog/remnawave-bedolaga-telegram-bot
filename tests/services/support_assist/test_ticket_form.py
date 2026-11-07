@@ -27,6 +27,7 @@ from app.services.support_assist.ticket_form import (
     FORM_FIELD_IDS,
     OTHER_MAX_LENGTH,
     STATIC_OPTIONS,
+    diagnostics_rows,
     render_diagnostics,
     validate_diagnostics as _validate,
 )
@@ -230,6 +231,27 @@ def test_render_shows_the_other_text():
 def test_render_is_plain_text_the_caller_escapes():
     d = {**FULL, 'platform': 'other', 'platform_other': '<b>x</b>'}
     assert '<b>x</b>' in render_diagnostics(d, 'ru')
+
+
+def test_rows_are_label_value_pairs_in_question_order():
+    rows = diagnostics_rows(FULL, 'ru')
+    assert rows[0] == ('Где находится', 'Россия')
+    assert [label for label, _ in rows] == [label for label, _ in diagnostics_rows(FULL, 'ru', OPTS)]
+    assert len(rows) == len(FORM_FIELD_IDS)
+    assert all(label and shown for label, shown in rows)
+
+
+def test_rows_and_text_render_the_same_answers():
+    d = {**FULL, 'platform': 'other', 'platform_other': 'Steam Deck'}
+    rows = diagnostics_rows(d, 'ru', OPTS)
+    assert render_diagnostics(d, 'ru', OPTS) == '\n'.join(f'{label}: {shown}' for label, shown in rows)
+    assert any(shown.endswith('Steam Deck') for _, shown in rows)
+
+
+def test_rows_of_garbage_or_nothing_are_empty():
+    assert diagnostics_rows(None, 'ru') == []  # type: ignore[arg-type]
+    assert diagnostics_rows({}, 'ru') == []
+    assert diagnostics_rows({'location': 'mars', 'platform': 5}, 'ru') == []
 
 
 def test_render_skips_garbage_and_handles_empty():

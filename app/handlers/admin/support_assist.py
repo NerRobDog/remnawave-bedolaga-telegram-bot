@@ -21,15 +21,14 @@
 целиком (``render_card_checked``): урезанного текста владелец не видел. Для длинного черновика остаётся «Править».
 
 Отправка и там, и там — ``send_admin_reply`` из ``tickets.py``, та же последовательность, что у ручного
-ответа. Гонку нажатий решает ``claim_card_decision`` (один условный UPDATE): клиент получает ровно одно
-сообщение. Если запись ответа упала после захвата, карточка возвращается в 'shown'.
+ответа. Само решение (захват карточки, отправка, возврат в 'shown' при сбое) живёт в
+``app.services.support_assist.decision``: им же пользуется админский тикет в кабинете, поэтому правила общие.
+Гонку нажатий решает ``claim_card_decision`` (один условный UPDATE): клиент получает ровно одно сообщение.
 """
 
 import contextlib
 import html
 import time
-from dataclasses import dataclass
-from enum import StrEnum
 
 import structlog
 from aiogram import Bot, Dispatcher, F, types
@@ -39,13 +38,15 @@ from aiogram.fsm.storage.base import StorageKey
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.database.crud.support_assist import claim_card_decision, get_card, release_card_decision
-from app.database.crud.ticket import TicketCRUD
-from app.database.models import TicketStatus
-from app.handlers.admin.tickets import send_admin_reply
-from app.services.support_assist.card import Card
-from app.services.support_assist.flags import Flag
-from app.services.support_assist.render import TELEGRAM_LIMIT, render_card, render_card_checked
+from app.services.support_assist.decision import (
+    CardView,
+    Verdict,
+    check_reply_text,
+    decide_and_send,
+    dismiss_card,
+    load_card_view,
+    mark_card_message,
+)
 from app.services.support_settings_service import SupportSettingsService
 from app.states import SupportAssistStates
 from app.utils.ticket_text import TICKET_MESSAGE_MAX_LENGTH
@@ -93,27 +94,7 @@ CLOCK_SKEW_SECONDS = 60
 PROMPT_LIMIT = 4096
 PROMPT_OVERHEAD = 400
 
-DECISION_LINE = {
-    'sent': '✅ отправлено',
-    'edited': '✅ отправлено (текст изменён)',
-    'dismissed': '⏭ пропущено',
-}
-# У карточки без модели статус 'fallback' и единственная кнопка «Пропустить».
-SKIPPABLE_FROM = ('shown', 'fallback')
-
 _NO_KEYBOARD = types.InlineKeyboardMarkup(inline_keyboard=[])
-
-
-class Verdict(StrEnum):
-    OK = 'ok'
-    ALREADY = 'already'
-    NO_CARD = 'no_card'
-    NO_TICKET = 'no_ticket'
-    CLOSED = 'closed'
-    NO_TEXT = 'no_text'
-    TOO_LONG = 'too_long'
-    DRAFT_NOT_SHOWN = 'draft_not_shown'
-    FAILED = 'failed'
 
 
 _VERDICT_TEXT = {
@@ -127,29 +108,20 @@ _VERDICT_TEXT = {
         'Черновик не поместился в карточку целиком, владелец его не видел: нажмите «Править» и пришлите текст'
     ),
     Verdict.FAILED: 'Не удалось отправить, карточка осталась на месте. Попробуйте ещё раз.',
+    # Следующие два сюда не доходят (команду ловит проверка текста, «последняя карточка» нужна только кабинету).
+    Verdict.COMMAND: COMMAND_NOT_REPLY,
+    Verdict.NOT_LATEST: 'По этому тикету есть более новая карточка',
 }
 
-
-@dataclass(frozen=True, slots=True)
-class _CardView:
-    """Простые значения карточки, снятые сразу после чтения.
-
-    Откат сессии (неудачная запись ответа) протухает все загруженные ORM-строки, а чтение протухшего
-    атрибута в async-сессии бросает MissingGreenlet; дальше работаем только с этими копиями.
-    """
-
-    id: int
-    ticket_id: int
-    status: str
-    draft: str
-    card: dict | None
-    flags: list[dict]
-
-
-@dataclass(frozen=True, slots=True)
-class _Decision:
-    verdict: Verdict
-    card: _CardView | None = None
+# Что ответить админу в личке, если присланный текст не годится как ответ клиенту.
+_EDIT_TEXT_HINT = {
+    Verdict.NO_TEXT: 'Пришлите ответ текстом или нажмите «Отмена» под черновиком.',
+    # Команда, а не ответ: клиенту её слать нельзя. Состояние остаётся, админ пришлёт обычный текст.
+    Verdict.COMMAND: COMMAND_NOT_REPLY,
+    Verdict.TOO_LONG: (
+        f'Ответ слишком длинный: максимум {TICKET_MESSAGE_MAX_LENGTH} знаков. Сократите и пришлите ещё раз.'
+    ),
+}
 
 
 # --- общие помощники -----------------------------------------------------------------------------------------------
@@ -171,21 +143,6 @@ def _card_id(data: str | None, prefix: str) -> int | None:
     return int(raw) if raw.isdecimal() else None
 
 
-async def _load_view(db: AsyncSession, card_id: int) -> _CardView | None:
-    row = await get_card(db, card_id)
-    if row is None:
-        return None
-    card = row.card if isinstance(row.card, dict) else None
-    return _CardView(
-        id=row.id,
-        ticket_id=row.ticket_id,
-        status=row.status,
-        draft=((card or {}).get('draft') or '').strip(),
-        card=card,
-        flags=list(row.flags or []),
-    )
-
-
 def _private_state(state: FSMContext, user_id: int) -> FSMContext:
     """Личный FSM админа (``chat_id = user_id``), с какого бы чата ни пришло нажатие.
 
@@ -197,115 +154,6 @@ def _private_state(state: FSMContext, user_id: int) -> FSMContext:
         storage=state.storage,
         key=StorageKey(bot_id=key.bot_id, chat_id=user_id, user_id=user_id, destiny=key.destiny),
     )
-
-
-def _card_text(view: _CardView, line: str) -> str | None:
-    """Карточка в том виде, как её отправил конвейер, плюс строка решения; в 4096 знаков не больше."""
-    suffix = f'\n\n{line}'
-    try:
-        card = Card.model_validate(view.card) if view.card else None
-        flags = [Flag(**f) for f in view.flags]
-        return render_card(card, flags, view.ticket_id, limit=TELEGRAM_LIMIT - len(suffix)) + suffix
-    except Exception:
-        logger.warning('support_assist.card_text_rebuild_failed', card_id=view.id, exc_info=True)
-        return None
-
-
-def _draft_fully_shown(view: _CardView) -> bool:
-    """Весь ли черновик был в сообщении карточки (карточка собирается так же, как её собрал конвейер).
-
-    Не удалось собрать карточку заново — доказать нечем, считаем, что не весь.
-    """
-    try:
-        card = Card.model_validate(view.card)
-        flags = [Flag(**f) for f in view.flags]
-        return not render_card_checked(card, flags, view.ticket_id).draft_truncated
-    except Exception:
-        logger.warning('support_assist.draft_visibility_check_failed', card_id=view.id, exc_info=True)
-        return False
-
-
-async def _mark_card_message(bot: Bot, view: _CardView, chat_id: int, message_id: int, status: str) -> None:
-    """Снять кнопки с карточки и дописать, что решено. Сбой правки решения не отменяет."""
-    text = _card_text(view, DECISION_LINE[status])
-    try:
-        if text is not None:
-            await bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text=text,
-                parse_mode='HTML',
-                disable_web_page_preview=True,
-                reply_markup=_NO_KEYBOARD,
-            )
-            return
-    except TelegramAPIError:
-        logger.warning('support_assist.card_edit_failed', card_id=view.id, chat_id=chat_id, exc_info=True)
-    # Текст не собрался или не правится (сообщение старое, удалено): хотя бы снимаем кнопки.
-    try:
-        await bot.edit_message_reply_markup(chat_id=chat_id, message_id=message_id, reply_markup=None)
-    except TelegramAPIError:
-        logger.warning('support_assist.card_keyboard_removal_failed', card_id=view.id, chat_id=chat_id, exc_info=True)
-
-
-async def _decide_and_send(
-    bot: Bot,
-    db: AsyncSession,
-    *,
-    card_id: int,
-    admin_telegram_id: int,
-    admin_db_id: int,
-    to_status: str,
-    text: str | None,
-) -> _Decision:
-    """Занять карточку и отправить клиенту ответ (``text`` или черновик карточки)."""
-    view = await _load_view(db, card_id)
-    if view is None:
-        return _Decision(Verdict.NO_CARD)
-    if view.status != 'shown':
-        return _Decision(Verdict.ALREADY, view)
-
-    body = (view.draft if text is None else text).strip()
-    if not body:
-        return _Decision(Verdict.NO_TEXT, view)
-    if len(body) > TICKET_MESSAGE_MAX_LENGTH:
-        return _Decision(Verdict.TOO_LONG, view)
-    # Черновик уходит клиенту как есть: он должен был целиком лежать в карточке. Свой текст админ видел сам.
-    if text is None and not _draft_fully_shown(view):
-        return _Decision(Verdict.DRAFT_NOT_SHOWN, view)
-
-    ticket = await TicketCRUD.get_ticket_by_id(db, view.ticket_id, load_messages=False, load_user=True)
-    if ticket is None:
-        return _Decision(Verdict.NO_TICKET, view)
-    # Ручной ответ в закрытый тикет админке недоступен, а add_message переоткрыл бы его как ANSWERED.
-    if ticket.status == TicketStatus.CLOSED.value:
-        return _Decision(Verdict.CLOSED, view)
-
-    # Занимаем карточку ДО ответа: проигравший второе нажатие ничего не отправляет.
-    if not await claim_card_decision(db, card_id, to_status, admin_telegram_id, final_text=body):
-        return _Decision(Verdict.ALREADY, view)
-
-    try:
-        await send_admin_reply(bot, db, ticket, admin_db_id, body)
-    except Exception:
-        logger.exception('support_assist.reply_failed', card_id=card_id, ticket_id=view.ticket_id)
-        # Сессия после сбоя может быть в сбойном состоянии: откат, затем возврат карточки в 'shown'.
-        with contextlib.suppress(Exception):
-            await db.rollback()
-        try:
-            await release_card_decision(db, card_id, to_status, admin_telegram_id)
-        except Exception:
-            logger.exception('support_assist.release_failed', card_id=card_id)
-        return _Decision(Verdict.FAILED, view)
-
-    logger.info(
-        'support_assist.decided',
-        card_id=card_id,
-        ticket_id=view.ticket_id,
-        status=to_status,
-        decided_by=admin_telegram_id,
-    )
-    return _Decision(Verdict.OK, view)
 
 
 # --- «Отправить» ---------------------------------------------------------------------------------------------------
@@ -321,11 +169,11 @@ async def handle_send(callback: types.CallbackQuery, bot: Bot, db: AsyncSession,
         await callback.answer(STALE_BUTTON, show_alert=True)
         return
 
-    decision = await _decide_and_send(
+    decision = await decide_and_send(
         bot,
         db,
         card_id=card_id,
-        admin_telegram_id=callback.from_user.id,
+        decided_by=callback.from_user.id,
         admin_db_id=db_user.id,
         to_status='sent',
         text=None,
@@ -336,7 +184,7 @@ async def handle_send(callback: types.CallbackQuery, bot: Bot, db: AsyncSession,
 
     message = callback.message
     if message is not None and decision.card is not None:
-        await _mark_card_message(bot, decision.card, message.chat.id, message.message_id, 'sent')
+        await mark_card_message(bot, decision.card, message.chat.id, message.message_id, 'sent')
     await callback.answer('Отправлено')
 
 
@@ -353,7 +201,7 @@ def _fit_escaped(text: str, budget: int) -> str:
     return escaped
 
 
-def _edit_prompt(view: _CardView) -> str:
+def _edit_prompt(view: CardView) -> str:
     draft = _fit_escaped(view.draft, PROMPT_LIMIT - PROMPT_OVERHEAD)
     return (
         f'✏️ <b>Правка ответа по тикету #{view.ticket_id}</b>\n\n'
@@ -403,7 +251,7 @@ async def handle_edit(callback: types.CallbackQuery, state: FSMContext, bot: Bot
         await callback.answer(STALE_BUTTON, show_alert=True)
         return
 
-    view = await _load_view(db, card_id)
+    view = await load_card_view(db, card_id)
     if view is None:
         await callback.answer(_VERDICT_TEXT[Verdict.NO_CARD], show_alert=True)
         return
@@ -484,24 +332,16 @@ async def handle_edit_text(message: types.Message, state: FSMContext, bot: Bot, 
         return
 
     text = (message.text or '').strip()
-    if not text:
-        await message.answer('Пришлите ответ текстом или нажмите «Отмена» под черновиком.')
-        return
-    if text.startswith('/'):
-        # Команда, а не ответ: клиенту её слать нельзя. Состояние остаётся, админ пришлёт обычный текст.
-        await message.answer(COMMAND_NOT_REPLY)
-        return
-    if len(text) > TICKET_MESSAGE_MAX_LENGTH:
-        await message.answer(
-            f'Ответ слишком длинный: максимум {TICKET_MESSAGE_MAX_LENGTH} знаков. Сократите и пришлите ещё раз.'
-        )
+    problem = check_reply_text(text)
+    if problem is not None:
+        await message.answer(_EDIT_TEXT_HINT[problem])
         return
 
-    decision = await _decide_and_send(
+    decision = await decide_and_send(
         bot,
         db,
         card_id=card_id,
-        admin_telegram_id=message.from_user.id,
+        decided_by=message.from_user.id,
         admin_db_id=db_user.id,
         to_status='edited',
         text=text,
@@ -517,7 +357,7 @@ async def handle_edit_text(message: types.Message, state: FSMContext, bot: Bot, 
 
     chat_id, message_id = data.get(KEY_CHAT_ID), data.get(KEY_MESSAGE_ID)
     if decision.card is not None and isinstance(chat_id, int) and isinstance(message_id, int):
-        await _mark_card_message(bot, decision.card, chat_id, message_id, 'edited')
+        await mark_card_message(bot, decision.card, chat_id, message_id, 'edited')
     ticket_id = decision.card.ticket_id if decision.card is not None else ''
     await message.answer(f'✅ Ответ по тикету #{ticket_id} отправлен клиенту.')
 
@@ -560,27 +400,14 @@ async def handle_skip(callback: types.CallbackQuery, bot: Bot, db: AsyncSession)
         await callback.answer(STALE_BUTTON, show_alert=True)
         return
 
-    view = await _load_view(db, card_id)
-    if view is None:
-        await callback.answer(_VERDICT_TEXT[Verdict.NO_CARD], show_alert=True)
+    decision = await dismiss_card(db, card_id=card_id, decided_by=callback.from_user.id)
+    if decision.verdict is not Verdict.OK:
+        await callback.answer(_VERDICT_TEXT[decision.verdict], show_alert=True)
         return
 
-    admin_id = callback.from_user.id
-    claimed = False
-    for from_status in SKIPPABLE_FROM:
-        if await claim_card_decision(db, card_id, 'dismissed', admin_id, from_status=from_status):
-            claimed = True
-            break
-    if not claimed:
-        await callback.answer(_VERDICT_TEXT[Verdict.ALREADY], show_alert=True)
-        return
-
-    logger.info(
-        'support_assist.decided', card_id=card_id, ticket_id=view.ticket_id, status='dismissed', decided_by=admin_id
-    )
     message = callback.message
-    if message is not None:
-        await _mark_card_message(bot, view, message.chat.id, message.message_id, 'dismissed')
+    if message is not None and decision.card is not None:
+        await mark_card_message(bot, decision.card, message.chat.id, message.message_id, 'dismissed')
     await callback.answer('Пропущено')
 
 

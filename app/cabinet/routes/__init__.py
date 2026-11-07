@@ -46,6 +46,7 @@ from .admin_settings import router as admin_settings_router
 from .admin_stats import router as admin_stats_router
 from .admin_system_errors import router as admin_system_errors_router
 from .admin_tariffs import router as admin_tariffs_router
+from .admin_ticket_assist import router as admin_ticket_assist_router
 from .admin_tickets import router as admin_tickets_router
 from .admin_traffic import router as admin_traffic_router
 from .admin_updates import router as admin_updates_router
@@ -151,6 +152,7 @@ router.include_router(gift_router)
 # Admin routes (notifications router MUST be before tickets router to avoid route conflict)
 router.include_router(admin_ticket_notifications_router)
 router.include_router(admin_tickets_router)
+router.include_router(admin_ticket_assist_router)
 router.include_router(admin_settings_router)
 router.include_router(admin_wheel_router)
 router.include_router(admin_tariffs_router)

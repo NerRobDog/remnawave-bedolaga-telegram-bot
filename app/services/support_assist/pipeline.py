@@ -343,7 +343,10 @@ async def _auto_ask(
     except Exception:
         logger.exception('support_assist.auto_ask_telegram_failed', ticket_id=ticket.id)
 
-    await _notify_in_cabinet(db, ticket, body)
+    # Уведомление в кабинете и push по WebSocket, как после ответа админа из кабинета.
+    from app.services.support_assist.decision import notify_client_in_cabinet
+
+    await notify_client_in_cabinet(db, ticket, body)
 
 
 async def _emit_message_added(db: AsyncSession, ticket: Ticket, message: TicketMessage, body: str) -> None:
@@ -366,19 +369,6 @@ async def _emit_message_added(db: AsyncSession, ticket: Ticket, message: TicketM
         )
     except Exception:
         logger.exception('support_assist.auto_ask_event_failed', ticket_id=ticket.id)
-
-
-async def _notify_in_cabinet(db: AsyncSession, ticket: Ticket, body: str) -> None:
-    """Уведомление в кабинете и push по WebSocket, как после ответа админа из кабинета."""
-    try:
-        from app.cabinet.routes.websocket import notify_user_ticket_reply
-        from app.database.crud.ticket_notification import TicketNotificationCRUD
-
-        notification = await TicketNotificationCRUD.create_user_notification_for_admin_reply(db, ticket, body)
-        if notification:
-            await notify_user_ticket_reply(ticket.user_id, ticket.id, body[:100])
-    except Exception:
-        logger.exception('support_assist.auto_ask_cabinet_failed', ticket_id=ticket.id)
 
 
 async def _send_card(bot: Bot, chat_id: int, text: str, keyboard: Any) -> int | None:
