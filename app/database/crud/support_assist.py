@@ -96,7 +96,7 @@ async def release_card_decision(db: AsyncSession, card_id: int, from_status: str
     return result.rowcount == 1
 
 
-async def mark_auto_ask_sent(db: AsyncSession, card_id: int, question_ids: list[int]) -> bool:
+async def mark_auto_ask_sent(db: AsyncSession, card_id: int, question_ids: list[str]) -> bool:
     """Помечает карточку как отправившую автовопрос. False, если у тикета уже есть такая карточка."""
     try:
         await db.execute(
