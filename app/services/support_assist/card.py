@@ -109,11 +109,12 @@ def _card_schema() -> dict[str, Any]:
 def _system_blocks() -> list[dict[str, Any]]:
     prompt = (_HERE / 'prompt.md').read_text(encoding='utf-8')
     kb = (_HERE / 'kb.md').read_text(encoding='utf-8')
+    clients = (_HERE / 'kb_clients.md').read_text(encoding='utf-8')
     return [
         {'type': 'text', 'text': prompt},
         {
             'type': 'text',
-            'text': 'База знаний сервиса:\n' + kb,
+            'text': 'База знаний сервиса:\n' + kb + '\n\nЗнания о клиентских приложениях:\n' + clients,
             'cache_control': {'type': 'ephemeral'},
         },
     ]
