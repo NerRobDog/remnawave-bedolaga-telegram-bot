@@ -376,6 +376,43 @@ async def test_admin_notifications_off_does_no_work(env, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_admin_notifications_off_still_runs_auto_ask_but_no_card(env, monkeypatch):
+    """Автовопрос клиенту не зависит от админ-уведомлений: выключены они — не тратимся и не шлём лишь карточку."""
+    monkeypatch.setattr(settings, 'ADMIN_NOTIFICATIONS_ENABLED', False)
+    monkeypatch.setattr(settings, 'SUPPORT_ASSIST_AUTO_ASK_ENABLED', True)
+    client = _client()
+
+    card = await _run(env, client=client)
+
+    env.notify.assert_awaited_once()  # клиент получил вопросы
+    env.db.add.assert_called_once()
+    assert card is not None and card.auto_ask_question_ids
+    client.beta.messages.create.assert_not_awaited()  # модель не вызывали
+    env.bot.send_message.assert_not_awaited()  # в топик ничего не ушло
+    assert card.status == 'skipped'
+
+
+@pytest.mark.asyncio
+async def test_admin_chat_missing_still_runs_auto_ask(env, monkeypatch):
+    monkeypatch.setattr(settings, 'ADMIN_NOTIFICATIONS_CHAT_ID', None)
+    monkeypatch.setattr(settings, 'SUPPORT_ASSIST_AUTO_ASK_ENABLED', True)
+    card = await _run(env)
+    env.notify.assert_awaited_once()
+    env.bot.send_message.assert_not_awaited()
+    assert card.status == 'skipped'
+
+
+@pytest.mark.asyncio
+async def test_admin_notifications_off_and_auto_ask_off_does_nothing(env, monkeypatch):
+    monkeypatch.setattr(settings, 'ADMIN_NOTIFICATIONS_ENABLED', False)
+    monkeypatch.setattr(settings, 'SUPPORT_ASSIST_AUTO_ASK_ENABLED', True)
+    # автовопрос только на новый тикет: на ответ клиента без админ-уведомлений делать нечего
+    assert await _run(env, trigger='new_message') is None
+    env.notify.assert_not_awaited()
+    assert env.cards == []
+
+
+@pytest.mark.asyncio
 async def test_keyboard_follows_send_buttons_flag(env, monkeypatch):
     await _run(env)
     assert _callbacks(env) == ['sa:skip:1']

@@ -155,9 +155,12 @@ async def _run(
     trigger: Trigger,
     now: datetime,
 ) -> SupportAssistCard | None:
-    # Карточке некуда уходить, если админ-уведомления выключены: не тратим деньги впустую.
+    # Карточке некуда уходить, если админ-уведомления выключены: модель не зовём и в топик не шлём.
+    # Автовопрос клиенту от этого не зависит: у него свой флаг, и он идёт и без админ-чата.
     chat_id = settings.get_admin_notifications_chat_id()
-    if not settings.is_admin_notifications_enabled() or chat_id is None:
+    notify_admins = settings.is_admin_notifications_enabled() and chat_id is not None
+    wants_auto_ask = trigger == 'new_ticket' and settings.SUPPORT_ASSIST_AUTO_ASK_ENABLED
+    if not notify_admins and not wants_auto_ask:
         return None
 
     # 1. Троттлинг: не чаще раза в RECOMPUTE минут на тикет.
@@ -203,13 +206,19 @@ async def _run(
     await end_transaction(db)
 
     # 3. Автовопрос клиенту (только на новый тикет, один раз).
-    if trigger == 'new_ticket' and settings.SUPPORT_ASSIST_AUTO_ASK_ENABLED and view.first_text is not None:
+    if wants_auto_ask and view.first_text is not None:
         try:
             await _auto_ask(db, bot, ticket_id, card_id, view, snapshot, flags)
         except Exception:
             logger.exception('support_assist.auto_ask_failed', ticket_id=ticket_id)
         # Уведомление клиенту читает БД (последнее сообщение, вебхуки): закрываем транзакцию до Claude.
         await end_transaction(db)
+
+    if not notify_admins or chat_id is None:
+        # Только автовопрос: строку оставляем (на ней держится отметка «спросили»), но не как сбой.
+        row.status = 'skipped'
+        await db.commit()
+        return row
 
     # 4. Карточка от модели (или без неё).
     if client is None:
