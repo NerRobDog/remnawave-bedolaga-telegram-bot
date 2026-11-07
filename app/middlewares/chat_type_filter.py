@@ -5,7 +5,8 @@ with topics), it should silently drop all incoming messages and callback
 queries from those chats. Only private (DM) interactions are processed.
 
 Исключение — кнопки собственной карточки тикета в групповом админ-чате
-(«Закрыть», «Заблокировать», «Разблокировать», «Удалить»): их список —
+(«Закрыть», «Заблокировать», «Разблокировать», «Удалить») и карточки ассистента
+поддержки («Отправить», «Править», «Пропустить»): их список —
 ``app.keyboards.group_callbacks``. FSM-кнопки и меню админки в группе
 по-прежнему не обрабатываются.
 

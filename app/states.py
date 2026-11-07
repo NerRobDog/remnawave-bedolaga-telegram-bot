@@ -263,6 +263,11 @@ class AdminTicketStates(StatesGroup):
     waiting_for_block_duration = State()
 
 
+class SupportAssistStates(StatesGroup):
+    # Админ нажал «Править» на карточке ассистента: следующий текст в личке уйдёт клиентом ответом.
+    waiting_edit = State()
+
+
 class SupportSettingsStates(StatesGroup):
     waiting_for_desc = State()
 

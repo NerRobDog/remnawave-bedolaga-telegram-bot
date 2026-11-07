@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database.crud.ticket import TicketCRUD, TicketMessageCRUD
-from app.database.models import Ticket, TicketStatus, User
+from app.database.models import Ticket, TicketMessage, TicketStatus, User
 from app.keyboards.inline import (
     get_admin_ticket_reply_cancel_keyboard,
     get_admin_ticket_view_keyboard,
@@ -457,13 +457,13 @@ async def handle_admin_ticket_reply(message: types.Message, state: FSMContext, d
             await state.clear()
             return
 
-        # Добавляем сообщение от админа (внутри add_message статус станет ANSWERED)
-        await TicketMessageCRUD.add_message(
+        # Ответ админа (статус тикета станет ANSWERED) и уведомление пользователя
+        await send_admin_reply(
+            message.bot,
             db,
-            ticket_id,
+            ticket,
             db_user.id,
             reply_text,
-            is_from_admin=True,
             media_type=media_type,
             media_file_id=media_file_id,
             media_caption=media_caption,
@@ -491,9 +491,6 @@ async def handle_admin_ticket_reply(message: types.Message, state: FSMContext, d
         )
 
         await state.clear()
-
-        # Уведомляем пользователя о новом ответе
-        await notify_user_about_ticket_reply(message.bot, ticket, reply_text, db)
         # Админ-уведомления о ответе в тикет отключены по требованию
 
     except Exception as e:
@@ -1066,6 +1063,39 @@ async def _notify_ticket_reply_by_email(user: User, ticket: Ticket, reply_text: 
         )
     except Exception as error:
         logger.error('Не удалось отправить email об ответе в тикете', ticket_id=ticket.id, error=error)
+
+
+async def send_admin_reply(
+    bot: Bot,
+    db: AsyncSession,
+    ticket: Ticket,
+    author_id: int,
+    reply_text: str,
+    *,
+    media_type: str | None = None,
+    media_file_id: str | None = None,
+    media_caption: str | None = None,
+) -> TicketMessage:
+    """Ответ поддержки клиенту: сообщение от админа в тикете, затем уведомление клиента.
+
+    Единственное место этой последовательности: ей пользуются ручной ответ админа
+    (``handle_admin_ticket_reply``) и кнопки карточки ассистента (``support_assist``).
+    ``author_id`` — id админа в нашей БД (не Telegram). Статус тикета ставит ``add_message``
+    (ANSWERED). ``ticket`` должен быть загружен вместе с пользователем (``load_user=True``).
+    Ошибка записи сообщения уходит вызывающему; ошибки доставки уведомления глотает само уведомление.
+    """
+    message = await TicketMessageCRUD.add_message(
+        db,
+        ticket.id,
+        author_id,
+        reply_text,
+        is_from_admin=True,
+        media_type=media_type,
+        media_file_id=media_file_id,
+        media_caption=media_caption,
+    )
+    await notify_user_about_ticket_reply(bot, ticket, reply_text, db)
+    return message
 
 
 async def notify_user_about_ticket_reply(bot: Bot, ticket: Ticket, reply_text: str, db: AsyncSession):

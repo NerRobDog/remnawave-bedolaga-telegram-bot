@@ -75,3 +75,15 @@ def test_keyboard_with_send():
     kb = build_card_keyboard(5, show_send=True)
     data = [b.callback_data for row in kb.inline_keyboard for b in row]
     assert data == ['sa:send:5', 'sa:edit:5', 'sa:skip:5']
+
+
+def test_custom_limit_leaves_room_for_the_decision_line():
+    line = '\n\n✅ отправлено'
+    text = render_card(_card(draft='я' * 10_000), FLAGS, 1, limit=4096 - len(line))
+    assert len(text) <= 4096 - len(line)
+    assert len(text + line) <= 4096
+    assert 'Лимит устройств' in text
+
+
+def test_default_limit_is_unchanged():
+    assert render_card(_card(), FLAGS, 1) == render_card(_card(), FLAGS, 1, limit=4096)

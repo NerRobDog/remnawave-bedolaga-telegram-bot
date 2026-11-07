@@ -33,6 +33,7 @@ from . import (
     servers,
     statistics,
     subscriptions,
+    support_assist,
     support_settings,
     system_logs,
     tickets,
