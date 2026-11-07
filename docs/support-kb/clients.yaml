@@ -69,10 +69,70 @@ apps:
           share_subscription: 'My Profiles → "⋮" → "QR Code" or "Copy Link"'
           mode: 'main screen: "Rule" (default, RU sites direct), "Global" (everything via VPN), "Direct"'
       connected:
-        status: unverified
-        note: not read yet; the owner's FlClash is active on this Mac, a second VPN would break the network
-    unverified:
-      - Russian UI labels (only English checked)
+        status: verified
+        evidence_dir: docs/support-kb/evidence/clashmi-macos-1.0.22-ru/
+        note: read in the Russian UI; the connected main screen gains blocks that are absent when disconnected
+        screens:
+          main:
+            items_ru: ["Подключено (тумблер справа, зелёный)", "счётчики трафика и скорости под статусом",
+                       "Правила", "Глобально", "Напрямую", "Профили (+ и >)",
+                       "Прокси (текущая группа, например «Остальные сайты -> Зарубежные серверы (баланс)», и >)",
+                       "Панель", "Конфигурация времени в…", "Проверка сети"]
+            evidence: 08-main-connected.jpg
+          proxies:
+            path_ru: главный экран → Прокси ">"
+            items_ru: ["список групп: Остальные сайты, TikTok (чистые форин), TikTok, Недоступные из РФ, Торрент-трекеры, YouTube, Telegram, Instagram…",
+                       "у группы тип (Selector/URLTest/Fallback), задержка и выбранный сервер справа", "сортировка и молния (тест задержки) вверху"]
+            evidence: 09-proxies-connected.jpg
+          network_check:
+            path_ru: главный экран → Проверка сети
+            items_ru: ["Домен", "Проверить", "1. DNS-запрос", "2. HTTP (через TUN, сначала включите TUN)",
+                       "3. HTTP (через прокси, порт: 7890)", "4. Таблица маршрутов"]
+            evidence: 10-network-check.jpg
+        tasks:
+          choose_server: 'главный экран → Прокси → группа (например «Остальные сайты») → сервер'
+          self_check: 'главный экран → Проверка сети → домен → Проверить (только при подключении)'
+    russian_ui:
+      status: verified
+      evidence_dir: docs/support-kb/evidence/clashmi-macos-1.0.22-ru/
+      how_to_switch: 'App Settings → Language → Русский (в русском: Настройки приложения → Язык)'
+      partial_translation: 'заголовок экрана настроек приложения остаётся «App Settings»; Pprof, Geo RuleSet, TUN, UserAgent не переведены'
+      labels_en_ru:
+        Disconnected: Отключено
+        Connected: Подключено
+        Rule: Правила
+        Global: Глобально
+        Direct: Напрямую
+        My Profiles: Профили
+        App Settings: Настройки приложения
+        Core Settings: Настройки ядра
+        Core Log: Журнал ядра
+        Backup and Sync: Резервное копирование и синхронизация
+        Help: Помощь
+        Get Profile / Buy Profile: Получить профиль / Купить профиль
+        Add Profile Link: Добавление подписки
+        Import From Clipboard: Импорт из буфера обмена
+        Scan QR Code: Сканировать QR-код
+        Import Profile File: Импорт файла конфигурации
+        View: Просмотр
+        Update: Обновить
+        Copy Link: Скопировать ссылку
+        QR Code: QR-код
+        Profile Edit: Редактирование профилей
+        Remove: Удалить
+        Language: Язык
+        Auto Set System Proxy when Connected: Установить системный прокси после подключения
+        Auto Connection after Launch: Автоматическое подключение после запуска
+        Reset: Перезагрузить
+        Diversion Template: Шаблон сортировки пациентов   # sic, mistranslation in the app
+        Overwrite: Переопределить
+        "TUN → Enable": Включить
+        "TUN → DNS Hijack": Перехват DNS
+        "TUN → Strict Route": Строгая маршрутизация
+        "TUN → Default Route": Маршрут по умолчанию
+        Proxies: Прокси
+        Network check: Проверка сети
+      corrections_to_old_kb: 'в kb.md было «Мои профили» — в русском интерфейсе раздел называется «Профили»'
 
   # Listed on the subscription page, not checked yet.
   - {app: Clash Mi, platform: ios, status: unverified}
@@ -82,7 +142,37 @@ apps:
   - {app: RabbitHole, platform: macos, status: unverified, note: "1.3.2 installed on the owner's Mac"}
   - {app: FlClashX, platform: android, status: unverified}
   - {app: FlClashX, platform: windows, status: unverified}
-  - {app: FlClashX, platform: macos, status: unverified, note: "Mac has FlClash 0.9.3, not FlClashX"}
+  - app: FlClash
+    platform: macos
+    version: "0.9.3"
+    ui_language: ru
+    verified_at: "2026-11-07"
+    verified_by: live read on the owner's Mac (connected, then stopped)
+    evidence: docs/support-kb/evidence/flclash-macos-0.9.3-ru/
+    note: 'FlClash upstream, not FlClashX from the subscription page; FlClashX is a fork, labels may differ'
+    states:
+      connected:
+        status: verified
+        screens:
+          sidebar_ru: [Панель, Прокси, Профили, Запросы, Инструменты]
+          panel_ru: ["Статус: Работает", "IP выхода и страна", "Время работы", "Организация", "кнопка пауза (остановить)",
+                     "Отдача", "Загрузка", "Режим исходящего…: Правило / Глобальный / Прямой",
+                     "Системный прокси (Порт 7890)", "TUN", "Внутренний IP", "Разрешить LAN", "Профиль (обновить ↻, >)",
+                     "Состояние сети", "Память"]
+          proxies_ru: "вкладки групп сверху (Остальные сайты, TikTok…), карточки серверов с задержкой; поиск, молния, ⋮"
+        evidence: [01-panel-connected.jpg, 02-proxies-connected.jpg]
+      disconnected:
+        status: verified
+        screens:
+          panel_ru: ["Статус: Не запущено", "большая кнопка ▶ (запустить)", "IP — реальный, без VPN"]
+        evidence: 06-panel-stopped.jpg
+        note: 'при остановке системный прокси macOS снимается сам (проверено scutil --proxy)'
+    tasks:
+      add_subscription_ru: 'Профили → ⊕ (вверху справа) → Ссылка (или QR-код, Файл, Пользовательский)'
+      update_subscription_ru: 'Профили → ↻ вверху (все) или Панель → Профиль → ↻'
+      language_ru: 'Инструменты → Язык'
+    evidence_more: [03-profiles.jpg, 04-profiles-add-menu.jpg, 05-tools.jpg]
+  - {app: FlClashX, platform: macos, status: unverified, note: "fork of FlClash; check its own labels"}
   - {app: Koala Clash, platform: [macos, windows], status: unverified}
   - {app: Flowvy, platform: [macos, windows], status: unverified}
   - {app: Prizrak-Box, platform: [macos, windows], status: unverified}
