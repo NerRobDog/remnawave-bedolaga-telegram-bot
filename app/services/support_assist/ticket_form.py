@@ -65,7 +65,8 @@ def validate_diagnostics(raw: dict | None) -> dict:
     """Проверить ответы анкеты и вернуть их в каноническом виде.
 
     ``ValueError`` — анкеты нет, поле пропущено или вариант не из списка. Лишние ключи отбрасываются.
-    Текст «Другое» берётся только если «Другое» выбрано; пустой текст опускается.
+    Текст «Другое» берётся только если «Другое» выбрано, и тогда он обязателен (как и в боте): пустой
+    или из одних пробелов отклоняется.
     """
     if not isinstance(raw, dict):
         raise ValueError('diagnostics form is required')
@@ -79,13 +80,12 @@ def validate_diagnostics(raw: dict | None) -> dict:
         out[field] = value
         if value == OTHER_OPTION:
             text = raw.get(other_key(field))
-            if text is None:
-                continue
             if not isinstance(text, str):
                 raise ValueError(f'diagnostics.{other_key(field)} must be a string')
             text = clean_other_text(text)
-            if text:
-                out[other_key(field)] = text
+            if not text:
+                raise ValueError(f'diagnostics.{other_key(field)} is required when "{OTHER_OPTION}" is chosen')
+            out[other_key(field)] = text
     return out
 
 

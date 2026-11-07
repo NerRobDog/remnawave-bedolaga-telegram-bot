@@ -103,9 +103,16 @@ def test_validate_strips_other_text_and_collapses_whitespace():
     assert out['app_other'] == 'Steam Deck'
 
 
-def test_validate_drops_blank_other_text():
-    out = validate_diagnostics({**FULL, 'app': 'other', 'app_other': '   '})
-    assert 'app_other' not in out
+@pytest.mark.parametrize('text', ['', '   ', '\n\t ', None])
+def test_validate_rejects_other_without_a_text(text):
+    """«Другое» без текста бесполезно ассистенту; бот такое не пропускает, и бэкенд обязан то же."""
+    with pytest.raises(ValueError, match='app_other'):
+        validate_diagnostics({**FULL, 'app': 'other', 'app_other': text})
+
+
+def test_validate_rejects_other_when_the_text_key_is_missing():
+    with pytest.raises(ValueError, match='platform_other'):
+        validate_diagnostics({**FULL, 'platform': 'other'})
 
 
 def test_validate_rejects_non_string_other_text():
@@ -250,6 +257,23 @@ async def test_cabinet_flag_on_with_unknown_option_is_422(monkeypatch, _flag):
     response, stored = await _post(monkeypatch, {**BASE_BODY, 'diagnostics': {**FULL, 'network': 'satellite'}})
     assert response.status_code == 422
     assert stored == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('extra', [{}, {'platform_other': '   '}])
+async def test_cabinet_flag_on_other_without_text_is_422(monkeypatch, _flag, extra):
+    _flag(True)
+    response, stored = await _post(monkeypatch, {**BASE_BODY, 'diagnostics': {**FULL, 'platform': 'other', **extra}})
+    assert response.status_code == 422
+    assert stored == []
+
+
+@pytest.mark.asyncio
+async def test_cabinet_flag_off_other_without_text_drops_diagnostics_but_creates(monkeypatch, _flag):
+    _flag(False)
+    response, stored = await _post(monkeypatch, {**BASE_BODY, 'diagnostics': {**FULL, 'platform': 'other'}})
+    assert response.status_code == 200, response.text
+    assert stored[0].diagnostics is None
 
 
 @pytest.mark.asyncio
