@@ -16,6 +16,8 @@ class TicketMessageResponse(BaseModel):
     user_id: int
     message_text: str
     is_from_admin: bool
+    # Автовопрос ассистента поддержки: ответ админа, написанный не человеком.
+    is_system: bool = False
     has_media: bool
     media_type: str | None = None
     media_file_id: str | None = None
