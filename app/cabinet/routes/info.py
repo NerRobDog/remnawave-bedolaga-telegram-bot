@@ -119,6 +119,9 @@ class SupportConfigResponse(BaseModel):
     support_url: str | None = None
     support_username: str | None = None
     contact_is_telegram: bool = False
+    # Включена обязательная анкета перед тикетом (SUPPORT_TICKET_FORM_REQUIRED): без `diagnostics` в
+    # POST /cabinet/tickets сервер ответит 422. Старый кабинет поле не читает.
+    ticket_form_required: bool = False
 
 
 class InfoVisibilityResponse(BaseModel):
@@ -439,6 +442,7 @@ async def get_support_config():
         # без схемы и клиент склеил бы из него битую t.me-ссылку.
         support_username=settings.get_support_contact_display() or None,
         contact_is_telegram=contact_is_telegram,
+        ticket_form_required=settings.SUPPORT_TICKET_FORM_REQUIRED,
     )
 
 

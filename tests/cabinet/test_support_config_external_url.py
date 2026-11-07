@@ -74,3 +74,22 @@ async def test_empty_contact_yields_no_url(monkeypatch):
     assert response.support_url is None
     assert response.support_username is None
     assert response.contact_is_telegram is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('flag', [False, True])
+async def test_support_config_exposes_ticket_form_requirement(monkeypatch, flag):
+    """Кабинет узнаёт из конфига, нужна ли анкета: включение флага не должно ломать создание тикета 422-й."""
+    monkeypatch.setattr(settings, 'SUPPORT_TICKET_FORM_REQUIRED', flag)
+
+    response = await _get_config(monkeypatch, 'both', TELEGRAM_CONTACT)
+
+    assert response.ticket_form_required is flag
+    assert response.model_dump()['ticket_form_required'] is flag
+
+
+@pytest.mark.asyncio
+async def test_ticket_form_requirement_defaults_to_off(monkeypatch):
+    from app.cabinet.routes.info import SupportConfigResponse
+
+    assert SupportConfigResponse(tickets_enabled=True, support_type='tickets').ticket_form_required is False
