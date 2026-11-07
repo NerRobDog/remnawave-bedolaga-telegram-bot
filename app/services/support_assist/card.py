@@ -56,7 +56,7 @@ MAX_OUTPUT_TOKENS = 16000
 
 
 class CardFact(BaseModel):
-    icon: Literal['✅', '⚠️', '🔴', '🚨', '❓']
+    icon: Literal['✅', 'ℹ️', '⚠️', '🔴', '🚨', '❓']
     text: str
 
 
