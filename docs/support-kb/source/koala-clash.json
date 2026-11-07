@@ -1,0 +1,549 @@
+{
+ "app": "Koala Clash",
+ "source_available": true,
+ "repo": "https://github.com/coolcoala/koala-clash",
+ "release_tag": "1.5.0",
+ "release_date": "2026-10-09",
+ "commit_sha": "ee0db8e973e49c30991815175d167d1583d7aa1b",
+ "ru_locale_present": true,
+ "languages_available": [
+  "简体中文 (zh-CN)",
+  "English (en-US)",
+  "Русский (ru-RU)"
+ ],
+ "locale_files": [
+  "src/renderer/src/locales/en-US/index.ts",
+  "src/renderer/src/locales/ru-RU/index.ts",
+  "src/renderer/src/locales/zh-CN/index.ts",
+  "src/main/utils/i18n.ts (tray/menu/notification strings; enUS block line 155, ruRU block line 295)"
+ ],
+ "provenance": "read from the app's source/locale files at the release tag (closed-source apps: official docs or installed bundle), then adversarially re-checked by a second agent; NOT a live UI check",
+ "labels": [
+  {
+   "flow": "connect/disconnect",
+   "screen": "Home (main power button)",
+   "key": "pages.home.disconnected",
+   "en": "Disconnected",
+   "ru": "Отключено",
+   "file": "src/renderer/src/pages/home.tsx:145 (button onClick :418)",
+   "state": "disconnected",
+   "platform_note": "Desktop only; same on all 3 OS. The power button is an icon with no text; only the status text is a label.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "connect/disconnect",
+   "screen": "Home",
+   "key": "pages.home.connecting",
+   "en": "Connecting...",
+   "ru": "Подключение...",
+   "file": "src/renderer/src/pages/home.tsx:139",
+   "state": "both",
+   "platform_note": "Transitional state while the button is pressed",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "connect/disconnect",
+   "screen": "Home",
+   "key": "pages.home.connected",
+   "en": "Connected",
+   "ru": "Подключено",
+   "file": "src/renderer/src/pages/home.tsx:144",
+   "state": "connected",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "connect/disconnect",
+   "screen": "Home",
+   "key": "pages.home.disconnecting",
+   "en": "Disconnecting...",
+   "ru": "Отключение...",
+   "file": "src/renderer/src/pages/home.tsx:140",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "connect/disconnect",
+   "screen": "Home",
+   "key": "pages.home.coreProblem",
+   "en": "Core problem",
+   "ru": "Проблема с ядром",
+   "file": "src/renderer/src/pages/home.tsx:142",
+   "state": "both",
+   "platform_note": "Shown instead of Connected when the mihomo core is in error; clicking the button then reopens the core error dialog (home.tsx:418)",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "connect/disconnect",
+   "screen": "Tray menu",
+   "key": "tray.enable / tray.disable",
+   "en": "Enable / Disable",
+   "ru": "Включить / Выключить",
+   "file": "src/main/utils/i18n.ts:163-164 (en), 303-304 (ru); used in src/main/resolve/tray.ts:231-232",
+   "state": "both",
+   "platform_note": "Tray menu item toggles the main switch (TUN or system proxy, whichever is set in Settings). Label shows Disable when active, Enable when not.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "connect/disconnect (main switch choice)",
+   "screen": "Settings > main switch",
+   "key": "settings.advanced.mainSwitch",
+   "en": "Main Switch",
+   "ru": "Основной переключатель",
+   "file": "src/renderer/src/components/settings/proxy-switches.tsx:33",
+   "state": "both",
+   "platform_note": "Tabs: TUN Mode / Proxy Mode. The Home power button turns on whichever is selected (home.tsx:125 isSelected = tun.enable or proxyMode).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "connect/disconnect (main switch choice)",
+   "screen": "Settings > main switch",
+   "key": "settings.advanced.mainSwitchTun",
+   "en": "TUN Mode",
+   "ru": "Режим TUN",
+   "file": "src/renderer/src/components/settings/proxy-switches.tsx:41",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "connect/disconnect (main switch choice)",
+   "screen": "Settings > main switch",
+   "key": "settings.advanced.mainSwitchProxyMode",
+   "en": "Proxy Mode",
+   "ru": "Режим прокси",
+   "file": "src/renderer/src/components/settings/proxy-switches.tsx:42",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "proxy mode switch",
+   "screen": "Sidebar mode switcher",
+   "key": "sider.rules",
+   "en": "Rules",
+   "ru": "Правила",
+   "file": "src/renderer/src/components/sider/outbound-mode-switcher.tsx:61",
+   "state": "both",
+   "platform_note": "Only TWO modes in the switcher: Rules and Global. Hidden if the active profile has globalMode === false (app-sidebar.tsx:52,96). The switcher only appears when at least one profile exists.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "proxy mode switch",
+   "screen": "Sidebar mode switcher",
+   "key": "common.global",
+   "en": "Global",
+   "ru": "Глобальный",
+   "file": "src/renderer/src/components/sider/outbound-mode-switcher.tsx:62",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "proxy mode switch",
+   "screen": "Tray menu > Outbound Mode",
+   "key": "tray.outboundMode / tray.ruleMode / tray.globalMode",
+   "en": "Outbound Mode / Rule Mode / Global Mode",
+   "ru": "Режим маршрутизации / Режим правил / Глобальный режим",
+   "file": "src/main/utils/i18n.ts:166-172 (en), 307-312 (ru); src/main/resolve/tray.ts:276-294",
+   "state": "both",
+   "platform_note": "Tray submenu has no Direct item",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "proxy mode switch",
+   "screen": "Proxy Groups page (direct mode placeholder)",
+   "key": "sider.directMode",
+   "en": "Direct mode",
+   "ru": "Прямой режим",
+   "file": "src/renderer/src/pages/proxies.tsx:570-576",
+   "state": "both",
+   "platform_note": "Direct is NOT selectable from the UI switcher or tray; this text only appears as a placeholder if mode is already direct (e.g. set via config). Do not tell users to pick Direct in the UI.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "add subscription",
+   "screen": "Profiles page / Home empty state",
+   "key": "pages.profiles.addProfile",
+   "en": "Add Profile",
+   "ru": "Добавить профиль",
+   "file": "src/renderer/src/pages/home.tsx:288 (empty state); Profiles page header is a '+' icon button without text (src/renderer/src/pages/profiles.tsx:164-171)",
+   "state": "both",
+   "platform_note": "Not 'Add subscription'; the app says 'Profile' (RU 'профиль')",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "add subscription (URL)",
+   "screen": "Import dialog",
+   "key": "profile.importRemoteConfig",
+   "en": "Import Remote Config",
+   "ru": "Импорт удалённой конфигурации",
+   "file": "src/renderer/src/components/profiles/edit-info-modal.tsx:152",
+   "state": "both",
+   "platform_note": "Dialog title when adding",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription (URL)",
+   "screen": "Import dialog",
+   "key": "profile.urlPlaceholder",
+   "en": "Enter subscription URL...",
+   "ru": "Введите ссылку на подписку...",
+   "file": "src/renderer/src/components/profiles/edit-info-modal.tsx:199",
+   "state": "both",
+   "platform_note": "URL field placeholder",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription (clipboard)",
+   "screen": "Import dialog",
+   "key": "profile.pasteFromClipboard",
+   "en": "Paste from clipboard",
+   "ru": "Вставить из буфера обмена",
+   "file": "src/renderer/src/components/profiles/edit-info-modal.tsx:220",
+   "state": "both",
+   "platform_note": "Icon button inside the URL field (tooltip text), not a text button",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "add subscription (file)",
+   "screen": "Import dialog",
+   "key": "profile.selectFile",
+   "en": "Select file",
+   "ru": "Выбрать файл",
+   "file": "src/renderer/src/components/profiles/edit-info-modal.tsx:169",
+   "state": "both",
+   "platform_note": "Local-file option. Also drag and drop onto the Profiles page: 'Drop config file here' / 'Перетащите файл конфигурации сюда' (pages.profiles.dropFileHint, profiles.tsx:212); accepted .yml .yaml .json .jsonc .json5 .txt (profiles.tsx:98-106)",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "add subscription (empty)",
+   "screen": "Import dialog",
+   "key": "profile.createEmpty",
+   "en": "Create empty",
+   "ru": "Создать пустой",
+   "file": "src/renderer/src/components/profiles/edit-info-modal.tsx:178",
+   "state": "both",
+   "platform_note": "",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "add subscription (confirm)",
+   "screen": "Import dialog",
+   "key": "common.import",
+   "en": "Import",
+   "ru": "Импорт",
+   "file": "src/renderer/src/components/profiles/edit-info-modal.tsx:437",
+   "state": "both",
+   "platform_note": "Submit button when adding (Save when editing)",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "update subscription (all)",
+   "screen": "Profiles page header",
+   "key": "pages.profiles.updateAll",
+   "en": "Update all profiles",
+   "ru": "Обновить все профили",
+   "file": "src/renderer/src/pages/profiles.tsx:169 (title/aria-label of refresh icon button; handler :171-185)",
+   "state": "both",
+   "platform_note": "Icon-only button (RefreshCcw) with tooltip; updates remote profiles only",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "update subscription (one)",
+   "screen": "Profile card / Home",
+   "key": "(none: icon-only RefreshCcw button, no label)",
+   "en": "(icon button, no text)",
+   "ru": "(кнопка-иконка, без текста)",
+   "file": "src/renderer/src/components/profiles/profile-item.tsx:329-340; src/renderer/src/pages/home.tsx:327-334",
+   "state": "both",
+   "platform_note": "Per-profile refresh icon on remote profiles only; no text label exists. Auto update toggle: 'Auto update' / 'Автообновление' (profile.autoUpdate, edit-info-modal.tsx:296); interval 'Update Interval (minutes)' / 'Интервал обновления (минуты)'; 'Update via proxy' / 'Обновлять через прокси'",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "update subscription (status)",
+   "screen": "Profile card",
+   "key": "profile.updatedAt",
+   "en": "Updated",
+   "ru": "Обновлено",
+   "file": "src/renderer/src/components/profiles/profile-item.tsx:394",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "profile card menu",
+   "screen": "Profile card three-dot menu",
+   "key": "profile.editInfo / profile.editFile / profile.editRule / profile.openFile / profile.delete / profile.support / profile.homepage",
+   "en": "Edit Info / Edit File / Edit Rules / Open File / Delete / Support / Homepage",
+   "ru": "Редактировать информацию / Редактировать файл / Редактировать правила / Открыть файл / Удалить / Поддержка / Главная страница",
+   "file": "src/renderer/src/components/profiles/profile-item.tsx:131-177",
+   "state": "both",
+   "platform_note": "No 'Share', 'Copy link' or 'QR' item exists in the menu",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "choose server/group/node",
+   "screen": "Sidebar",
+   "key": "sider.proxyGroup",
+   "en": "Proxy Groups",
+   "ru": "Группы прокси",
+   "file": "src/renderer/src/components/app-sidebar.tsx:33",
+   "state": "both",
+   "platform_note": "Page title (pages.proxies.title) is also 'Proxy Groups' / 'Группы прокси'. Home also has a group selector that navigates to /proxies (home.tsx:495).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "latency test",
+   "screen": "Proxy Groups page",
+   "key": "sider.delayTest",
+   "en": "Delay test",
+   "ru": "Тест задержки",
+   "file": "src/renderer/src/pages/proxies.tsx:437",
+   "state": "both",
+   "platform_note": "Icon button with title text. Neighbor: 'Locate current node' / 'Найти текущий узел' (sider.locateCurrentNode, :429). Also 'Collapse all'/'Свернуть все', 'Expand all'/'Развернуть все', 'Proxy group settings'/'Настройки группы прокси' (pages.proxies.*).",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "latency test (tray)",
+   "screen": "Tray menu",
+   "key": "tray.retest",
+   "en": "Retest",
+   "ru": "Повторить тест",
+   "file": "src/main/utils/i18n.ts:184 (en), 324 (ru); tray.ts:173",
+   "state": "both",
+   "platform_note": "",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "TUN toggle",
+   "screen": "Settings > main switches card",
+   "key": "sider.virtualInterface",
+   "en": "Virtual Network Interface",
+   "ru": "Режим TUN",
+   "file": "src/renderer/src/components/settings/proxy-switches.tsx:47",
+   "state": "both",
+   "platform_note": "Switch; the gear icon next to it opens /tun. EN and RU labels differ in wording: EN is 'Virtual Network Interface', RU is 'Режим TUN'. Settings page for it: 'Virtual Network Interface Settings' / 'Настройки TUN' (pages.tun.title).",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "system proxy toggle",
+   "screen": "Settings > main switches card",
+   "key": "sider.proxyMode",
+   "en": "Proxy Mode",
+   "ru": "Режим прокси",
+   "file": "src/renderer/src/components/settings/proxy-switches.tsx:74",
+   "state": "both",
+   "platform_note": "Switch for system proxy; the gear icon opens /sysproxy. That page is titled 'Proxy Mode Settings' / 'Настройки режима прокси' (pages.sysproxy.proxyModeTitle) and has a 'System Proxy' / 'Системный прокси' toggle (pages.sysproxy.systemProxyToggle), 'Setting Method' / 'Способ настройки' with options 'Manual'/'Вручную' and 'PAC'/'PAC'. UWP tool block is win32-only (syspeoxy.tsx:204).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "TUN settings page",
+   "screen": "TUN settings",
+   "key": "pages.tun.*",
+   "en": "Tun Interface Name; Tun Mode Stack; Strict Route; Auto Set Route Rules",
+   "ru": "Имя интерфейса TUN; Стек TUN; Строгая маршрутизация; Автонастройка маршрутов",
+   "file": "src/renderer/src/pages/tun.tsx (platform branches at :117 win32, :140 darwin, :171 non-darwin)",
+   "state": "both",
+   "platform_note": "Some fields differ per OS (Windows firewall reset block, macOS-specific block)",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "language",
+   "screen": "Settings > Language",
+   "key": "settings.appearance.language",
+   "en": "Language",
+   "ru": "Язык",
+   "file": "src/renderer/src/components/settings/language-config.tsx:19 (rendered at src/renderer/src/pages/settings.tsx:39)",
+   "state": "both",
+   "platform_note": "Dropdown shows native names: 简体中文, English, Русский (languages.native.*). Russian IS available.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "logs",
+   "screen": "Sidebar > Logs",
+   "key": "sider.logs / pages.logs.title",
+   "en": "Logs / Real-time Logs",
+   "ru": "Логи / Логи",
+   "file": "src/renderer/src/components/app-sidebar.tsx:35; src/renderer/src/pages/logs.tsx:92",
+   "state": "both",
+   "platform_note": "Sidebar item is 'Logs'; page header in EN is 'Real-time Logs'. Buttons: 'Clear logs'/'Очистить логи', 'Pause'/'Приостановить', 'Resume'/'Продолжить', 'Filter'/'Фильтр' (pages.logs.*, common.filter).",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "connected-only info",
+   "screen": "Home",
+   "key": "(no label: timer HH:MM:SS plus up/down arrow totals)",
+   "en": "(no text label)",
+   "ru": "(без текстовой подписи)",
+   "file": "src/renderer/src/pages/home.tsx:75-76 (ConnectedTimer), :477-485 (upTotal/downTotal with ArrowUp/ArrowDown icons)",
+   "state": "connected",
+   "platform_note": "The timer and the upload/download totals are shown under the power button only when connected (showConnectedTimer = !loading && isSelected). They have no text labels, only an up arrow and a down arrow icon.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "connected-only info",
+   "screen": "Sidebar > Connections",
+   "key": "sider.connection / pages.connections.title",
+   "en": "Connections",
+   "ru": "Подключения",
+   "file": "src/renderer/src/components/app-sidebar.tsx:34; src/renderer/src/pages/connections.tsx:518",
+   "state": "both",
+   "platform_note": "Tabs 'Active'/'Активные' and 'Closed'/'Закрытые' (pages.connections.active/closed, connections.tsx:668); columns 'Upload Speed'/'Скорость отдачи', 'Download Speed'/'Скорость скачивания', 'Upload'/'Отдано', 'Download'/'Скачано'; 'Close all connections'/'Закрыть все подключения'.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "subscription info on Home",
+   "screen": "Home",
+   "key": "pages.home.trafficRemaining / daysRemaining / expires",
+   "en": "Traffic left: / Days left: / Expires:",
+   "ru": "Трафика осталось: / Дней осталось: / Истекает:",
+   "file": "src/renderer/src/pages/home.tsx:384,392,399",
+   "state": "both",
+   "platform_note": "Shown from the profile's subscription-userinfo; 'Pay' / 'Оплатить' (pages.home.renewSubscription) opens the support URL from the profile",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "navigation",
+   "screen": "Sidebar",
+   "key": "sider.home / sider.profileManagement / sider.proxyGroup / sider.connection / sider.rules / sider.logs / common.settings",
+   "en": "Home / Profile Management / Proxy Groups / Connections / Rules / Logs / Settings",
+   "ru": "Главная / Профили / Группы прокси / Подключения / Правила / Логи / Настройки",
+   "file": "src/renderer/src/components/app-sidebar.tsx:31-37",
+   "state": "both",
+   "platform_note": "Sidebar items for Rules, Proxy Groups, Connections and Logs are hidden until a profile exists (allowedWithoutProfiles = main, profile, settings; app-sidebar.tsx:40).",
+   "verify": "not_checked"
+  }
+ ],
+ "menu_paths": [
+  {
+   "task": "Connect / disconnect",
+   "path_en": "Home > big power button (status shows Connected / Disconnected). What it turns on is set in Settings > Main Switch (TUN Mode or Proxy Mode)",
+   "path_ru": "Главная > большая кнопка питания (статус Подключено / Отключено). Что именно включается, задаётся в Настройки > Основной переключатель (Режим TUN или Режим прокси)",
+   "evidence": "src/renderer/src/pages/home.tsx:418,139-145; src/renderer/src/components/settings/proxy-switches.tsx:33-42"
+  },
+  {
+   "task": "Connect / disconnect from tray",
+   "path_en": "Tray icon > Enable / Disable",
+   "path_ru": "Значок в трее > Включить / Выключить",
+   "evidence": "src/main/resolve/tray.ts:231-232; src/main/utils/i18n.ts:163-164,303-304"
+  },
+  {
+   "task": "Switch proxy mode (Rule / Global)",
+   "path_en": "Sidebar > mode switcher (Rules | Global)  or  Tray icon > Outbound Mode > Rule Mode / Global Mode",
+   "path_ru": "Боковая панель > переключатель режима (Правила | Глобальный)  или  Значок в трее > Режим маршрутизации > Режим правил / Глобальный режим",
+   "evidence": "src/renderer/src/components/sider/outbound-mode-switcher.tsx:60-63; src/renderer/src/components/app-sidebar.tsx:96; src/main/resolve/tray.ts:276-294"
+  },
+  {
+   "task": "Add a subscription by URL",
+   "path_en": "Profile Management > + button (or Home > Add Profile when empty) > Import Remote Config > Enter subscription URL... > Import",
+   "path_ru": "Профили > кнопка + (или Главная > Добавить профиль, если пусто) > Импорт удалённой конфигурации > Введите ссылку на подписку... > Импорт",
+   "evidence": "src/renderer/src/pages/profiles.tsx:140-171; src/renderer/src/components/profiles/edit-info-modal.tsx:152,199,437; src/renderer/src/pages/home.tsx:283-288"
+  },
+  {
+   "task": "Add a subscription from clipboard",
+   "path_en": "Profile Management > + > Import Remote Config > clipboard icon in the URL field (tooltip: Paste from clipboard) > Import",
+   "path_ru": "Профили > + > Импорт удалённой конфигурации > значок буфера обмена в поле ссылки (подсказка: Вставить из буфера обмена) > Импорт",
+   "evidence": "src/renderer/src/components/profiles/edit-info-modal.tsx:205-220"
+  },
+  {
+   "task": "Add a subscription from a file",
+   "path_en": "Profile Management > + > Import Remote Config > Select file  or  drag the file onto the Profile Management page (Drop config file here)",
+   "path_ru": "Профили > + > Импорт удалённой конфигурации > Выбрать файл  или  перетащить файл на страницу Профили (Перетащите файл конфигурации сюда)",
+   "evidence": "src/renderer/src/components/profiles/edit-info-modal.tsx:169; src/renderer/src/pages/profiles.tsx:98-113,212"
+  },
+  {
+   "task": "Add a subscription via deep link",
+   "path_en": "Open a clash://, mihomo:// or koala-clash:// link; the app handles it at startup/second instance (no menu path; no UI label found)",
+   "path_ru": "Открыть ссылку clash://, mihomo:// или koala-clash:// (меню нет, подписи в интерфейсе нет)",
+   "evidence": "src/main/index.ts:156-165"
+  },
+  {
+   "task": "Update all subscriptions",
+   "path_en": "Profile Management > refresh icon in the header (Update all profiles)",
+   "path_ru": "Профили > значок обновления в заголовке (Обновить все профили)",
+   "evidence": "src/renderer/src/pages/profiles.tsx:165-185"
+  },
+  {
+   "task": "Update one subscription",
+   "path_en": "Profile Management > refresh icon on the profile card (remote profiles only); also the refresh icon next to the profile name on Home",
+   "path_ru": "Профили > значок обновления на карточке профиля (только удалённые); также значок обновления рядом с названием профиля на Главной",
+   "evidence": "src/renderer/src/components/profiles/profile-item.tsx:329-340; src/renderer/src/pages/home.tsx:326-334"
+  },
+  {
+   "task": "Choose server / group / node",
+   "path_en": "Proxy Groups (sidebar) or Home > group selector; Delay test and Locate current node buttons in the page header",
+   "path_ru": "Группы прокси (боковая панель) или Главная > выбор группы; кнопки Тест задержки и Найти текущий узел в заголовке страницы",
+   "evidence": "src/renderer/src/components/app-sidebar.tsx:33; src/renderer/src/pages/home.tsx:495; src/renderer/src/pages/proxies.tsx:429,437"
+  },
+  {
+   "task": "Toggle TUN",
+   "path_en": "Settings > Virtual Network Interface (switch); gear icon next to it opens Virtual Network Interface Settings",
+   "path_ru": "Настройки > Режим TUN (переключатель); значок шестерёнки рядом открывает Настройки TUN",
+   "evidence": "src/renderer/src/components/settings/proxy-switches.tsx:46-70"
+  },
+  {
+   "task": "Toggle system proxy",
+   "path_en": "Settings > Proxy Mode (switch); gear icon next to it opens Proxy Mode Settings, where 'System Proxy' is also toggled",
+   "path_ru": "Настройки > Режим прокси (переключатель); значок шестерёнки рядом открывает Настройки режима прокси, где также переключается Системный прокси",
+   "evidence": "src/renderer/src/components/settings/proxy-switches.tsx:73-100; src/renderer/src/pages/syspeoxy.tsx"
+  },
+  {
+   "task": "Change language",
+   "path_en": "Settings > Language > English / Русский / 简体中文",
+   "path_ru": "Настройки > Язык > English / Русский / 简体中文",
+   "evidence": "src/renderer/src/pages/settings.tsx:39; src/renderer/src/components/settings/language-config.tsx:19-37; src/renderer/src/hooks/use-language.ts:6-10"
+  },
+  {
+   "task": "View logs",
+   "path_en": "Logs (sidebar) > page header 'Real-time Logs'",
+   "path_ru": "Логи (боковая панель)",
+   "evidence": "src/renderer/src/components/app-sidebar.tsx:35; src/renderer/src/pages/logs.tsx:92"
+  },
+  {
+   "task": "View traffic / connections while connected",
+   "path_en": "Home (timer and up/down totals under the power button) ; Connections (sidebar) > Active",
+   "path_ru": "Главная (таймер и счётчики отдачи/скачивания под кнопкой питания) ; Подключения (боковая панель) > Активные",
+   "evidence": "src/renderer/src/pages/home.tsx:465-485; src/renderer/src/pages/connections.tsx:668"
+  }
+ ],
+ "menu_path_issues": [
+  "Add a subscription from a file (EN and RU): WRONG path. 'Select file' / 'Выбрать файл' and 'Create empty' / 'Создать пустой' are NOT visible in the default Import Remote Config dialog. They render only when the profile type is Local (edit-info-modal.tsx:159-181). To get there: Profile Management > + > 'Advanced settings' / 'Дополнительные настройки' > 'Profile type' / 'Тип профиля' > 'Local' / 'Локальный' (common.local), then 'Select file' appears. The dialog title stays 'Import Remote Config'. The file picker accepts only yml/yaml (handleSelectFile), while drag-and-drop onto the Profiles page accepts .yml .yaml .json .jsonc .json5 .txt.",
+  "Choose server / delay test: WRONG location. 'Delay test' / 'Тест задержки' and 'Locate current node' / 'Найти текущий узел' are icon buttons (Gauge, LocateFixed) in EACH proxy-group card header (proxies.tsx:424-448), not in the page header. The page header holds only 'Collapse all/Expand all' (Свернуть все / Развернуть все) and 'Proxy group settings' (Настройки группы прокси). Selecting a node = click it inside an expanded group. 'Delay test all' (pages.proxies.delayTestAll) exists in the locale files but is unused in UI code.",
+  "View traffic / connections: 'Connections (sidebar) > Active' is imprecise. Default connectionListMode is 'process' (connection-setting-modal.tsx:43; connections.tsx:67), so the page first shows a process list ('Processes:' / 'Процессов:'); the Active/Closed tabs (Активные/Закрытые) appear only after opening a process (with a 'Back' / 'Назад' button) or after switching the list mode to 'classic' via the page's settings button.",
+  "Tray 'Outbound Mode > Rule Mode / Global Mode': the submenu parent label includes the current mode in brackets, e.g. 'Outbound Mode (Rule)' / 'Режим маршрутизации (Правило)' (tray.ts:276, strings tray.rule/tray.global). Submenu hidden when profile has globalMode === false (tray.ts:~253), same as the sidebar switcher.",
+  "Change language: dropdown order is 简体中文, English, Русский (use-language.ts:6-10), not English / Русский / 简体中文. Cosmetic only.",
+  "Toggle TUN / system proxy / Main Switch in RU: three Settings rows are easy to confuse. RU 'Режим TUN' is both the Main Switch tab (mainSwitchTun) and the TUN switch (sider.virtualInterface); RU 'Режим прокси' is both the Main Switch tab and the system-proxy switch (sider.proxyMode). In EN the TUN switch is 'Virtual Network Interface' but the tab is 'TUN Mode'. Instructions should say 'вкладка Основной переключатель > Режим TUN' vs 'переключатель Режим TUN ниже'.",
+  "Logs: 'Filter' / 'Фильтр' is a text-input placeholder (common.filter), not a button; Pause/Приостановить, Resume/Продолжить and Clear logs/Очистить логи are icon-only buttons with tooltip/aria-label (logs.tsx:95-120). Page header 'Real-time Logs' in EN, 'Логи' in RU confirmed.",
+  "Update-via-proxy / auto-update toggles: 'Auto update' / 'Автообновление', 'Update Interval (minutes)' / 'Интервал обновления (минуты)', 'Update via proxy' / 'Обновлять через прокси' sit inside the dialog's 'Advanced settings' block, not on the main import form (edit-info-modal.tsx:240-330)."
+ ],
+ "missing_flows": [
+  "Core-error flow on Home: status 'Core problem' / 'Проблема с ядром'; clicking the power button reopens the core error dialog with titles like 'Core not found' / 'Ядро не найдено', 'Configuration error', 'Core stopped' / 'Ядро остановилось' and a 'Restart' / 'Перезапустить' button (coreError.* keys, core-lifecycle-store.ts:27).",
+  "Subscription expiry notice on Home (see refuted entry for pages.home.renewSubscription): 'Your subscription has ended' / 'Подписка закончилась', 'Your subscription ends today' / 'Подписка закончится сегодня'.",
+  "HWID device-limit error on add/update: 'Device limit exceeded' / 'Лимит устройств превышен'; 'The subscription was not added or updated.' / 'Подписка не была добавлена или обновлена.' (pages.profiles.hwidLimitTitle/Description). Very likely for Remnawave subscriptions.",
+  "Deep-link import confirmation dialog (koala-clash://install-config?url=...&name=...), with RU texts, see refuted entry.",
+  "Empty state strings: 'No profiles yet' / 'Профилей пока нет' and 'Add a profile to get started' / 'Добавьте профиль, чтобы начать' on Home and Profiles page.",
+  "Active-profile switching: click a profile card on Profile Management, or tray > Profiles / Профили radio list (tray.subscriptionConfig, tray.ts:~320). Not in the table.",
+  "Home group selector card (shows current group and node, click opens Proxy Groups with a back button) is mentioned only in passing.",
+  "System proxy page details for RU users: 'Proxy host' field, Manual/PAC tabs, 'Edit PAC script', bypass list ('Add default bypass', 'Proxy bypass list') and Save button; page title 'Настройки режима прокси'.",
+  "Share link / QR / copy subscription link: confirmed to NOT exist in the UI at 1.5.0 (grep for qrcode/share/copyLink finds nothing in components/pages/hooks). The table correctly says so; keep it as an explicit 'not available' note.",
+  "Language: also changes tray and native menu strings via setMainLanguage (use-language.ts:20), so tray RU labels (Включить / Выключить, Показать окно, Профили, Выйти из приложения) switch with the app language; main-process string table is src/main/utils/i18n.ts ruRU block."
+ ],
+ "caveats": [
+  "Hint was wrong: the app is Electron 37 (package.json:65), not Tauri. Fork of clash-verge-rev confirmed by GitHub parent.",
+  "Latest release is 1.5.0 published 2026-10-09; tag resolves to commit ee0db8e973e49c30991815175d167d1583d7aa1b (shallow clone of tag, read only, in a scratchpad temp dir).",
+  "Home page connect button has NO text label (icon only). Only the status text (Connected/Disconnected etc.) is a label. Do not tell users to press a button named 'Connect'.",
+  "Proxy mode: the UI offers only Rules and Global (sidebar switcher and tray). There is no selectable Direct mode; 'Direct mode' text (sider.directMode) is only a placeholder on Proxy Groups when mode is already direct. The switcher is hidden if the active profile has globalMode=false, and when no profile exists.",
+  "The word is 'Profile' / 'профиль' throughout, never 'subscription' as a menu name (only the URL field placeholder and the 'Subscription Address' field use 'subscription').",
+  "No QR code import, no QR display, and no Share / Copy subscription link action were found anywhere in src (grep for qr/share found nothing in UI). Deep link handling for clash://, mihomo://, koala-clash:// exists in src/main/index.ts:156-165 with no UI label.",
+  "Per-profile update and Profile Management '+' buttons are icon-only; the single-profile refresh has no text or tooltip key. Update all profiles has a title/aria-label.",
+  "EN and RU labels diverge for the same control: sider.virtualInterface is 'Virtual Network Interface' in EN but 'Режим TUN' in RU; the main switch tab is 'TUN Mode' / 'Режим TUN'. Also EN Logs page title 'Real-time Logs' vs sidebar 'Logs'.",
+  "Home status 'Connected' means TUN or system proxy enabled (home.tsx:125), not a tested tunnel handshake. The timer is HH:MM:SS with no label; up/down totals shown with arrow icons only.",
+  "Tray strings come from src/main/utils/i18n.ts (not the renderer locale files); the same-named keys tray.* in the renderer locales are not used for the tray (tray.showWindow returned undefined in renderer en/ru). RU tray strings verified in ruRU block.",
+  "Pluralised keys (pages.logs.newLogs_one/_other; RU _one/_few/_many) are in the locale as plural forms: 'N new logs' / 'N новых записей'.",
+  "RU locale is complete for all keys used above (no fallback to EN observed). Not checked: every one of ~1000 keys for parity; only keys on the flows above.",
+  "Platform differences: sysproxy page has a UWP tool block only on win32 (syspeoxy.tsx:204) and a different block on darwin (:216); TUN page has win32 firewall reset (tun.tsx:117), darwin-specific (:140) and non-darwin (:171) sections; Show Dock icon is macOS only (appearance-confis.tsx:171). No mobile layout, desktop only.",
+  "Not verified at runtime; all labels read from source at tag 1.5.0."
+ ]
+}
