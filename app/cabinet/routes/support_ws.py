@@ -51,6 +51,7 @@ from app.services.registration_access_service import (
     RegistrationAccessReason,
     RegistrationChannel,
 )
+from app.services.support_assist.pipeline import notification_bot, schedule_assist
 from app.services.support_settings_service import SupportSettingsService
 from app.services.user_revival_service import NotDeletedError, revive_deleted_user
 from app.utils.websocket_errors import is_client_gone
@@ -962,6 +963,8 @@ async def _handle_ticket_reply(db: AsyncSession, session: SupportWsSession, payl
     await _notify_ticket_reply_via_telegram(
         db, ticket, body, is_from_admin=is_from_admin, media_file_id=media_file_id, media_type=media_type
     )
+    if not is_from_admin:
+        schedule_assist(notification_bot(), ticket.id, 'new_message')
 
     event = _message_event(
         'message.created',

@@ -22,6 +22,7 @@ from app.keyboards.inline import (
 )
 from app.localization.texts import get_texts
 from app.services.admin_notification_service import AdminNotificationService
+from app.services.support_assist.pipeline import schedule_assist
 from app.utils.cache import RateLimitCache, cache, cache_key
 from app.utils.formatters import format_username_link
 from app.utils.miniapp_buttons import build_admin_ticket_cabinet_button
@@ -329,6 +330,7 @@ async def handle_ticket_message_input(message: types.Message, state: FSMContext,
 
         # Уведомить админов
         await notify_admins_about_new_ticket(ticket, db)
+        schedule_assist(message.bot, ticket.id, 'new_ticket')
 
     except Exception as e:
         logger.error('Error creating ticket', error=e)
@@ -872,6 +874,7 @@ async def handle_ticket_reply(message: types.Message, state: FSMContext, db_user
         await notify_admins_about_ticket_reply(
             ticket, reply_text, db, media_file_id=media_file_id, media_type=media_type
         )
+        schedule_assist(message.bot, ticket_id, 'new_message')
 
     except Exception as e:
         logger.error('Error adding ticket reply', error=e)

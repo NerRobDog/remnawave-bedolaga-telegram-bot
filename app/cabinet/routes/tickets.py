@@ -15,6 +15,7 @@ from app.database.crud.ticket import TicketCRUD
 from app.database.crud.ticket_notification import TicketNotificationCRUD
 from app.database.models import Ticket, TicketMessage, User
 from app.handlers.tickets import notify_admins_about_new_ticket, notify_admins_about_ticket_reply
+from app.services.support_assist.pipeline import notification_bot, schedule_assist
 from app.services.support_settings_service import SupportSettingsService
 from app.utils.timezone import format_local_datetime
 
@@ -249,6 +250,7 @@ async def create_ticket(
         await notify_admins_about_new_ticket(ticket, db)
     except Exception as e:
         logger.error('Error notifying admins about new ticket from cabinet', error=e)
+    schedule_assist(notification_bot(), ticket.id, 'new_ticket')
 
     # Уведомить админов в кабинете
     try:
@@ -415,6 +417,7 @@ async def add_ticket_message(
         )
     except Exception as e:
         logger.error('Error notifying admins about ticket reply from cabinet', error=e)
+    schedule_assist(notification_bot(), ticket.id, 'new_message')
 
     # Уведомить админов в кабинете
     try:
