@@ -47,10 +47,13 @@ STRANGER_TG = 6000
 GROUP_CHAT = -100500
 TOPIC = 77
 CARD_MESSAGE = 555
+SECOND_CARD_MESSAGE = 556
+SECOND_CLIENT_TG = 1001
 BOT_ID = 42
 
 DRAFT = 'Удалите лишние устройства в приложении и повторите вход.'
 OWNER_TEXT = 'Здравствуйте! Сбросил устройства, попробуйте войти снова.'
+SECOND_DRAFT = 'Проверьте платёж в личном кабинете.'
 CARD = {
     'facts': [{'icon': '⚠️', 'text': 'Устройств 3 из 3'}],
     'cause': 'Лимит устройств',
@@ -88,8 +91,11 @@ def bot():
 
 
 @contextlib.asynccontextmanager
-async def world(monkeypatch, *, card_status='shown', card=CARD, ticket_status='open'):
-    """Клиент, админ, модератор, тикет с одним сообщением клиента и карточка №5 в топике."""
+async def world(monkeypatch, *, card_status='shown', card=CARD, ticket_status='open', second_card=False):
+    """Клиент, админ, модератор, тикет с одним сообщением клиента и карточка №5 в топике.
+
+    ``second_card``: ещё один клиент с тикетом №2 и карточкой №6 (сообщение 556 в том же топике).
+    """
     async with memory_session(monkeypatch, _TABLES) as db:
         db.add_all(
             [
@@ -113,6 +119,25 @@ async def world(monkeypatch, *, card_status='shown', card=CARD, ticket_status='o
                 admin_message_id=CARD_MESSAGE,
             )
         )
+        if second_card:
+            db.add(User(id=4, telegram_id=SECOND_CLIENT_TG, language='ru'))
+            db.add(Ticket(id=2, user_id=4, title='t2', status='open'))
+            db.add(
+                TicketMessage(ticket_id=2, user_id=4, message_text='не платит', is_from_admin=False, has_media=False)
+            )
+            db.add(
+                SupportAssistCard(
+                    id=6,
+                    ticket_id=2,
+                    created_at=datetime.now(UTC),
+                    trigger='new_ticket',
+                    facts={},
+                    flags=FLAGS,
+                    card=dict(CARD, draft=SECOND_DRAFT),
+                    status='shown',
+                    admin_message_id=SECOND_CARD_MESSAGE,
+                )
+            )
         await db.commit()
         db.expunge_all()
         yield SimpleNamespace(
@@ -123,7 +148,14 @@ async def world(monkeypatch, *, card_status='shown', card=CARD, ticket_status='o
         )
 
 
-def _callback(data: str, user_id: int, *, chat_type: str = ChatType.SUPERGROUP, message: bool = True) -> MagicMock:
+def _callback(
+    data: str,
+    user_id: int,
+    *,
+    chat_type: str = ChatType.SUPERGROUP,
+    message: bool = True,
+    message_id: int = CARD_MESSAGE,
+) -> MagicMock:
     cb = MagicMock(spec=CallbackQuery)
     cb.data = data
     cb.from_user = SimpleNamespace(id=user_id, full_name='Админ')
@@ -131,7 +163,7 @@ def _callback(data: str, user_id: int, *, chat_type: str = ChatType.SUPERGROUP, 
     if message:
         cb.message = SimpleNamespace(
             chat=SimpleNamespace(id=GROUP_CHAT if chat_type != ChatType.PRIVATE else user_id, type=chat_type),
-            message_id=CARD_MESSAGE,
+            message_id=message_id,
             edit_text=AsyncMock(),
         )
     else:
@@ -151,8 +183,9 @@ def _private_state(w, user_id: int) -> FSMContext:
     return _group_state(w, user_id, private=True)
 
 
-def _text_message(text: str | None, user_id: int) -> MagicMock:
+def _text_message(text: str | None, user_id: int, *, reply_to: int | None = None) -> MagicMock:
     msg = MagicMock()
+    msg.reply_to_message = SimpleNamespace(message_id=reply_to) if reply_to is not None else None
     msg.text = text
     msg.caption = None
     msg.from_user = SimpleNamespace(id=user_id)
@@ -168,14 +201,17 @@ def _alert(cb: MagicMock) -> tuple[str | None, bool]:
     return (args[0] if args else kwargs.get('text')), bool(kwargs.get('show_alert'))
 
 
-async def _card(db) -> SupportAssistCard:
+async def _card(db, card_id: int = 5) -> SupportAssistCard:
     db.expunge_all()
-    return (await db.execute(select(SupportAssistCard).where(SupportAssistCard.id == 5))).scalar_one()
+    return (await db.execute(select(SupportAssistCard).where(SupportAssistCard.id == card_id))).scalar_one()
 
 
-async def _admin_messages(db) -> list[TicketMessage]:
+async def _admin_messages(db, ticket_id: int | None = None) -> list[TicketMessage]:
     db.expunge_all()
-    rows = await db.execute(select(TicketMessage).where(TicketMessage.is_from_admin.is_(True)))
+    query = select(TicketMessage).where(TicketMessage.is_from_admin.is_(True))
+    if ticket_id is not None:
+        query = query.where(TicketMessage.ticket_id == ticket_id)
+    rows = await db.execute(query)
     return list(rows.scalars())
 
 
@@ -222,7 +258,7 @@ async def test_middleware_lets_card_callbacks_through_from_a_supergroup(data):
 @pytest.mark.asyncio
 async def test_middleware_still_drops_the_private_only_cancel_in_a_group():
     event = MagicMock(spec=CallbackQuery)
-    event.data = 'sa:cancel'
+    event.data = 'sa:cancel:5'
     event.message = MagicMock()
     event.message.chat = MagicMock()
     event.message.chat.type = ChatType.SUPERGROUP
@@ -493,7 +529,7 @@ async def test_edit_sends_the_owner_text_not_the_draft(monkeypatch, bot, notify,
         dm = bot.send_message.await_args.kwargs
         assert dm['chat_id'] == ADMIN_TG and dm['parse_mode'] == 'HTML'
         assert DRAFT in dm['text'] and 'по тикету #1' in dm['text']
-        assert dm['reply_markup'].inline_keyboard[0][0].callback_data == 'sa:cancel'
+        assert dm['reply_markup'].inline_keyboard[0][0].callback_data == 'sa:cancel:5'
         # ждём текст в ЛИЧНОМ FSM админа, а не в групповом
         private = _private_state(w, ADMIN_TG)
         assert await private.get_state() == SupportAssistStates.waiting_edit.state
@@ -501,6 +537,7 @@ async def test_edit_sends_the_owner_text_not_the_draft(monkeypatch, bot, notify,
             'sa_card_id': 5,
             'sa_chat_id': cb.message.chat.id,
             'sa_message_id': CARD_MESSAGE,
+            'sa_prompt_id': 900,
         }
         if not in_private:
             assert await pressed_in.get_state() is None
@@ -658,7 +695,7 @@ async def test_cancel_clears_the_waiting_state(monkeypatch, bot, notify):
         private = _private_state(w, ADMIN_TG)
         await private.set_state(SupportAssistStates.waiting_edit)
         await private.set_data({'sa_card_id': 5})
-        cb = _callback('sa:cancel', ADMIN_TG, chat_type=ChatType.PRIVATE)
+        cb = _callback('sa:cancel:5', ADMIN_TG, chat_type=ChatType.PRIVATE)
 
         await sa.handle_cancel(cb, private)
 
@@ -666,6 +703,190 @@ async def test_cancel_clears_the_waiting_state(monkeypatch, bot, notify):
         assert await private.get_data() == {}
         cb.answer.assert_awaited_once()
         assert (await _card(w.db)).status == 'shown'
+
+
+@pytest.mark.asyncio
+async def test_stale_cancel_does_not_clear_an_edit_that_is_not_its_own(monkeypatch, bot, notify):
+    async with world(monkeypatch, second_card=True) as w:
+        private = _private_state(w, ADMIN_TG)
+        await private.set_state(SupportAssistStates.waiting_edit)
+        await private.set_data({'sa_card_id': 6, 'sa_chat_id': GROUP_CHAT, 'sa_message_id': SECOND_CARD_MESSAGE})
+        cb = _callback('sa:cancel:5', ADMIN_TG, chat_type=ChatType.PRIVATE)
+
+        await sa.handle_cancel(cb, private)
+
+        assert await private.get_state() == SupportAssistStates.waiting_edit.state
+        assert (await private.get_data())['sa_card_id'] == 6
+        cb.message.edit_text.assert_awaited_once()
+        assert 'устарел' in cb.message.edit_text.await_args.args[0].lower()
+        cb.answer.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cancel_with_nothing_pending_does_not_claim_the_edit_was_cancelled(monkeypatch, bot, notify):
+    async with world(monkeypatch) as w:
+        private = _private_state(w, ADMIN_TG)
+        cb = _callback('sa:cancel:5', ADMIN_TG, chat_type=ChatType.PRIVATE)
+
+        await sa.handle_cancel(cb, private)
+
+        assert await private.get_state() is None
+        assert 'устарел' in cb.message.edit_text.await_args.args[0].lower()
+
+
+@pytest.mark.parametrize('data', ['sa:cancel', 'sa:cancel:5'])
+def test_cancel_is_private_only(data):
+    assert not is_group_safe_callback(data)
+
+
+# --- два «Править» подряд: ответ не уходит не тому клиенту ----------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_second_edit_retires_the_first_prompt_and_takes_over_the_dialog(monkeypatch, bot, notify):
+    async with world(monkeypatch, second_card=True) as w:
+        bot.send_message.side_effect = [SimpleNamespace(message_id=900), SimpleNamespace(message_id=901)]
+        group = _group_state(w, ADMIN_TG)
+
+        await sa.handle_edit(_callback('sa:edit:5', ADMIN_TG), group, bot, w.db)
+        bot.edit_message_text.assert_not_awaited()  # первый запрос ничего не заменяет
+        await sa.handle_edit(_callback('sa:edit:6', ADMIN_TG, message_id=SECOND_CARD_MESSAGE), group, bot, w.db)
+
+        # старый запрос (900) переписан: ни кнопки «Отмена», ни вида «ещё жду текст»
+        bot.edit_message_text.assert_awaited_once()
+        old = bot.edit_message_text.await_args.kwargs
+        assert (old['chat_id'], old['message_id']) == (ADMIN_TG, 900)
+        assert '#2' in old['text'] and 'замен' in old['text'].lower()
+        assert _has_no_buttons(old['reply_markup'])
+        # диалог теперь про карточку 6, и именно его сообщение править на строку решения
+        private = _private_state(w, ADMIN_TG)
+        assert await private.get_state() == SupportAssistStates.waiting_edit.state
+        assert await private.get_data() == {
+            'sa_card_id': 6,
+            'sa_chat_id': GROUP_CHAT,
+            'sa_message_id': SECOND_CARD_MESSAGE,
+            'sa_prompt_id': 901,
+        }
+        notify.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_batching_two_edits_answers_only_the_last_one_and_never_the_wrong_client(monkeypatch, bot, notify):
+    """Сценарий ревью: «Править» на двух карточках, затем текст, написанный для первой."""
+    async with world(monkeypatch, second_card=True) as w:
+        bot.send_message.side_effect = [SimpleNamespace(message_id=900), SimpleNamespace(message_id=901)]
+        group = _group_state(w, ADMIN_TG)
+        await sa.handle_edit(_callback('sa:edit:5', ADMIN_TG), group, bot, w.db)
+        await sa.handle_edit(_callback('sa:edit:6', ADMIN_TG, message_id=SECOND_CARD_MESSAGE), group, bot, w.db)
+        private = _private_state(w, ADMIN_TG)
+
+        # Отмена под устаревшим запросом первой карточки не трогает вторую правку
+        stale_cancel = _callback('sa:cancel:5', ADMIN_TG, chat_type=ChatType.PRIVATE, message_id=900)
+        await sa.handle_cancel(stale_cancel, private)
+        assert (await private.get_data())['sa_card_id'] == 6
+
+        # ответом на устаревший запрос (900) текст не принимается: он мог быть написан для первого клиента
+        meant_for_first = _text_message(OWNER_TEXT, ADMIN_TG, reply_to=900)
+        await sa.handle_edit_text(meant_for_first, private, bot, w.db, w.admin)
+
+        meant_for_first.answer.assert_awaited_once()
+        assert await private.get_state() == SupportAssistStates.waiting_edit.state  # ждём дальше, ничего не ушло
+        assert await _admin_messages(w.db) == []
+        notify.assert_not_awaited()
+        assert (await _card(w.db, 5)).status == 'shown' and (await _card(w.db, 6)).status == 'shown'
+
+
+@pytest.mark.asyncio
+async def test_second_edit_text_goes_only_to_the_second_ticket_and_names_it(monkeypatch, bot, notify):
+    async with world(monkeypatch, second_card=True) as w:
+        bot.send_message.side_effect = [SimpleNamespace(message_id=900), SimpleNamespace(message_id=901)]
+        group = _group_state(w, ADMIN_TG)
+        await sa.handle_edit(_callback('sa:edit:5', ADMIN_TG), group, bot, w.db)
+        await sa.handle_edit(_callback('sa:edit:6', ADMIN_TG, message_id=SECOND_CARD_MESSAGE), group, bot, w.db)
+        private = _private_state(w, ADMIN_TG)
+
+        message = _text_message(OWNER_TEXT, ADMIN_TG, reply_to=901)  # ответом на актуальный запрос — можно
+        await sa.handle_edit_text(message, private, bot, w.db, w.admin)
+
+        assert await _admin_messages(w.db, ticket_id=1) == []
+        (reply,) = await _admin_messages(w.db, ticket_id=2)
+        assert reply.message_text == OWNER_TEXT
+        notify.assert_awaited_once()
+        assert notify.await_args.args[1].id == 2
+        assert (await _card(w.db, 5)).status == 'shown'
+        assert (await _card(w.db, 6)).status == 'edited'
+        assert '#2' in message.answer.await_args.args[0]  # админ видит, какому тикету ушёл ответ
+        assert await private.get_state() is None
+
+
+@pytest.mark.asyncio
+async def test_edit_text_replying_to_a_foreign_message_is_refused_and_keeps_waiting(monkeypatch, bot, notify):
+    async with world(monkeypatch) as w:
+        private = _private_state(w, ADMIN_TG)
+        await private.set_state(SupportAssistStates.waiting_edit)
+        await private.set_data(
+            {'sa_card_id': 5, 'sa_chat_id': GROUP_CHAT, 'sa_message_id': CARD_MESSAGE, 'sa_prompt_id': 900}
+        )
+        message = _text_message(OWNER_TEXT, ADMIN_TG, reply_to=123)
+
+        await sa.handle_edit_text(message, private, bot, w.db, w.admin)
+
+        assert await private.get_state() == SupportAssistStates.waiting_edit.state
+        assert await _admin_messages(w.db) == []
+        notify.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_edit_text_without_a_stored_prompt_id_still_works(monkeypatch, bot, notify):
+    """Состояние, поставленное до выкладки этой правки, ключа запроса не знает: не блокируем его."""
+    async with world(monkeypatch) as w:
+        private = _private_state(w, ADMIN_TG)
+        await private.set_state(SupportAssistStates.waiting_edit)
+        await private.set_data({'sa_card_id': 5, 'sa_chat_id': GROUP_CHAT, 'sa_message_id': CARD_MESSAGE})
+
+        await sa.handle_edit_text(_text_message(OWNER_TEXT, ADMIN_TG, reply_to=123), private, bot, w.db, w.admin)
+
+        notify.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_repeated_edit_of_the_same_card_retires_the_old_prompt(monkeypatch, bot, notify):
+    async with world(monkeypatch) as w:
+        bot.send_message.side_effect = [SimpleNamespace(message_id=900), SimpleNamespace(message_id=901)]
+        group = _group_state(w, ADMIN_TG)
+
+        await sa.handle_edit(_callback('sa:edit:5', ADMIN_TG), group, bot, w.db)
+        await sa.handle_edit(_callback('sa:edit:5', ADMIN_TG), group, bot, w.db)
+
+        assert bot.edit_message_text.await_args.kwargs['message_id'] == 900
+        assert (await _private_state(w, ADMIN_TG).get_data())['sa_prompt_id'] == 901
+
+
+@pytest.mark.asyncio
+async def test_second_edit_with_closed_dm_leaves_the_first_dialog_untouched(monkeypatch, bot, notify):
+    async with world(monkeypatch, second_card=True) as w:
+        group = _group_state(w, ADMIN_TG)
+        await sa.handle_edit(_callback('sa:edit:5', ADMIN_TG), group, bot, w.db)
+        before = await _private_state(w, ADMIN_TG).get_data()
+        bot.send_message.side_effect = TelegramForbiddenError(method=MagicMock(), message='Forbidden')
+
+        await sa.handle_edit(_callback('sa:edit:6', ADMIN_TG, message_id=SECOND_CARD_MESSAGE), group, bot, w.db)
+
+        assert await _private_state(w, ADMIN_TG).get_data() == before
+        bot.edit_message_text.assert_not_awaited()  # первый запрос остаётся в силе
+
+
+@pytest.mark.asyncio
+async def test_failure_to_retire_the_old_prompt_does_not_block_the_new_edit(monkeypatch, bot, notify):
+    async with world(monkeypatch, second_card=True) as w:
+        bot.send_message.side_effect = [SimpleNamespace(message_id=900), SimpleNamespace(message_id=901)]
+        bot.edit_message_text.side_effect = TelegramBadRequest(method=MagicMock(), message='message to edit not found')
+        group = _group_state(w, ADMIN_TG)
+        await sa.handle_edit(_callback('sa:edit:5', ADMIN_TG), group, bot, w.db)
+
+        await sa.handle_edit(_callback('sa:edit:6', ADMIN_TG, message_id=SECOND_CARD_MESSAGE), group, bot, w.db)
+
+        assert (await _private_state(w, ADMIN_TG).get_data())['sa_card_id'] == 6
 
 
 # --- пропустить ----------------------------------------------------------------------------------------------------

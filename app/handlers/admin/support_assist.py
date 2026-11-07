@@ -9,6 +9,11 @@
   после чего сообщение карточки в группе правится на строку решения. Если карточка лежит в личке админа,
   тот же путь работает без смены чата.
 
+Одна правка на админа: второе «Править» заменяет первое, а старый запрос в личке переписывается на
+«заменён» и теряет «Отмену». «Отмена» несёт номер карточки (``sa:cancel:<id>``) и снимает ожидание только
+своей правки; текст ответом на другой запрос не принимается. Так ответ, написанный для одного клиента, не уходит
+другому (отправку не отозвать).
+
 Отправка и там, и там — ``send_admin_reply`` из ``tickets.py``, та же последовательность, что у ручного
 ответа. Гонку нажатий решает ``claim_card_decision`` (один условный UPDATE): клиент получает ровно одно
 сообщение. Если запись ответа упала после захвата, карточка возвращается в 'shown'.
@@ -44,16 +49,23 @@ logger = structlog.get_logger(__name__)
 PREFIX_SEND = 'sa:send:'
 PREFIX_EDIT = 'sa:edit:'
 PREFIX_SKIP = 'sa:skip:'
-CANCEL_DATA = 'sa:cancel'
+PREFIX_CANCEL = 'sa:cancel:'
 
 NO_ACCESS = 'Нет доступа'
 SEND_DISABLED = 'Отправка из карточки выключена'
 STALE_BUTTON = 'Кнопка устарела'
+STALE_PROMPT = 'Запрос правки устарел.'
+FOREIGN_REPLY = (
+    'Это ответ на другое сообщение, текст не отправлен. Пришлите его обычным сообщением '
+    'или ответом на последний запрос «Правка ответа по тикету».'
+)
 
 # Ключи данных личного FSM: какую карточку правим и где лежит её сообщение (его потом правим на строку решения).
 KEY_CARD_ID = 'sa_card_id'
 KEY_CHAT_ID = 'sa_chat_id'
 KEY_MESSAGE_ID = 'sa_message_id'
+# Сообщение-запрос правки в личке (на нём «Отмена»): по нему отличаем актуальный запрос от заменённого.
+KEY_PROMPT_ID = 'sa_prompt_id'
 
 # Потолок текста сообщения Telegram и запас на обвязку запроса правки (заголовок, подсказка).
 PROMPT_LIMIT = 4096
@@ -308,6 +320,34 @@ def _edit_prompt(view: _CardView) -> str:
     )
 
 
+def _cancel_keyboard(card_id: int) -> types.InlineKeyboardMarkup:
+    return types.InlineKeyboardMarkup(
+        inline_keyboard=[[types.InlineKeyboardButton(text='Отмена', callback_data=f'{PREFIX_CANCEL}{card_id}')]]
+    )
+
+
+async def _retire_pending_prompt(bot: Bot, private: FSMContext, user_id: int, new_ticket_id: int) -> None:
+    """Прежний запрос правки (если ждём текст) переписать на «заменён» и снять с него «Отмену».
+
+    Сбой правки сообщения не мешает новой правке: устаревший запрос всё равно не примет ни «Отмену»
+    (номер карточки не тот), ни текст ответом на него (номер сообщения не тот).
+    """
+    if await private.get_state() != SupportAssistStates.waiting_edit.state:
+        return
+    old_prompt_id = (await private.get_data()).get(KEY_PROMPT_ID)
+    if not isinstance(old_prompt_id, int):
+        return
+    try:
+        await bot.edit_message_text(
+            chat_id=user_id,
+            message_id=old_prompt_id,
+            text=f'⏭ Запрос заменён: теперь жду ответ по тикету #{new_ticket_id}.',
+            reply_markup=_NO_KEYBOARD,
+        )
+    except TelegramAPIError:
+        logger.warning('support_assist.prompt_retire_failed', chat_id=user_id, message_id=old_prompt_id, exc_info=True)
+
+
 async def handle_edit(callback: types.CallbackQuery, state: FSMContext, bot: Bot, db: AsyncSession):
     user_id = callback.from_user.id
     refusal = _refusal(user_id, needs_send=True)
@@ -331,13 +371,11 @@ async def handle_edit(callback: types.CallbackQuery, state: FSMContext, bot: Bot
     # Сначала личка: если админ ни разу не открывал бота, Telegram не даст написать, и состояние-ловушку
     # ставить не нужно. Карточка при этом остаётся 'shown'.
     try:
-        await bot.send_message(
+        prompt = await bot.send_message(
             chat_id=user_id,
             text=_edit_prompt(view),
             parse_mode='HTML',
-            reply_markup=types.InlineKeyboardMarkup(
-                inline_keyboard=[[types.InlineKeyboardButton(text='Отмена', callback_data=CANCEL_DATA)]]
-            ),
+            reply_markup=_cancel_keyboard(card_id),
         )
     except TelegramForbiddenError:
         await callback.answer(
@@ -351,9 +389,16 @@ async def handle_edit(callback: types.CallbackQuery, state: FSMContext, bot: Bot
         return
 
     private = _private_state(state, user_id)
+    # Одна правка на админа: прежний запрос закрываем до смены состояния, чтобы он не выглядел живым.
+    await _retire_pending_prompt(bot, private, user_id, view.ticket_id)
     await private.set_state(SupportAssistStates.waiting_edit)
     await private.set_data(
-        {KEY_CARD_ID: card_id, KEY_CHAT_ID: message.chat.id, KEY_MESSAGE_ID: message.message_id},
+        {
+            KEY_CARD_ID: card_id,
+            KEY_CHAT_ID: message.chat.id,
+            KEY_MESSAGE_ID: message.message_id,
+            KEY_PROMPT_ID: getattr(prompt, 'message_id', None),
+        },
     )
     in_private = getattr(message.chat, 'type', None) == 'private'
     await callback.answer(None if in_private else 'Черновик отправлен вам в личные сообщения')
@@ -371,6 +416,13 @@ async def handle_edit_text(message: types.Message, state: FSMContext, bot: Bot, 
     if not isinstance(card_id, int):
         await state.clear()
         await message.answer(STALE_BUTTON)
+        return
+
+    # Ответом (reply) на запрос, который уже заменён, текст не принимаем: он мог быть написан для другого клиента.
+    prompt_id = data.get(KEY_PROMPT_ID)
+    replied_to = getattr(getattr(message, 'reply_to_message', None), 'message_id', None)
+    if isinstance(prompt_id, int) and isinstance(replied_to, int) and replied_to != prompt_id:
+        await message.answer(FOREIGN_REPLY)
         return
 
     text = (message.text or '').strip()
@@ -408,14 +460,28 @@ async def handle_edit_text(message: types.Message, state: FSMContext, bot: Bot, 
     await message.answer(f'✅ Ответ по тикету #{ticket_id} отправлен клиенту.')
 
 
+async def _is_current_prompt(callback: types.CallbackQuery, state: FSMContext) -> bool:
+    """«Отмена» относится к правке, которую админ ждёт сейчас (тот же номер карточки и тот же запрос)."""
+    card_id = _card_id(callback.data, PREFIX_CANCEL)
+    if card_id is None or await state.get_state() != SupportAssistStates.waiting_edit.state:
+        return False
+    data = await state.get_data()
+    if data.get(KEY_CARD_ID) != card_id:
+        return False
+    prompt_id = data.get(KEY_PROMPT_ID)
+    message_id = getattr(callback.message, 'message_id', None)
+    return not (isinstance(prompt_id, int) and isinstance(message_id, int) and prompt_id != message_id)
+
+
 async def handle_cancel(callback: types.CallbackQuery, state: FSMContext):
-    """«Отмена» под запросом правки (только в личке): снять ожидание текста."""
-    if await state.get_state() == SupportAssistStates.waiting_edit:
+    """«Отмена» под запросом правки (только в личке): снять ожидание текста, но только своей правки."""
+    current = await _is_current_prompt(callback, state)
+    if current:
         await state.clear()
     message = callback.message
     if message is not None and hasattr(message, 'edit_text'):
         with contextlib.suppress(TelegramAPIError):
-            await message.edit_text('Правка отменена.', reply_markup=None)
+            await message.edit_text('Правка отменена.' if current else STALE_PROMPT, reply_markup=None)
     await callback.answer()
 
 
@@ -461,5 +527,5 @@ def register_handlers(dp: Dispatcher):
     dp.callback_query.register(handle_edit, F.data.startswith(PREFIX_EDIT))
     dp.callback_query.register(handle_skip, F.data.startswith(PREFIX_SKIP))
     # «Отмена» живёт только в личке админа: в списке групповых кнопок её нет.
-    dp.callback_query.register(handle_cancel, F.data == CANCEL_DATA)
+    dp.callback_query.register(handle_cancel, F.data.startswith(PREFIX_CANCEL))
     dp.message.register(handle_edit_text, SupportAssistStates.waiting_edit)
