@@ -207,7 +207,7 @@ def pick_questions(text: str, has_media: bool, s: Snapshot, flags: list[Flag]) -
     if any(name in low for name in _APP_NAMES):
         skip.add('app')
     # Анкета перед тикетом уже спросила своё: повторно не спрашиваем.
-    skip.update(ANSWERED_QUESTIONS[field] for field in answered_fields(s.diagnostics))
+    skip.update(ANSWERED_QUESTIONS[field] for field in answered_fields(s.diagnostics) if field in ANSWERED_QUESTIONS)
     return [q for q in QUESTION_IDS if q not in skip]
 
 

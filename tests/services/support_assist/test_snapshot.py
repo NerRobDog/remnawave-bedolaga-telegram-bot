@@ -259,7 +259,7 @@ async def test_panel_sources_run_concurrently_and_total_wait_is_bounded(monkeypa
     assert elapsed < 0.2 * 3  # последовательно вышло бы 1.2 с
 
 
-FORM = {'platform': 'ios', 'app': 'happ', 'network': 'wifi', 'symptom': 'nothing', 'since': 'today'}
+FORM = {'platform': 'ios', 'app': 'Happ', 'network': 'wifi', 'symptom': 'nothing', 'since': 'today'}
 
 
 @pytest.mark.asyncio

@@ -23,14 +23,18 @@ from app.keyboards.inline import (
 )
 from app.localization.texts import get_texts
 from app.services.admin_notification_service import AdminNotificationService
+from app.services.support_assist.form_options import FormOptions, get_form_options
 from app.services.support_assist.pipeline import schedule_assist
 from app.services.support_assist.ticket_form import (
-    FORM_FIELDS,
+    FORM_FIELD_IDS,
     OTHER_MAX_LENGTH,
+    OTHER_OPTION,
+    STATIC_OPTIONS,
     answered_fields,
     clean_other_text,
     has_other,
     other_key,
+    platform_label,
     render_diagnostics,
     validate_diagnostics,
 )
@@ -115,19 +119,47 @@ async def show_ticket_priority_selection(
 def _next_form_field(diagnostics: dict | None) -> str | None:
     """Первое поле анкеты без ответа; ``None`` — анкета заполнена."""
     done = answered_fields(diagnostics)
-    return next((field for field in FORM_FIELDS if field not in done), None)
+    return next((field for field in FORM_FIELD_IDS if field not in done), None)
 
 
-def _form_keyboard(field: str, language: str) -> types.InlineKeyboardMarkup:
+def _form_choices(field: str, language: str, diagnostics: dict, options: FormOptions) -> list[tuple[str, str]]:
+    """Кнопки вопроса: (текст, значение после ``tf:<поле>:``).
+
+    Устройство и приложение приходят из конфига Remnawave, и названия бывают длинными: в
+    callback_data (до 64 байт) кладём номер в списке вариантов, а не само название.
+    """
+    texts = get_texts(language)
+    if field == 'platform':
+        return [(platform_label(pid, language, options), str(i)) for i, pid in enumerate(options.platform_ids())]
+    if field == 'app':
+        apps = options.apps_for(diagnostics.get('platform', ''))
+        choices = [(name, str(i)) for i, name in enumerate(apps)]
+        return [*choices, (texts.t('TICKET_FORM_APP_OTHER'), OTHER_OPTION)]
+    return [(texts.t(f'TICKET_FORM_{field.upper()}_{option.upper()}'), option) for option in STATIC_OPTIONS[field]]
+
+
+def _is_index(raw: str, size: int) -> bool:
+    return raw.isascii() and raw.isdigit() and int(raw) < size
+
+
+def _resolve_choice(field: str, raw: str, diagnostics: dict, options: FormOptions) -> str | None:
+    """Значение ответа по нажатой кнопке; ``None`` — кнопка не из текущего списка."""
+    if field == 'platform':
+        ids = options.platform_ids()
+        return ids[int(raw)] if _is_index(raw, len(ids)) else None
+    if field == 'app':
+        if raw == OTHER_OPTION:
+            return OTHER_OPTION
+        apps = options.apps_for(diagnostics.get('platform', ''))
+        return apps[int(raw)] if _is_index(raw, len(apps)) else None
+    return raw if raw in STATIC_OPTIONS.get(field, ()) else None
+
+
+def _form_keyboard(field: str, language: str, diagnostics: dict, options: FormOptions) -> types.InlineKeyboardMarkup:
     texts = get_texts(language)
     rows = [
-        [
-            types.InlineKeyboardButton(
-                text=texts.t(f'TICKET_FORM_{field.upper()}_{option.upper()}'),
-                callback_data=f'tf:{field}:{option}',
-            )
-        ]
-        for option in FORM_FIELDS[field]
+        [types.InlineKeyboardButton(text=label, callback_data=f'tf:{field}:{value}')]
+        for label, value in _form_choices(field, language, diagnostics, options)
     ]
     rows.append(
         [
@@ -140,7 +172,9 @@ def _form_keyboard(field: str, language: str) -> types.InlineKeyboardMarkup:
     return types.InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def _form_screen(language: str, diagnostics: dict | None) -> tuple[str, types.InlineKeyboardMarkup, State]:
+def _form_screen(
+    language: str, diagnostics: dict | None, options: FormOptions
+) -> tuple[str, types.InlineKeyboardMarkup, State]:
     """Следующий экран: очередной вопрос анкеты, а когда ответы собраны, обычный запрос заголовка."""
     texts = get_texts(language)
     field = _next_form_field(diagnostics)
@@ -150,12 +184,12 @@ def _form_screen(language: str, diagnostics: dict | None) -> tuple[str, types.In
             get_ticket_cancel_keyboard(language),
             TicketStates.waiting_for_title,
         )
-    step = list(FORM_FIELDS).index(field) + 1
+    step = FORM_FIELD_IDS.index(field) + 1
     text = (
-        f'{texts.t("TICKET_FORM_STEP").format(step=step, total=len(FORM_FIELDS))}\n\n'
+        f'{texts.t("TICKET_FORM_STEP").format(step=step, total=len(FORM_FIELD_IDS))}\n\n'
         f'{texts.t(f"TICKET_FORM_{field.upper()}_PROMPT")}'
     )
-    return text, _form_keyboard(field, language), TicketStates.waiting_for_form
+    return text, _form_keyboard(field, language, diagnostics or {}, options), TicketStates.waiting_for_form
 
 
 async def _edit_form_prompt(
@@ -178,7 +212,7 @@ async def _edit_form_prompt(
 
 async def _start_ticket_form(callback: types.CallbackQuery, state: FSMContext, db_user: User) -> None:
     """Первый вопрос анкеты вместо запроса заголовка (блокировки и открытый тикет уже проверены)."""
-    text, keyboard, next_state = _form_screen(db_user.language, {})
+    text, keyboard, next_state = _form_screen(db_user.language, {}, await get_form_options())
     await _edit_form_prompt(callback, state, text, keyboard)
     await state.update_data(diagnostics={}, form_other_field=None)
     await state.set_state(next_state)
@@ -186,7 +220,7 @@ async def _start_ticket_form(callback: types.CallbackQuery, state: FSMContext, d
 
 
 async def handle_ticket_form_answer(callback: types.CallbackQuery, state: FSMContext, db_user: User):
-    """Ответ на вопрос анкеты: кнопка ``tf:<поле>:<вариант>``."""
+    """Ответ на вопрос анкеты: кнопка ``tf:<поле>:<вариант>`` (устройство и приложение — номер варианта)."""
     if await state.get_state() != TicketStates.waiting_for_form:
         # Кнопка от прошлого сценария или отменённого тикета.
         await callback.answer()
@@ -195,14 +229,19 @@ async def handle_ticket_form_answer(callback: types.CallbackQuery, state: FSMCon
     data = await state.get_data()
     diagnostics = dict(data.get('diagnostics') or {})
     field = _next_form_field(diagnostics)
+    options = await get_form_options()
     # Принимаем только ответ на текущий вопрос: двойной тап или старый экран не пропускают вопросов.
-    if len(parts) != 3 or field is None or parts[1] != field or parts[2] not in FORM_FIELDS[field]:
+    option = (
+        _resolve_choice(field, parts[2], diagnostics, options)
+        if len(parts) == 3 and field is not None and parts[1] == field
+        else None
+    )
+    if option is None:
         await callback.answer()
         return
-    option = parts[2]
     language = db_user.language
 
-    if option == 'other' and has_other(field):
+    if option == OTHER_OPTION and has_other(field):
         await state.update_data(form_other_field=field)
         await state.set_state(TicketStates.waiting_for_form_other)
         await _edit_form_prompt(
@@ -215,17 +254,17 @@ async def handle_ticket_form_answer(callback: types.CallbackQuery, state: FSMCon
         return
 
     diagnostics[field] = option
-    await _advance_ticket_form(state, diagnostics)
-    text, keyboard, next_state = _form_screen(language, diagnostics)
+    await _advance_ticket_form(state, diagnostics, options)
+    text, keyboard, next_state = _form_screen(language, diagnostics, options)
     await state.set_state(next_state)
     await _edit_form_prompt(callback, state, text, keyboard)
     await callback.answer()
 
 
-async def _advance_ticket_form(state: FSMContext, diagnostics: dict) -> None:
+async def _advance_ticket_form(state: FSMContext, diagnostics: dict, options: FormOptions) -> None:
     """Сохранить ответы; собранную анкету приводим к каноническому виду."""
     if _next_form_field(diagnostics) is None:
-        diagnostics = validate_diagnostics(diagnostics)
+        diagnostics = validate_diagnostics(diagnostics, options)
     await state.update_data(diagnostics=diagnostics, form_other_field=None)
 
 
@@ -243,16 +282,17 @@ async def handle_ticket_form_other_input(message: types.Message, state: FSMConte
     text = clean_other_text(message.text) if message.text else ''
     # Длинный текст не режем молча (как и текст тикета): просим сократить.
     too_long = bool(message.text) and len(' '.join(message.text.split())) > OTHER_MAX_LENGTH
-    if field not in FORM_FIELDS or not text or too_long:
+    if not isinstance(field, str) or not has_other(field) or not text or too_long:
         invalid = get_texts(language).t('TICKET_FORM_OTHER_INVALID').format(limit=OTHER_MAX_LENGTH)
         await _edit_or_send(message, prompt_chat_id, prompt_message_id, invalid, language)
         return
 
     diagnostics = dict(data.get('diagnostics') or {})
-    diagnostics[field] = 'other'
+    diagnostics[field] = OTHER_OPTION
     diagnostics[other_key(field)] = text
-    await _advance_ticket_form(state, diagnostics)
-    screen_text, keyboard, next_state = _form_screen(language, diagnostics)
+    options = await get_form_options()
+    await _advance_ticket_form(state, diagnostics, options)
+    screen_text, keyboard, next_state = _form_screen(language, diagnostics, options)
     await state.set_state(next_state)
     await _edit_or_send(message, prompt_chat_id, prompt_message_id, screen_text, language, reply_markup=keyboard)
 
@@ -439,7 +479,7 @@ async def handle_ticket_message_input(message: types.Message, state: FSMContext,
 
     diagnostics = None
     try:
-        diagnostics = validate_diagnostics(data.get('diagnostics'))
+        diagnostics = validate_diagnostics(data.get('diagnostics'), await get_form_options())
     except ValueError:
         if settings.SUPPORT_TICKET_FORM_REQUIRED:
             # Анкета обязательна, а состояние осталось от потока без неё (флаг включили посреди сценария).
@@ -1262,7 +1302,10 @@ async def notify_admins_about_new_ticket(ticket: Ticket, db: AsyncSession):
             notification_text += f'\n📩 <b>Сообщение:</b>\n{html.escape(message_preview)}\n'
 
         # Ответы обязательной анкеты (текст «Другое» пишет клиент: экранируем).
-        diagnostics_text = render_diagnostics(getattr(ticket, 'diagnostics', None), 'ru')
+        raw_diagnostics = getattr(ticket, 'diagnostics', None)
+        diagnostics_text = (
+            render_diagnostics(raw_diagnostics, 'ru', await get_form_options()) if raw_diagnostics else ''
+        )
         if diagnostics_text:
             form_title = get_texts('ru').t('TICKET_FORM_TITLE')
             notification_text += f'\n📋 <b>{html.escape(form_title)}:</b>\n{html.escape(diagnostics_text)}\n'

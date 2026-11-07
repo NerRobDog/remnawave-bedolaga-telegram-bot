@@ -1,5 +1,7 @@
 """Info pages routes for cabinet - FAQ, rules, privacy policy, etc."""
 
+from typing import Any
+
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -13,6 +15,7 @@ from app.services.faq_service import FaqService
 from app.services.privacy_policy_service import PrivacyPolicyService
 from app.services.public_offer_service import PublicOfferService
 from app.services.recurrent_payments_service import RecurrentPaymentsService
+from app.services.support_assist.form_options import get_form_options
 from app.utils.display_mode import is_visible_in_web
 
 from ..dependencies import get_cabinet_db, get_current_cabinet_user
@@ -122,6 +125,10 @@ class SupportConfigResponse(BaseModel):
     # Включена обязательная анкета перед тикетом (SUPPORT_TICKET_FORM_REQUIRED): без `diagnostics` в
     # POST /cabinet/tickets сервер ответит 422. Старый кабинет поле не читает.
     ticket_form_required: bool = False
+    # Варианты анкеты: устройства и приложения из конфига страницы подписки Remnawave (как на
+    # странице подключения), плюс router/other и места (russia/abroad). Отдаётся всегда, вне
+    # зависимости от ticket_form_required. Формат — FormOptions.to_api().
+    ticket_form_options: dict[str, Any] | None = None
 
 
 class InfoVisibilityResponse(BaseModel):
@@ -443,7 +450,17 @@ async def get_support_config():
         support_username=settings.get_support_contact_display() or None,
         contact_is_telegram=contact_is_telegram,
         ticket_form_required=settings.SUPPORT_TICKET_FORM_REQUIRED,
+        ticket_form_options=await _ticket_form_options(),
     )
+
+
+async def _ticket_form_options() -> dict[str, Any] | None:
+    """Варианты анкеты; сбой здесь не должен ломать support-config (get_form_options сам уходит в запасной набор)."""
+    try:
+        return (await get_form_options()).to_api()
+    except Exception as exc:
+        logger.warning('support-config: ticket form options failed', error=str(exc))
+        return None
 
 
 @router.get('/legal-consent', response_model=LegalConsentConfigResponse)
