@@ -4427,7 +4427,7 @@ class SupportAssistCard(Base):
     output_tokens = Column(Integer, nullable=True)
     cache_read_tokens = Column(Integer, nullable=True)
     cost_usd = Column(Numeric(10, 5), nullable=True)
-    # shown | sent | edited | dismissed | fallback | failed
+    # shown | sent | edited | dismissed | fallback | failed | skipped (только автовопрос: админ-уведомления выключены)
     status = Column(String(20), nullable=False, default='shown')
     final_text = Column(Text, nullable=True)
     admin_message_id = Column(BigInteger, nullable=True)
