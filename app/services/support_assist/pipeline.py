@@ -123,9 +123,7 @@ async def _run_safe(bot: Bot, ticket_id: int, trigger: Trigger) -> None:
         # Ждём очередь до открытия сессии БД: ожидающий разбор не должен занимать соединение.
         async with _pipeline_slots, AsyncSessionLocal() as db, remnawave_service.get_api_client() as api:
             if settings.ANTHROPIC_API_KEY:
-                async with anthropic.AsyncAnthropic(
-                    api_key=settings.ANTHROPIC_API_KEY, max_retries=CLAUDE_MAX_RETRIES
-                ) as client:
+                async with _anthropic_client() as client:
                     await run_assist(db, bot, api, client, ticket_id, trigger, datetime.now(UTC))
             else:
                 await run_assist(db, bot, api, None, ticket_id, trigger, datetime.now(UTC))
@@ -270,6 +268,15 @@ async def _run(
 def card_deadline_seconds() -> float:
     """Сколько всего можно ждать карточку от Claude: таймаут запроса плюс запас на разбор ответа."""
     return float(settings.SUPPORT_ASSIST_TIMEOUT_SECONDS) + CARD_TIMEOUT_MARGIN_SECONDS
+
+
+def _anthropic_client() -> anthropic.AsyncAnthropic:
+    """Anthropic client through the bot's proxy: api.anthropic.com answers 403 to Russian IPs."""
+    proxy = settings.get_support_assist_proxy_url()
+    kwargs: dict[str, Any] = {}
+    if proxy:
+        kwargs['http_client'] = anthropic.DefaultAsyncHttpxClient(proxy=proxy)
+    return anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY, max_retries=CLAUDE_MAX_RETRIES, **kwargs)
 
 
 async def _generate_capped(client: anthropic.AsyncAnthropic, payload: dict, client_texts: list[str]) -> CardResult:
