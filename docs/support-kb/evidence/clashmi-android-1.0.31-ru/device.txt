@@ -1,0 +1,5 @@
+captured 2026-11-07 via adb
+model=SM-A525F android=14
+com.nebula.clashmi     versionName=1.0.31
+com.follow.clashx     versionName=0.4.2
+su.happ.proxyutility     versionName=4.9.0

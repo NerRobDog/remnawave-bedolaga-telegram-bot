@@ -13,6 +13,15 @@
 # App list per platform comes from the panel's subscription page config
 # (Default, /api/subscription-page-configs/00000000-0000-0000-0000-000000000000).
 
+facts:
+  # Cross-app facts confirmed on a live device. Rendered at the top of kb_clients.md.
+  - text: 'В Clash Mi и FlClash(X) в группе GLOBAL по умолчанию выбран DIRECT (видно в приложении: Прокси → GLOBAL). Режим «Глобально» / «Глобальный» шлёт весь трафик через GLOBAL, значит без VPN. Не советовать «Глобально» как исправление; держать «Правила» / «По правилам».'
+    evidence: 'Clash Mi 1.0.31 Android: Прокси → GLOBAL = DIRECT; FlClashX 0.4.2 Android после переключения на «Глобальный» во вкладке Прокси появилась группа GLOBAL = DIRECT (evidence/*-android-*/ ru-12, ru-09); config/mihomo/default.template.yaml в Ansible_Servers не задаёт группу GLOBAL, поэтому mihomo ставит первым DIRECT (2026-11-07)'
+  - text: 'Группа «Остальные сайты» предлагает выбрать не сервер, а пул: «Зарубежные серверы (баланс)» или «Обход блокировок РФ (авто)»; в FlClashX есть ещё «Напрямую» (DIRECT, без VPN, не советовать). Конкретную страну или сервер клиент в ней не выбирает.'
+    evidence: 'Clash Mi 1.0.31 и FlClashX 0.4.2 на Android (Clash Mi ru-11, FlClashX ru-08) (2026-11-07)'
+  - text: 'Каждое приложение на одном телефоне считается отдельным устройством. При превышении лимита приложение получает подписку с сервером-заглушкой «Слишком дофига устройств подключено к подписке»; Happ ещё пишет «Достигнут лимит подключённых устройств в подписке». Решение: удалить лишние устройства (мини-апп или кабинет → Подписка) и в приложении обновить подписку.'
+    evidence: 'Galaxy A52, подписка с hwidDeviceLimit 1 (панель, /api/users/by-username): FlClashX получает полный конфиг (flclashx ru-07), Clash Mi (clashmi ru-12) и Happ (happ ru-01) на том же телефоне получают заглушку. Путь удаления устройств взят из kb.md, вживую не проверялся (2026-11-07)'
+
 apps:
   - app: Clash Mi
     platform: macos
@@ -67,7 +76,7 @@ apps:
           add_subscription: 'My Profiles → "+" → "Import From Clipboard" (link copied first) or "Add Profile Link"'
           update_subscription: 'My Profiles → cloud-with-arrow icon (all), or "⋮" → "Update" (one profile)'
           share_subscription: 'My Profiles → "⋮" → "QR Code" or "Copy Link"'
-          mode: 'main screen: "Rule" (default, RU sites direct), "Global" (everything via VPN), "Direct"'
+          mode: 'main screen: "Rule" (default, keep it). "Global" sends everything through the GLOBAL group, which is DIRECT by default (no VPN at all); "Direct" is no VPN. Never advise Global as a fix.'
       connected:
         status: verified
         evidence_dir: docs/support-kb/evidence/clashmi-macos-1.0.22-ru/
@@ -90,7 +99,7 @@ apps:
                        "3. HTTP (через прокси, порт: 7890)", "4. Таблица маршрутов"]
             evidence: 10-network-check.jpg
         tasks:
-          choose_server: 'главный экран → Прокси → группа (например «Остальные сайты») → сервер'
+          choose_server: 'главный экран → Прокси → группа «Остальные сайты» → выбрать «Зарубежные серверы (баланс)» или «Обход блокировок РФ (авто)» (если есть пункт «Напрямую» — это без VPN, не советовать). Отдельных серверов и стран в этой группе нет'
           self_check: 'главный экран → Проверка сети → домен → Проверить (только при подключении)'
     russian_ui:
       status: verified
@@ -134,13 +143,149 @@ apps:
         Network check: Проверка сети
       corrections_to_old_kb: 'в kb.md было «Мои профили» — в русском интерфейсе раздел называется «Профили»'
 
+  - app: Clash Mi
+    platform: android
+    version: "1.0.31"
+    ui_language: ru
+    verified_at: "2026-11-07"
+    verified_by: live read over adb on the owner's Galaxy A52 (Android 14, see device.txt), screenshots plus accessibility tree
+    evidence: docs/support-kb/evidence/clashmi-android-1.0.31-ru/
+    note: 'same screens as macOS; the settings screen title is translated here («Настройки приложения»); the add sheet has an extra item «Вход»'
+    states:
+      disconnected:
+        status: verified
+        screens:
+          main:
+            items_ru: ["Отключено (тумблер справа)", "Правила", "Глобально", "Напрямую", "Профили (+ и >)",
+                       "Настройки приложения", "Настройки ядра", "Журнал ядра",
+                       "Резервное копирование и синхронизация", "Помощь", "О приложении"]
+          my_profiles:
+            path_ru: главный экран → Профили ">"
+            items_ru: ["облако со стрелкой вверху справа: обновить все профили", "+ вверху справа: добавить",
+                       "⋮ справа на карточке профиля: меню профиля"]
+          add_profile_sheet:
+            path_ru: Профили → «+»
+            items_ru: ["Получить профиль / Купить профиль", "Добавление подписки", "Импорт из буфера обмена",
+                       "Сканировать QR-код", "Импорт файла конфигурации", "Вход"]
+          profile_menu:
+            path_ru: Профили → «⋮» на карточке профиля
+            items_ru: ["Просмотр", "Обновить", "Скопировать ссылку", "QR-код", "Редактирование профилей", "Удалить"]
+          app_settings:
+            path_ru: главный экран → Настройки приложения
+            items_ru: ["Перезагрузить", "Язык", "Тема", "Оформление главного экрана", "Режим ТВ",
+                       "Следовать за поворотом экрана", "Канал автоматического обновления",
+                       "Автоматически загружать пакеты обновлений", "Уровень журнала", "Использование онлайн-панели",
+                       "Скрыть из недавних задач", "Блокировка пробуждения",
+                       "Автоматическое подключение после запуска системы"]
+          core_settings:
+            path_ru: главный экран → Настройки ядра
+            items_ru: ["Перезагрузить", "Внешнее управление", "Пароль", "Порт mixed-прокси", "Уровень журнала",
+                       "Проксируемые приложения", "Pprof", "Unified Delay", "Режим поиска процесса", "IPv6", "TUN",
+                       "Geo RuleSet", "Шаблон сортировки пациентов", "Переопределить", "Параллельное TCP-подтверждение",
+                       "Глобальный отпечаток пальца TLS", "Доступ к локальной сети устройства", "DNS", "NTP", "TLS",
+                       "Обнаружение доменов"]
+        tasks:
+          connect_ru: 'главный экран → тумблер справа от «Отключено» (нажимать сам тумблер)'
+          add_subscription_ru: 'Профили → «+» → «Импорт из буфера обмена» (ссылка скопирована) или «Добавление подписки»'
+          update_subscription_ru: 'Профили → облако со стрелкой (все) или «⋮» → «Обновить»'
+          share_subscription_ru: 'Профили → «⋮» → «QR-код» или «Скопировать ссылку»'
+      connected:
+        status: verified
+        screens:
+          main:
+            items_ru: ["Подключено (тумблер зелёный)", "счётчики трафика и скорости", "Правила", "Глобально", "Напрямую",
+                       "Профили", "Прокси (текущая группа и >)", "Панель", "Конфигурация времени в… (подпись обрезана на экране)", "Проверка сети"]
+          proxies:
+            path_ru: главный экран → Прокси ">"
+            items_ru: ["вверху: «Отсортировать», «Обнаружение задержки» (молния)",
+                       "список групп с типом (Selector/Fallback/URLTest) и выбранным вариантом справа",
+                       "нажатие на группу открывает список вариантов снизу"]
+          network_check:
+            path_ru: главный экран → Проверка сети
+            items_ru: ["поле домена (example.com)", "Проверить", "1. DNS-запрос", "2. HTTP (через TUN, сначала включите TUN)",
+                       "3. HTTP (через прокси, порт: 7890)", "4. Таблица маршрутов"]
+        tasks:
+          choose_route_ru: 'Прокси → «Остальные сайты» → «Зарубежные серверы (баланс)» или «Обход блокировок РФ (авто)»'
+  - app: FlClashX
+    platform: android
+    version: "0.4.2"
+    ui_language: ru
+    verified_at: "2026-11-07"
+    verified_by: live read over adb on the owner's Galaxy A52 (Android 14, see device.txt)
+    evidence: docs/support-kb/evidence/flclashx-android-0.4.2-ru/
+    note: 'dark theme; bottom tabs; shows the panel announcement and the subscription card on the main screen. On first launch after install Android asks «Прекратить оптимизацию расхода заряда?» (Запретить / Разрешить)'
+    states:
+      disconnected:
+        status: verified
+        screens:
+          main:
+            items_ru: ["Главная (вкладка)", "объявление сервиса сверху", "карточка подписки: имя, трафик, «Истекает …», значки ? и ↻ (обновить)",
+                       "По правилам", "Глобальный", "Прямой", "большая кнопка ▶ внизу (подключить)",
+                       "вкладки снизу: Главная, Прокси, Профили, Настройки"]
+          my_profiles:
+            path_ru: вкладка Профили
+            items_ru: ["вверху: «Обновление» (↻), «Скрипт», «Сортировка профилей»",
+                       "карточки профилей с «Истекает …» и «Обновлено …»", "⋮ на карточке: меню профиля",
+                       "+ внизу справа: «Добавить профиль»"]
+          add_profile_sheet:
+            path_ru: Профили → «+»
+            items_ru: ["QR-код", "Файл", "URL"]
+          profile_menu:
+            path_ru: Профили → «⋮» на карточке
+            items_ru: ["Редактировать", "Обновление", "Переопределение", "Экспорт файла", "Удалить"]
+          settings:
+            path_ru: вкладка Настройки
+            items_ru: ["Подключения", "Ресурсы", "Язык", "Тема", "Резервное копирование и восстановление",
+                       "Контроль доступа", "Конфигурация ядра", "Настройки приложения"]
+        tasks:
+          add_subscription_ru: 'Профили → «+» → «URL» (вставить ссылку) или «QR-код»'
+          update_subscription_ru: 'Главная → ↻ на карточке подписки, или Профили → «Обновление» (↻ вверху), или «⋮» на карточке → «Обновление» (пункты видны, нажатие не проверялось)'
+          language_ru: 'Настройки → Язык'
+      connected:
+        status: verified
+        screens:
+          main:
+            items_ru: ["кнопка внизу зелёная: ⏸ и таймер подключения (нажать — отключить)"]
+          proxies:
+            path_ru: вкладка Прокси
+            items_ru: ["вверху: «Переключить режим», «Проверить задержку», «Развернуть всё», ⋮, поиск",
+                       "группы раскрываются: «Остальные сайты» → «Зарубежные серверы (баланс)», «Обход блокировок РФ (авто)», «Напрямую» (DIRECT, без VPN)"]
+        tasks:
+          choose_route_ru: 'Прокси → раскрыть «Остальные сайты» → «Зарубежные серверы (баланс)» или «Обход блокировок РФ (авто)»'
+  - app: Happ
+    platform: android
+    version: "4.9.0"
+    ui_language: ru
+    verified_at: "2026-11-07"
+    verified_by: live read over adb on the owner's Galaxy A52 (Android 14, see device.txt), not connected
+    evidence: docs/support-kb/evidence/happ-android-4.9.0-ru/
+    note: 'on launch offers an update (4.10.1: «Позже» / «Обновить»). Connected state not checked: the test subscription returned the device-limit stub'
+    states:
+      disconnected:
+        status: verified
+        screens:
+          main:
+            items_ru: ["шестерёнка вверху слева: Настройки", "+ вверху справа: добавить", "большая круглая кнопка питания (подключить)",
+                       "блок подписки: имя, «Автообновление», значки обновления (круговые стрелки), пинга и ⋯, трафик и «Истекает»",
+                       "при превышении лимита устройств в подписке текст «Достигнут лимит подключённых устройств в подписке…» и сервер-заглушка «Слишком дофига устройств подключено к…» вместо серверов"]
+          add_menu:
+            path_ru: главный экран → «+»
+            items_ru: ["Добавить подписку", "Вставить из буфера обмена", "QR-код", "Ручной ввод", "Вставить JSON", "Копировать JSON"]
+          settings:
+            path_ru: шестерёнка → Настройки
+            items_ru: ["Язык", "Тема оформления", "Настройки интерфейса", "Маршрутизация", "Прокси для выбранных приложений",
+                       "Использовать фрагментирование", "Использовать Mux", "Предпочтительный тип IP", "Inbounds",
+                       "Включить Xray TUN", "Настройки VPN", "Подписки", "Пинг", "Разрешить подключения из LAN",
+                       "Автозапуск приложения", "Бета версия", "Проверить обновление", "Статистика", "Логи", "Сброс", "FAQ"]
+        tasks:
+          add_subscription_ru: '«+» → «Вставить из буфера обмена» (ссылка скопирована) или «Добавить подписку» (пункты меню видны, нажатие не проверялось)'
+          update_subscription_ru: 'круговые стрелки в блоке подписки на главном экране (значок виден, нажатие не проверялось)'
+
   # Listed on the subscription page, not checked yet.
   - {app: Clash Mi, platform: ios, status: unverified}
-  - {app: Clash Mi, platform: android, status: unverified}
   - {app: Clash Mi, platform: windows, status: unverified}
   - {app: RabbitHole, platform: ios, status: unverified}
   - {app: RabbitHole, platform: macos, status: unverified, note: "1.3.2 installed on the owner's Mac"}
-  - {app: FlClashX, platform: android, status: unverified}
   - {app: FlClashX, platform: windows, status: unverified}
   - app: FlClash
     platform: macos
