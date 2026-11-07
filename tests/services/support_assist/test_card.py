@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.config import settings
 from app.services.support_assist.card import Card, CardResult, generate_card
 from app.services.support_assist.flags import compute_flags
 from app.services.support_assist.payload import build_payload, find_forbidden_keys
@@ -107,6 +108,69 @@ async def test_request_kwargs():
     data = json.loads(body[body.index('{') :])
     assert find_forbidden_keys(data) == []
     assert 'LEAK' not in body
+
+
+@pytest.mark.asyncio
+async def test_effort_comes_from_settings(monkeypatch):
+    assert settings.SUPPORT_ASSIST_EFFORT == 'medium'
+    monkeypatch.setattr(settings, 'SUPPORT_ASSIST_EFFORT', 'high')
+    client = _client(_response(json.dumps(VALID)))
+    await generate_card(client, _payload(), ['x'])
+    assert client.beta.messages.create.call_args.kwargs['output_config']['effort'] == 'high'
+
+
+@pytest.mark.asyncio
+async def test_unknown_effort_falls_back_to_medium(monkeypatch):
+    monkeypatch.setattr(settings, 'SUPPORT_ASSIST_EFFORT', 'turbo')
+    client = _client(_response(json.dumps(VALID)))
+    await generate_card(client, _payload(), ['x'])
+    assert client.beta.messages.create.call_args.kwargs['output_config']['effort'] == 'medium'
+
+
+@pytest.mark.asyncio
+async def test_fallbacks_can_be_switched_off(monkeypatch):
+    assert settings.SUPPORT_ASSIST_FALLBACKS_ENABLED is True
+    monkeypatch.setattr(settings, 'SUPPORT_ASSIST_FALLBACKS_ENABLED', False)
+    client = _client(_response(json.dumps(VALID)))
+    await generate_card(client, _payload(), ['x'])
+    kwargs = client.beta.messages.create.call_args.kwargs
+    assert 'fallbacks' not in kwargs
+    assert 'betas' not in kwargs
+
+
+@pytest.mark.asyncio
+async def test_cost_is_priced_by_the_model_that_answered():
+    """Ответил запасной Sonnet 5.5 ($2/$10), а не настроенный Opus 5.5: цена по ответившей модели."""
+    client = _client(_response(json.dumps(VALID), model='claude-sonnet-5-5'))
+    result = await generate_card(client, _payload(), ['x'])
+    # 1000*2 + 500*10 + 2000*0.2 per 1M
+    assert float(result.cost_usd) == pytest.approx(0.0074)
+    assert result.model == 'claude-sonnet-5-5'
+    assert result.cost_is_estimate is False
+
+
+@pytest.mark.asyncio
+async def test_cost_of_the_configured_model_is_not_an_estimate():
+    result = await generate_card(_client(_response(json.dumps(VALID))), _payload(), ['x'])
+    assert result.cost_is_estimate is False
+
+
+@pytest.mark.asyncio
+async def test_cost_for_an_unpriced_model_is_marked_as_estimate(caplog):
+    client = _client(_response(json.dumps(VALID), model='claude-future-9'))
+    result = await generate_card(client, _payload(), ['x'])
+    assert result.cost_is_estimate is True
+    assert result.model == 'claude-future-9'
+    # цена настроенной модели как оценка
+    assert float(result.cost_usd) == pytest.approx(0.0144)
+
+
+@pytest.mark.asyncio
+async def test_unknown_response_model_means_configured_model_pricing_without_estimate_flag():
+    client = _client(_response(json.dumps(VALID), model=None))
+    result = await generate_card(client, _payload(), ['x'])
+    assert float(result.cost_usd) == pytest.approx(0.0144)
+    assert result.cost_is_estimate is False
 
 
 def test_schema_is_strict_objects_without_unsupported_keywords():
