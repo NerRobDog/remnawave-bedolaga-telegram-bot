@@ -271,6 +271,78 @@ async def test_snapshot_collector_crash_still_sends_card(env):
     assert card.status == 'shown'
 
 
+def _sent_text(e):
+    return e.bot.send_message.call_args.kwargs['text']
+
+
+def _flag_codes(card):
+    return {f['code'] for f in card.flags}
+
+
+PANEL_SOURCES = ['panel_user', 'sub_requests', 'devices', 'usage', 'squad_nodes', 'nodes']
+
+
+@pytest.mark.asyncio
+async def test_collector_crash_says_no_data_not_no_subscription(env):
+    env.snapshot = RuntimeError('collector bug')
+    card = await _run(env, client=None)
+    text = _sent_text(env)
+    assert 'no_subscription' not in _flag_codes(card)
+    assert 'data_unavailable' in _flag_codes(card)
+    assert 'нет подписки' not in text
+    assert '❓ Нет данных' in text
+
+
+@pytest.mark.asyncio
+async def test_collector_crash_payload_to_model_carries_no_false_subscription_fact(env):
+    env.snapshot = RuntimeError('collector bug')
+    client = _client()
+    card = await _run(env, client=client)
+    sent = json.dumps(client.beta.messages.create.call_args.kwargs['messages'], ensure_ascii=False)
+    assert 'no_subscription' not in sent
+    assert 'У клиента нет подписки' not in sent
+    assert 'data_unavailable' in sent
+    assert card.status == 'shown'
+
+
+@pytest.mark.asyncio
+async def test_bot_db_failure_says_no_data_not_no_subscription(env):
+    # источник bot_db упал (например, пул соединений исчерпан): subscription=None, но это не «нет подписки»
+    env.snapshot = Snapshot(as_of=NOW, missing=['bot_db'])
+    card = await _run(env, client=None)
+    assert 'no_subscription' not in _flag_codes(card)
+    assert 'нет подписки' not in _sent_text(env)
+    assert '❓ Нет данных' in _sent_text(env)
+
+
+@pytest.mark.asyncio
+async def test_panel_down_fallback_card_has_unavailable_line(env):
+    env.snapshot = healthy(
+        panel_user=None,
+        devices=[],
+        sub_requests=[],
+        sub_requests_total=None,
+        usage_by_day={},
+        squad_nodes=[],
+        missing=PANEL_SOURCES,
+    )
+    card = await _run(env, client=None)
+    text = _sent_text(env)
+    assert _flag_codes(card) == {'data_unavailable'}
+    assert '❓ Нет данных' in text
+    assert 'устройства' in text and 'профиль в панели' in text
+    assert 'нет подписки' not in text  # подписка в боте есть, панель недоступна
+
+
+@pytest.mark.asyncio
+async def test_real_no_subscription_is_reported(env):
+    env.snapshot = Snapshot(as_of=NOW, account={'id': 9001, 'status': 'active', 'language': 'ru'}, subscription=None)
+    card = await _run(env, client=None)
+    assert _flag_codes(card) == {'no_subscription'}
+    assert '🔴 У клиента нет подписки в боте' in _sent_text(env)
+    assert '❓' not in _sent_text(env)
+
+
 @pytest.mark.asyncio
 async def test_second_run_within_throttle_window_does_nothing(env):
     assert await _run(env) is not None
@@ -545,9 +617,11 @@ async def test_snapshot_hang_is_cut_off_and_card_still_sent(env, monkeypatch):
         await asyncio.sleep(3600)
 
     monkeypatch.setattr(pipeline, 'collect_snapshot', hang)
-    card = await asyncio.wait_for(_run(env), 5)
-    assert card.status == 'shown'
+    card = await asyncio.wait_for(_run(env, client=None), 5)
+    assert card.status == 'fallback'
     assert 'snapshot' in card.facts['missing']
+    assert 'no_subscription' not in _flag_codes(card)  # обрыв по таймауту не означает «подписки нет»
+    assert '❓ Нет данных' in _sent_text(env)
     env.bot.send_message.assert_awaited_once()
     env.db.commit.assert_awaited()  # транзакция, оставшаяся от оборванного сбора, закрыта до записи карточки
 
