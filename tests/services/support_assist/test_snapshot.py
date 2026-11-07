@@ -7,8 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.external.remnawave_api import RemnaWaveAPIError
-from app.services.support_assist import flags
-from app.services.support_assist import snapshot as snap
+from app.services.support_assist import flags, snapshot as snap
 
 
 NOW = datetime(2026, 11, 6, 12, 0, tzinfo=UTC)
@@ -108,7 +107,9 @@ async def test_history_failure_goes_to_missing_not_empty(monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('response', [{'records': []}, {'total': None, 'records': []}, {'total': 'many', 'records': []}])
+@pytest.mark.parametrize(
+    'response', [{'records': []}, {'total': None, 'records': []}, {'total': 'many', 'records': []}]
+)
 async def test_history_without_a_usable_total_is_unknown_not_zero(monkeypatch, response):
     """Панель не прислала число — «ни разу не забирала» утверждать нельзя: total остаётся None."""
     _patch_bot(monkeypatch)
