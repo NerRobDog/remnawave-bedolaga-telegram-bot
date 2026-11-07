@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Literal
 
-from app.services.support_assist.snapshot import Snapshot
+from app.services.support_assist.snapshot import RESTRICTION_KINDS, Snapshot
 
 
 # 'unknown' — не отклонение и не норма, а «данных нет»: в карточке это строка с ❓.
@@ -20,6 +20,8 @@ Severity = Literal['high', 'mid', 'low', 'info', 'unknown']
 _LIVE_STATUSES = {'active', 'trial'}
 _MB = 1024 * 1024
 _HISTORY_CAP = 24  # панель отдаёт не больше 24 последних запросов подписки
+# Текст флага «restricted» собирается из видов запретов; причину, написанную админом, в него не берём.
+_RESTRICTION_TEXT = {'subscription': 'запрет продления/покупки', 'topup': 'запрет пополнения'}
 
 # Без этих источников подписка клиента неизвестна: ``Snapshot.subscription is None`` тогда значит
 # «не прочитали», а не «подписки нет».
@@ -179,8 +181,9 @@ def compute_flags(s: Snapshot) -> list[Flag]:
             )
 
     # --- аккаунт, платежи, ошибки, массовый сбой
-    if s.restrictions:
-        add('restricted', 'high', 'Ограничения аккаунта: ' + '; '.join(s.restrictions))
+    restricted = [_RESTRICTION_TEXT[kind] for kind in RESTRICTION_KINDS if kind in s.restrictions]
+    if restricted:
+        add('restricted', 'high', 'Ограничения аккаунта: ' + '; '.join(restricted))
     if s.bot_errors_24h:
         add('bot_errors', 'mid', f'Ошибок бота по клиенту за сутки: {s.bot_errors_24h}')
     if any(t.get('status') != 'completed' for t in s.transactions_48h):

@@ -16,7 +16,7 @@ from datetime import date, datetime
 from typing import Any
 
 from app.services.support_assist.flags import Flag
-from app.services.support_assist.snapshot import Snapshot
+from app.services.support_assist.snapshot import RESTRICTION_KINDS, Snapshot
 from app.services.support_assist.ticket_form import FORM_FIELDS, OTHER_OPTION, clean_other_text, other_key
 
 
@@ -163,7 +163,7 @@ def build_payload(s: Snapshot, flags: list[Flag]) -> dict:
         'bot_errors_24h': s.bot_errors_24h,
         'past_tickets': _pick_all(s.past_tickets, plain=('status',), dates=('created_at',)),
         'other_tickets_2h': s.other_tickets_2h,
-        'restrictions': [str(r) for r in s.restrictions],
+        'restrictions': [kind for kind in RESTRICTION_KINDS if kind in s.restrictions],
         'diagnostics': _diagnostics(s.diagnostics),
         'missing': [str(m) for m in s.missing],
         'flags': [{'code': f.code, 'sev': f.sev, 'text': f.text} for f in flags],
