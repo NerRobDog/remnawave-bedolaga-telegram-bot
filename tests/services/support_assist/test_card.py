@@ -173,6 +173,15 @@ async def test_unknown_response_model_means_configured_model_pricing_without_est
     assert result.cost_is_estimate is False
 
 
+def test_prompt_marks_diagnostics_as_unverified_client_answers():
+    """Анкета — слова клиента: в промпте она слабее измеренных проверок."""
+    from app.services.support_assist.card import _system_blocks
+
+    prompt = _system_blocks()[0]['text']
+    line = next(row for row in prompt.splitlines() if 'diagnostics' in row)
+    assert 'не проверенные' in line and 'слабее измеренных' in line
+
+
 def test_schema_is_strict_objects_without_unsupported_keywords():
     from app.services.support_assist.card import _card_schema
 
