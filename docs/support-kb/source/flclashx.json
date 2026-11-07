@@ -1,0 +1,694 @@
+{
+ "app": "FlClashX",
+ "source_available": true,
+ "repo": "https://github.com/pluralplay/FlClashX",
+ "release_tag": "v0.4.2",
+ "release_date": "2026-07-18",
+ "commit_sha": "fabbd8ea72f26a802bc942d356f4ac5a7fd798be",
+ "ru_locale_present": true,
+ "languages_available": [
+  "English",
+  "Russian",
+  "Japanese",
+  "Simplified Chinese"
+ ],
+ "locale_files": [
+  "arb/intl_en.arb",
+  "arb/intl_ru.arb",
+  "arb/intl_ja.arb",
+  "arb/intl_zh_CN.arb",
+  "lib/l10n/intl/messages_en.dart",
+  "lib/l10n/intl/messages_ru.dart"
+ ],
+ "provenance": "read from the app's source/locale files at the release tag (closed-source apps: official docs or installed bundle), then adversarially re-checked by a second agent; NOT a live UI check",
+ "labels": [
+  {
+   "flow": "connect/disconnect",
+   "screen": "Dashboard, classic look (default), main button",
+   "key": "(no text label; AnimatedIcon play_pause + timer)",
+   "en": "(icon only: play/pause; while running shows uptime timer, e.g. 00:01:23)",
+   "ru": "(только иконка play/pause; при работе показывает таймер аптайма)",
+   "file": "lib/views/dashboard/widgets/start_button.dart:115-137,186-190",
+   "state": "both",
+   "platform_note": "Full-width button at the bottom of the Dashboard, not a bottom-right corner button. Hidden until a profile exists and the core is initialised (start_button.dart:108-111). Green when running.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "connect/disconnect",
+   "screen": "Dashboard, 'New look' (hero) mode, main button",
+   "key": "(no text label)",
+   "en": "(disconnected: play icon only; connected: uptime timer text only)",
+   "ru": "(отключено: только иконка play; подключено: только таймер)",
+   "file": "lib/views/dashboard/widgets/hero_connect.dart:982-1040 (comment at 1029: 'no Start label')",
+   "state": "both",
+   "platform_note": "Used only if the 'newDashboard' setting is on (dashboard.dart:236-262); setting is off by default (providers/state.dart:490-492) but a subscription header flclashx-newboard can turn it on.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "connect/disconnect",
+   "screen": "Desktop tray menu",
+   "key": "start / stop",
+   "en": "Start / Stop",
+   "ru": "Старт / Стоп",
+   "file": "lib/common/tray.dart:70",
+   "state": "both",
+   "platform_note": "Windows/macOS/Linux tray: item reads 'Start' when disconnected, 'Stop' when connected. arb: start, stop.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "connect/disconnect",
+   "screen": "Title bar status (Windows/Linux only)",
+   "key": "stopped / running",
+   "en": "Stopped / Running",
+   "ru": "Остановлено / Запущено",
+   "file": "lib/manager/window_manager.dart:405-421,333-337",
+   "state": "both",
+   "platform_note": "Dot + text in the custom window header. Not shown on macOS (shows app name instead, line 330-331) or mobile. Disconnected = 'Stopped'/'Остановлено', connected = 'Running'/'Запущено'.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "connect/disconnect",
+   "screen": "Android toast / notification shortcuts",
+   "key": "startVpn / stopVpn; toggle / start / stop",
+   "en": "Starting VPN... / Stopping VPN...; Start / Stop",
+   "ru": "Запуск VPN... / Остановка VPN...; Старт / Стоп",
+   "file": "lib/main.dart:97,151; lib/plugins/app.dart:95-99",
+   "state": "both",
+   "platform_note": "Android only (tip toast and launcher shortcuts). arb 'toggle' value not read; app.dart uses appLocalizations.toggle.",
+   "verify": "refuted",
+   "verify_problem": "Starting VPN... / Stopping VPN... (Запуск VPN... / Остановка VPN...) are correct, but the toast appears only when the quick-settings tile or home-screen widget starts or stops the VPN before the app UI exists (_MainTileListener in main.dart: it defers when appController is ready). It is not shown on every Android start. The shortcut labels also include toggle, which the row omits.",
+   "ru_corrected": "Переключить / Старт / Стоп; тосты Запуск VPN... / Остановка VPN... (только запуск из плитки или виджета при холодном старте)",
+   "en_corrected": "Toggle / Start / Stop (shortcut labels); toasts Starting VPN... / Stopping VPN... (cold-start tile or widget only)"
+  },
+  {
+   "flow": "proxy mode",
+   "screen": "Proxies page toolbar, mode button",
+   "key": "action_mode",
+   "en": "Switch mode",
+   "ru": "Переключить режим",
+   "file": "lib/views/proxies/proxies.dart:242",
+   "state": "both",
+   "platform_note": "Icon-only button (tooltip text); the popup contains only By rule and Global, Direct is excluded (proxies.dart:248). Whole button is hidden when the subscription header flclashx-globalmode=false (providers/state.dart:477-481; proxies.dart:46-50).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "proxy mode",
+   "screen": "Mode popup items",
+   "key": "rule / global / direct",
+   "en": "By rule / Global / Direct",
+   "ru": "По правилам / Глобальный / Прямой",
+   "file": "lib/views/proxies/proxies.dart:223-225",
+   "state": "both",
+   "platform_note": "Direct is shown only in the classic dashboard 'Outbound mode' card, the New-look chip, and the tray menu.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "proxy mode",
+   "screen": "Dashboard classic, card 'Outbound mode'",
+   "key": "outboundMode",
+   "en": "Outbound mode",
+   "ru": "Режим исходящих подключений",
+   "file": "lib/views/dashboard/widgets/outbound_mode.dart:33",
+   "state": "both",
+   "platform_note": "Radio list of modes (title via Intl.message(item.name): By rule/Global/Direct). Card hidden if globalmode header is false (dashboard.dart:152-157). It is a dashboard widget that may be removed in edit mode.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "proxy mode",
+   "screen": "Desktop tray",
+   "key": "rule/global/direct",
+   "en": "By rule / Global / Direct",
+   "ru": "По правилам / Глобальный / Прямой",
+   "file": "lib/common/tray.dart:77-83",
+   "state": "both",
+   "platform_note": "Desktop only; same globalmode gate.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "add subscription",
+   "screen": "Bottom/side navigation",
+   "key": "profiles",
+   "en": "Profiles",
+   "ru": "Профили",
+   "file": "lib/common/navigation.dart:40-48",
+   "state": "both",
+   "platform_note": "Mobile: bottom bar; desktop: side bar. In New-look mobile the bottom bar is icon-only with tooltips (hero_nav_bar.dart:72-77).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "screen": "Profiles page, FAB",
+   "key": "addProfile",
+   "en": "Add Profile",
+   "ru": "Добавить профиль",
+   "file": "lib/views/profiles/profiles.dart:121-129",
+   "state": "both",
+   "platform_note": "FAB with plus icon; text is the tooltip. Also a card of the same name on Dashboard when no profile (metainfo_widget.dart:80) and button in New-look empty state (hero_connect.dart:1090).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "screen": "Add-profile sheet title",
+   "key": "add + profile",
+   "en": "AddProfile",
+   "ru": "ДобавитьПрофиль",
+   "file": "lib/views/profiles/profiles.dart:37",
+   "state": "both",
+   "platform_note": "Title is built as '${add}${profile}' with no space, so it renders 'AddProfile' / 'ДобавитьПрофиль'. Do not tell users the sheet is called 'Add Profile'.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "add subscription",
+   "screen": "Add-profile sheet, item QR",
+   "key": "qrcode / qrcodeDesc",
+   "en": "QR code / Scan QR code to obtain profile",
+   "ru": "QR-код / Сканировать QR-код для получения профиля",
+   "file": "lib/views/profiles/add_profile.dart:75-79",
+   "state": "both",
+   "platform_note": "Camera scan (pages/scan.dart).",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "add subscription",
+   "screen": "Add-profile sheet, item File",
+   "key": "file / fileDesc",
+   "en": "File / Directly upload profile",
+   "ru": "Файл / Загрузить профиль из файла",
+   "file": "lib/views/profiles/add_profile.dart:81-85",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "screen": "Add-profile sheet, item URL",
+   "key": "url / urlDesc",
+   "en": "URL / Obtain profile through URL",
+   "ru": "URL / Загрузить профиль по URL",
+   "file": "lib/views/profiles/add_profile.dart:87-91",
+   "state": "both",
+   "platform_note": "Opens URL dialog.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "screen": "Add-profile sheet, item for TV",
+   "key": "addFromPhoneTitle / addFromPhoneSubtitle",
+   "en": "Add from Phone / Scan QR code with phone",
+   "ru": "Добавить с телефона / Сканировать QR-код телефоном",
+   "file": "lib/views/profiles/add_profile.dart:66-73",
+   "state": "both",
+   "platform_note": "Shown only on Android TV (isTV). Opens a dialog titled 'Receive Subscription' / 'Получение подписки' with a QR code for the phone to scan (receive_profile_dialog.dart:161,218).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "screen": "URL dialog",
+   "key": "importFromURL; pasteFromClipboard; submit",
+   "en": "Import from URL; Paste; Submit",
+   "ru": "Импорт из URL; Вставить; Отправить",
+   "file": "lib/views/profiles/add_profile.dart:124-133",
+   "state": "both",
+   "platform_note": "Input field labelled 'URL'. 'Paste' fills the field from the clipboard; there is no auto-detect of the clipboard on the button itself, user must press Paste then Submit.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "update subscription",
+   "screen": "Profiles page toolbar",
+   "key": "sync",
+   "en": "Sync",
+   "ru": "Обновление",
+   "file": "lib/views/profiles/profiles.dart:80-84",
+   "state": "both",
+   "platform_note": "Icon-only button (tooltip) that updates ALL URL profiles; file profiles skipped (profiles.dart:~42). Note RU text for 'Sync' is 'Обновление'.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "update subscription",
+   "screen": "Profile card three-dot menu",
+   "key": "sync",
+   "en": "Sync",
+   "ru": "Обновление",
+   "file": "lib/views/profiles/profiles.dart:446-451",
+   "state": "both",
+   "platform_note": "Updates ONE profile; only for URL-type profiles. The same menu holds: Edit/Редактировать, Override/Переопределение, Export file/Экспорт файла, Delete/Удалить (lines 438-472), and on TV 'Select Profile'/'Выбрать профиль' (line 431-436).",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "update subscription",
+   "screen": "Dashboard (New look) action chip",
+   "key": "update",
+   "en": "Update",
+   "ru": "Обновить",
+   "file": "lib/views/dashboard/widgets/hero_connect.dart:1156",
+   "state": "both",
+   "platform_note": "Only in New-look dashboard; updates the current profile.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "update subscription",
+   "screen": "Edit profile dialog",
+   "key": "autoUpdate / autoUpdateInterval",
+   "en": "Auto update / Auto update interval (minutes)",
+   "ru": "Автообновление / Интервал автообновления (минуты)",
+   "file": "lib/views/profiles/edit_profile.dart:294,307",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "choose server",
+   "screen": "Navigation: Proxies page",
+   "key": "proxies (nav label); locations (New-look tooltip)",
+   "en": "Proxies; Locations",
+   "ru": "Прокси; Локации",
+   "file": "lib/common/navigation.dart:28-39; lib/views/dashboard/widgets/hero_nav_bar.dart:74-76",
+   "state": "both",
+   "platform_note": "The Proxies tab is shown only when the app setting hasProxies is true (navigation.dart:36-38, controller.dart sets it); otherwise the user is not given this tab and the page is reached from the Dashboard 'Change Server' card. In New-look mobile the same tab is tooltip 'Locations'/'Локации'.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "choose server",
+   "screen": "Dashboard card",
+   "key": "changeServer",
+   "en": "Change Server",
+   "ru": "Изменить сервер",
+   "file": "lib/views/dashboard/widgets/change_server_button.dart:268-270,120",
+   "state": "both",
+   "platform_note": "Tapping navigates to the Proxies page (toPage(PageLabel.proxies), line 120/231). Dashboard widget, can be removed in edit mode.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "choose server",
+   "screen": "Proxies page: group selector sheet title",
+   "key": "proxyGroup",
+   "en": "Proxy group",
+   "ru": "Группа прокси",
+   "file": "lib/views/proxies/tab.dart:92",
+   "state": "both",
+   "platform_note": "Tab layout has a group-switch popup; list layout shows expandable groups.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "choose server",
+   "screen": "Proxies page toolbar, latency test",
+   "key": "testAllDelay",
+   "en": "Test latency",
+   "ru": "Проверить задержку",
+   "file": "lib/views/proxies/proxies.dart:55-62",
+   "state": "both",
+   "platform_note": "Icon-only button (network_ping icon). Tests all groups. The list view also has a per-group network_ping button (list.dart:400-404). Sort option 'Delay'/'Задержка' in Proxies settings (setting.dart:25).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "choose server",
+   "screen": "Proxies page toolbar",
+   "key": "collapseAll / expandAll",
+   "en": "Collapse all / Expand all",
+   "ru": "Свернуть всё / Развернуть всё",
+   "file": "lib/views/proxies/proxies.dart:74-77",
+   "state": "both",
+   "platform_note": "Only in list layout.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "choose server",
+   "screen": "Proxies page three-dot menu",
+   "key": "settings / providers / iconConfiguration",
+   "en": "Settings / Providers / Icon configuration",
+   "ru": "Настройки / Провайдеры / Конфигурация иконки",
+   "file": "lib/views/proxies/proxies.dart:104-137",
+   "state": "both",
+   "platform_note": "",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "system proxy / TUN",
+   "screen": "Settings page entry",
+   "key": "tools (nav label)",
+   "en": "Settings",
+   "ru": "Настройки",
+   "file": "lib/common/navigation.dart:84-93",
+   "state": "both",
+   "platform_note": "Nav item only on desktop and mobile modes.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "system proxy / TUN",
+   "screen": "Settings list entry",
+   "key": "basicConfig / basicConfigDesc",
+   "en": "Basic configuration / (basicConfigDesc)",
+   "ru": "Конфигурация ядра / (basicConfigDesc)",
+   "file": "lib/views/tools.dart:252-263",
+   "state": "both",
+   "platform_note": "The opened sub-page header uses appLocalizations.override ('Override'/'Переопределение'), not 'Basic configuration' (tools.dart:260). Contains General/Общие, Network/Сеть, DNS (config.dart:22-43).",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "system proxy / TUN",
+   "screen": "Network list (Android)",
+   "key": "VPN (hard-coded literal)",
+   "en": "VPN",
+   "ru": "VPN",
+   "file": "lib/views/config/network.dart:75-77,412",
+   "state": "both",
+   "platform_note": "Android only (network.dart:412). Subtitle 'Auto routes all system traffic through VpnService' / 'Автоматически направляет весь системный трафик через VpnService'. This is the Android analogue of TUN. Literal 'VPN', not localized. Same toggle on Android Dashboard card 'VPN' (quick_options.dart:162-188, literal).",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "system proxy / TUN",
+   "screen": "Network list (desktop)",
+   "key": "tun / tunDesc",
+   "en": "TUN / only effective in administrator mode",
+   "ru": "TUN / Доступно только в режиме администратора",
+   "file": "lib/views/config/network.dart:99-102,439-441",
+   "state": "both",
+   "platform_note": "Desktop only (system.isDesktop). Also a Dashboard card 'TUN' with 'Options'/'Опции' that opens the sheet (quick_options.dart:25-54). Tray menu has item 'TUN' too (tray.dart:95).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "system proxy / TUN",
+   "screen": "Network list (desktop), section 'System'",
+   "key": "system; systemProxy / systemProxyDesc; bypassDomain",
+   "en": "System; System proxy / Attach HTTP proxy to VpnService; Bypass domain",
+   "ru": "Система; Системный прокси / Использовать HTTP-прокси через VPN; Обход домена",
+   "file": "lib/views/config/network.dart:427-434,165-176",
+   "state": "both",
+   "platform_note": "Desktop only. Dashboard card 'System proxy' (quick_options.dart:107-112) and tray item (tray.dart:104). On Android the same string is the switch under the 'VPN' section (VpnSystemProxyItem, network.dart:141-150), enabled alongside VPN.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "system proxy / TUN",
+   "screen": "Network list",
+   "key": "stackMode; allowBypass; overrideNetworkSettings",
+   "en": "Stack mode; Allow applications to bypass VPN; Override network settings",
+   "ru": "Режим стека; Разрешить обход VPN; Переопределение сетевых настроек",
+   "file": "lib/views/config/network.dart:25,125,254",
+   "state": "both",
+   "platform_note": "allowBypass is Android only. 'Override network settings' may show a 'managedByProvider' note when the subscription provider controls the settings (network.dart:51).",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "language",
+   "screen": "Settings page, first item",
+   "key": "language",
+   "en": "Language",
+   "ru": "Язык",
+   "file": "lib/views/tools.dart:138-151",
+   "state": "both",
+   "platform_note": "Options: Default (defaultText) + en/ja/ru/zh_CN. In EN UI shows English, Japanese, Russian, Simplified Chinese; in RU UI shows Английский, Японский, Русский, Упрощенный китайский (arb lines 52-55). 'Default'/'По умолчанию' follows the system locale.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "language",
+   "screen": "Language picker options",
+   "key": "defaultText; en; ja; ru; zh_CN",
+   "en": "Default; English; Japanese; Russian; Simplified Chinese",
+   "ru": "По умолчанию; Английский; Японский; Русский; Упрощенный китайский",
+   "file": "arb/intl_en.arb:52-55; arb/intl_ru.arb:52-55; lib/l10n/l10n.dart:3946-3952",
+   "state": "both",
+   "platform_note": "",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "share/copy subscription",
+   "screen": "n/a",
+   "key": "(none)",
+   "en": "(no feature found)",
+   "ru": "(функция не найдена)",
+   "file": "lib/views/profiles/profiles.dart:438-472",
+   "state": "unknown",
+   "platform_note": "The profile menu has Edit, Sync, Override, Export file, Delete only. No 'copy link' or 'share QR' action exists in the code at v0.4.2 (grep for Clipboard.setData finds only tray env-var copy and editor copy). 'Export file' saves the config file, not the link. The URL can be read/copied manually from the 'URL' field in Edit.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "logs",
+   "screen": "Navigation: Logs",
+   "key": "logs / logsDesc",
+   "en": "Logs / Log capture records",
+   "ru": "Логи / Записи журнала событий",
+   "file": "lib/common/navigation.dart:71-83",
+   "state": "both",
+   "platform_note": "Hidden unless setting openLogs is true. When true: desktop side bar and the Settings page 'More'/'Еще' list (modes desktop+more). When false there is no Logs entry. On mobile it is reached via Settings > More.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "logs",
+   "screen": "Application settings toggle",
+   "key": "logcat / logcatDesc",
+   "en": "Logcat / Disabling will hide the log entry",
+   "ru": "Журналирование / Вести журнал событий приложения",
+   "file": "lib/views/application_setting.dart:478-495",
+   "state": "both",
+   "platform_note": "Path: Settings > Application Settings/Настройки приложения. Item is rendered at 50% opacity unless 'overrideProviderSettings' is on (application_setting.dart:482-486). May be forced by the provider header (controller.dart:294). RU subtitle says 'Keep app event log', differing from EN.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "logs",
+   "screen": "Logs page toolbar",
+   "key": "exportLogs",
+   "en": "Export logs",
+   "ru": "Экспорт логов",
+   "file": "lib/views/logs.dart:68-76,102",
+   "state": "both",
+   "platform_note": "Download icon button, no visible text label; dialog title is 'Export logs'. Desktop also has 'Open logs folder' item in Application Settings (application_setting.dart:44).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "connected-only info",
+   "screen": "Connections page tabs",
+   "key": "connections; connectionsActive; connectionsLog",
+   "en": "Connections; Active; Log",
+   "ru": "Подключения; Активные; Журнал",
+   "file": "lib/common/navigation.dart:49-59; lib/views/connection/connections.dart:106,111",
+   "state": "connected",
+   "platform_note": "Nav modes are desktop + 'more' only: on desktop it is in the side bar; on Android it is in Settings > More. Page title 'Connections', description 'View current connections data'/'Просмотр текущих данных о соединениях'. (A 'Requests'/'Запросы' key exists in arb but is not used as a tab title.)",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "connected-only info",
+   "screen": "Dashboard card",
+   "key": "networkSpeed",
+   "en": "Network speed",
+   "ru": "Скорость сети",
+   "file": "lib/views/dashboard/widgets/network_speed.dart:50",
+   "state": "connected",
+   "platform_note": "Classic dashboard widget. Numbers only; no upload/download text label verified there.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "connected-only info",
+   "screen": "Dashboard card",
+   "key": "trafficUsage; upload; download",
+   "en": "Traffic usage; Upload; Download",
+   "ru": "Использование трафика; Отправка; Загрузка",
+   "file": "lib/views/dashboard/widgets/traffic_usage.dart:58,108,114",
+   "state": "connected",
+   "platform_note": "Session traffic counters in the classic dashboard.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "connected-only info",
+   "screen": "Dashboard card",
+   "key": "networkDetection; determiningIp",
+   "en": "Your IP Address; Determining IP...",
+   "ru": "Ваш IP-адрес; Определяю IP..",
+   "file": "lib/views/dashboard/widgets/network_detection.dart:84; hero_connect.dart:724",
+   "state": "both",
+   "platform_note": "Shows the external IP; 'Determining IP...' while resolving.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "subscription info",
+   "screen": "Dashboard / Profile card",
+   "key": "traffic; expiresOn; subscriptionUnlimited; updated; remaining",
+   "en": "Traffic; Expires on; Lifetime Subscription; Updated; Remaining",
+   "ru": "Трафик; Истекает; Бессрочная подписка; Обновлено; Осталось",
+   "file": "lib/views/profiles/profiles.dart:326,346-352; hero_connect.dart:476",
+   "state": "both",
+   "platform_note": "Shown from the subscription headers (traffic quota, expiry).",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "support / panel",
+   "screen": "Dashboard",
+   "key": "support; openPanel",
+   "en": "Support; Open panel",
+   "ru": "Поддержка; Открыть панель",
+   "file": "lib/views/dashboard/widgets/hero_connect.dart:1166; zashboard_button.dart:39",
+   "state": "both",
+   "platform_note": "'Support' only appears if the subscription has the support-url header (hero_connect.dart:1146).",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "subscription renewal buttons (hard-coded RU)",
+   "screen": "New-look dashboard",
+   "key": "(hard-coded literal)",
+   "en": "Продлить подписку / Докупить трафик (same in EN UI)",
+   "ru": "Продлить подписку / Докупить трафик",
+   "file": "lib/views/dashboard/widgets/hero_connect.dart:537,543",
+   "state": "both",
+   "platform_note": "Not localized; appear only when the provider sets flclashx-buyplan / flclashx-buytraffic headers.",
+   "verify": "not_checked"
+  }
+ ],
+ "menu_paths": [
+  {
+   "task": "Connect (enable VPN)",
+   "path_en": "Dashboard > press the large play/pause button at the bottom (classic look) or the play button (New look). Desktop alternative: tray icon > Start",
+   "path_ru": "Главная > нажать большую кнопку play/pause внизу (классический вид) или кнопку play (Новый вид). На десктопе: значок в трее > Старт",
+   "evidence": "lib/views/dashboard/widgets/start_button.dart:115; hero_connect.dart:1010-1014; lib/common/tray.dart:70; nav label dashboard=Dashboard/Главная (arb line 26). Button has no text. It is hidden until a profile exists."
+  },
+  {
+   "task": "Check that it is connected",
+   "path_en": "Button shows a running timer; desktop (Windows/Linux) title bar shows 'Running' (disconnected: 'Stopped')",
+   "path_ru": "На кнопке идёт таймер; в заголовке окна (Windows/Linux) 'Запущено' (при отключении 'Остановлено')",
+   "evidence": "start_button.dart:186-190; lib/manager/window_manager.dart:405-421"
+  },
+  {
+   "task": "Disconnect",
+   "path_en": "Dashboard > press the same button again (timer shown) ; or tray icon > Stop",
+   "path_ru": "Главная > нажать ту же кнопку (на ней таймер); или значок в трее > Стоп",
+   "evidence": "start_button.dart:53-62; tray.dart:70"
+  },
+  {
+   "task": "Add subscription by URL",
+   "path_en": "Profiles > Add Profile (plus FAB) > URL > paste link (button 'Paste') > Submit. Sheet title renders 'AddProfile'",
+   "path_ru": "Профили > Добавить профиль (кнопка +) > URL > вставить ссылку (кнопка 'Вставить') > Отправить. Заголовок листа отображается как 'ДобавитьПрофиль'",
+   "evidence": "lib/views/profiles/profiles.dart:37,121-129; add_profile.dart:87-91,124-133"
+  },
+  {
+   "task": "Add subscription by QR",
+   "path_en": "Profiles > Add Profile > QR code",
+   "path_ru": "Профили > Добавить профиль > QR-код",
+   "evidence": "add_profile.dart:75-79,_toScan"
+  },
+  {
+   "task": "Add subscription by file",
+   "path_en": "Profiles > Add Profile > File",
+   "path_ru": "Профили > Добавить профиль > Файл",
+   "evidence": "add_profile.dart:81-85"
+  },
+  {
+   "task": "Add subscription on Android TV",
+   "path_en": "Profiles > Add Profile > Add from Phone (shows QR to scan with the phone), or URL",
+   "path_ru": "Профили > Добавить профиль > Добавить с телефона (показывает QR для телефона), либо URL",
+   "evidence": "add_profile.dart:66-73; receive_profile_dialog.dart:161"
+  },
+  {
+   "task": "Add subscription when no profile exists yet (shortcut)",
+   "path_en": "Dashboard > Add Profile (card/button) > Import from URL dialog > Paste > Submit",
+   "path_ru": "Главная > Добавить профиль > диалог 'Импорт из URL' > Вставить > Отправить",
+   "evidence": "hero_connect.dart:1067-1092; metainfo_widget.dart:60-80 (opens URLFormDialog directly)"
+  },
+  {
+   "task": "Update all subscriptions",
+   "path_en": "Profiles > Sync (circular-arrows icon in top bar, tooltip 'Sync')",
+   "path_ru": "Профили > значок обновления в верхней панели (подсказка 'Обновление')",
+   "evidence": "profiles.dart:80-84,_updateProfiles"
+  },
+  {
+   "task": "Update one subscription",
+   "path_en": "Profiles > three-dot menu on the profile card > Sync (URL profiles only); New look: Dashboard > Update",
+   "path_ru": "Профили > меню (три точки) на карточке профиля > Обновление; Новый вид: Главная > Обновить",
+   "evidence": "profiles.dart:446-451; hero_connect.dart:1156"
+  },
+  {
+   "task": "Switch proxy mode (rule/global)",
+   "path_en": "Proxies > mode icon in the top bar (tooltip 'Switch mode') > By rule / Global. Classic Dashboard: 'Outbound mode' card",
+   "path_ru": "Прокси > значок режима в верхней панели (подсказка 'Переключить режим') > По правилам / Глобальный. Классический вид Главной: карточка 'Режим исходящих подключений'",
+   "evidence": "proxies.dart:239-258; outbound_mode.dart:33. Hidden if the subscription sets flclashx-globalmode=false (providers/state.dart:477-481). Direct is not in the Proxies popup."
+  },
+  {
+   "task": "Choose a server",
+   "path_en": "Dashboard > Change Server  (or Proxies tab) > pick proxy group > tap the node",
+   "path_ru": "Главная > Изменить сервер (или вкладка Прокси) > выбрать группу прокси > нажать на узел",
+   "evidence": "change_server_button.dart:120,231,268; navigation.dart:28-39; tab.dart:92. Proxies tab exists only when hasProxies is on."
+  },
+  {
+   "task": "Test latency",
+   "path_en": "Proxies > Test latency (network_ping icon in the top bar); list view also has a per-group button",
+   "path_ru": "Прокси > Проверить задержку (значок в верхней панели)",
+   "evidence": "proxies.dart:55-62; list.dart:400-404"
+  },
+  {
+   "task": "System proxy (desktop)",
+   "path_en": "Settings > Basic configuration > Network > System > System proxy.  Or Dashboard card 'System proxy' > 'Options'",
+   "path_ru": "Настройки > Конфигурация ядра > Сеть > Система > Системный прокси.  Или карточка 'Системный прокси' > 'Опции'",
+   "evidence": "tools.dart:252-263; config.dart:34-43; network.dart:427-434,165-176; quick_options.dart:107-112"
+  },
+  {
+   "task": "TUN (desktop)",
+   "path_en": "Settings > Basic configuration > Network > Options > TUN.  Or Dashboard card 'TUN' > 'Options'",
+   "path_ru": "Настройки > Конфигурация ядра > Сеть > Опции > TUN.  Или карточка 'TUN' > 'Опции'",
+   "evidence": "network.dart:436-441,99-102; quick_options.dart:25-54"
+  },
+  {
+   "task": "VPN toggle (Android; replaces TUN)",
+   "path_en": "Settings > Basic configuration > Network > VPN (switch) ; or Dashboard card 'VPN' > VPN",
+   "path_ru": "Настройки > Конфигурация ядра > Сеть > VPN (переключатель); или карточка 'VPN' на Главной",
+   "evidence": "network.dart:68-77,412; quick_options.dart:162-188"
+  },
+  {
+   "task": "Change language to Russian",
+   "path_en": "Settings > Language > Russian (options: Default, English, Japanese, Russian, Simplified Chinese)",
+   "path_ru": "Настройки > Язык > Русский (варианты: По умолчанию, Английский, Японский, Русский, Упрощенный китайский)",
+   "evidence": "tools.dart:138-151,70-80; arb/intl_ru.arb:51-55; lib/l10n/l10n.dart:3946-3952"
+  },
+  {
+   "task": "Open logs",
+   "path_en": "Settings > Application Settings > Logcat (enable), then Logs appears: desktop side bar 'Logs'; mobile: Settings > More > Logs",
+   "path_ru": "Настройки > Настройки приложения > Журналирование (включить), затем появится 'Логи': на десктопе в боковой панели; на мобильном: Настройки > Еще > Логи",
+   "evidence": "navigation.dart:71-83; application_setting.dart:478-495; tools.dart:106-110"
+  },
+  {
+   "task": "View active connections",
+   "path_en": "Desktop: side bar > Connections > Active; Android: Settings > More > Connections",
+   "path_ru": "Десктоп: боковая панель > Подключения > Активные; Android: Настройки > Еще > Подключения",
+   "evidence": "navigation.dart:49-59; connections.dart:106"
+  },
+  {
+   "task": "Copy or share subscription link",
+   "path_en": "Not available as a button. Profiles > three-dot menu > Edit shows the 'URL' field to copy manually. 'Export file' exports the config file, not the link",
+   "path_ru": "Кнопки нет. Профили > меню (три точки) > Редактировать: поле 'URL' можно скопировать вручную. 'Экспорт файла' экспортирует файл конфигурации, а не ссылку",
+   "evidence": "profiles.dart:438-472; edit_profile.dart:270-282"
+  }
+ ],
+ "menu_path_issues": [
+  "Open logs: the path Settings > Application Settings > Logcat (enable) is incomplete. The Logcat switch (OpenLogsItem) is disabled (onChanged null, 50% opacity) until the first item in the same screen, 'Override' / 'Переопределение' (overrideProviderSettings, subtitle 'Ignore provider settings and manage manually' / 'Игнорировать настройки от провайдера и управлять вручную'), is turned on (application_setting.dart:85-100,473-495). Correct RU path: Настройки > Настройки приложения > Переопределение (вкл.) > Журналирование (вкл.) > Логи появляются в боковой панели (десктоп) или в Настройки > Еще (мобильные). The provider header 'openlogs' can also set it (controller.dart:294).",
+  "System proxy / TUN via Dashboard card: the 'System proxy', 'TUN' and 'VPN' cards are not in the default dashboard (default = announce, metainfo, outboundModeV2). They exist only after the user adds them in dashboard edit mode, so the main path should be Settings > Basic configuration > Network. TUN card and System proxy card are desktop only, VPN card Android only.",
+  "Desktop tray TUN and System proxy items are built only when connected (if trayState.isStart, tray.dart:92-110). Tray 'Start' becomes 'Stop' only after the core is running. The mode items (By rule / Global / Direct) show only if the globalmode header is not false.",
+  "Switch proxy mode: Proxies > mode icon works only when the Proxies tab exists (groups loaded) and the globalmode header is not false. Popup offers By rule and Global only. In New look the mode chip next to Update/Support has the same two items. Direct is available only in the default segmented control on the classic Dashboard or in the tray.",
+  "Choose a server: the 'Dashboard > Change Server' branch requires the card to be added and the flclashx-serverinfo header on the profile. In New look, tap the server panel (flag + name + IP) on the Dashboard to open Proxies. Choosing a node is a tap on the node in the list (not verified in this pass beyond the page navigation).",
+  "Add subscription by QR on desktop: Profiles > Add Profile > QR code opens an image picker (select an image of the QR), not the camera.",
+  "Add subscription: the sheet title is '${add}${profile}' with no space (AddProfile / ДобавитьПрофиль) in profiles.dart:37 and controller.dart:1509 (file path). The deep-link confirmation dialog (controller.dart:1367) uses 'Add Profile' with a space and text 'Adding profile from' / 'Добавляем профиль по адресу'.",
+  "Check that it is connected: on Windows/Linux the title bar shows Running/Stopped (Запущено/Остановлено), not on macOS or mobile. Classic default Dashboard also changes the button colour to green. No other textual 'Connected' label exists in the code. The path is correct as written."
+ ],
+ "missing_flows": [
+  "Select the active profile: tap the profile card (radio, groupValue currentProfileId) on Profiles; only on Android TV is 'Select Profile' / 'Выбрать профиль' in the three-dot menu (profiles.dart ~140-200, 431).",
+  "Default classic Dashboard subscription card (metainfo_widget.dart) uses other keys than the table: trafficUnlimited 'Unlimited Traffic' / 'Безлимитный трафик', subscriptionEternal 'Lifetime Subscription' / 'Бессрочная подписка', expiry as 'Expires on dd.MM.yyyy' / 'Истекает dd.MM.yyyy', and a last-3-days countdown with remainingSingular 'Остался' / remainingPlural 'Осталось' plus day/hour declensions (день, дня, дней; час, часа, часов). Without a profile it shows an 'Add Profile' / 'Добавить профиль' card that opens the URL dialog.",
+  "Dashboard edit mode: the 'add' sheet (title 'Add' / 'Добавить') is the only way to add the TUN, System proxy, VPN, Change Server, Traffic usage, Network speed, IP and zashboard cards. Not in the table.",
+  "New-look Dashboard: the server panel (flag, server name, external IP once connected) opens Proxies on tap; mode chip, Update chip and Support chip sit under the service name; traffic card shows 'Remaining N days' ('Осталось N дней') (hero_connect.dart 296-480).",
+  "Profile import via deep link (flclashx / clash link): confirmation dialog title 'Add Profile' and body 'Adding profile from <url>' / 'Добавляем профиль по адресу <url>' (controller.dart:1363-1390).",
+  "Profiles toolbar has two more icon-only buttons not listed: Script ('Script' / 'Скрипт') and Sort ('Profiles sort' / 'Сортировка профилей'); profile card shows a progress spinner while updating.",
+  "Update-all error path: failures show a dialog titled 'tip' ('Подсказка' in RU) listing per-profile errors (profiles.dart:55-66).",
+  "Russian-UI inconsistencies for the RU guide: hard-coded non-localized strings exist: 'VPN' (Android toggle and card), 'DNS' (config.dart), 'zashboard' (card label) and two Russian-only buttons 'Продлить подписку' / 'Докупить трафик' that also appear in EN UI. RU 'sync' = 'Обновление' (not 'Синхронизация'). RU 'Определяю IP..' ends with two dots. RU basicConfig is 'Конфигурация ядра' while the opened page header is 'Переопределение'. RU 'Журналирование' has subtitle 'Вести журнал событий приложения', which differs in meaning from EN 'Disabling will hide the log entry'.",
+  "Dashboard cards networkSpeed and trafficUsage are not in the default layout and appear only if added; the table lists them as always-visible connected-only info.",
+  "Not verified in this pass: that the core has loaded proxy groups (so the Proxies tab appears) while disconnected, and what node-tap selection does per group type; this needs a runtime check."
+ ],
+ "caveats": [
+  "Source read from a shallow clone of tag v0.4.2 (commit fabbd8ea72f26a802bc942d356f4ac5a7fd798be) in a scratchpad temp dir; no repo modified. Release v0.4.2 published 2026-07-18T10:51:50Z (latest release API; commit date 2026-07-18).",
+  "The Russian locale is present and complete for every key used above (arb/intl_ru.arb has 504 lines vs 503 in EN); no RU fallback to EN was found for the listed keys.",
+  "Hint 'Dashboard button bottom-right to enable' is WRONG for the default UI: the Dashboard nav item is 'Dashboard'/'Главная' and the connect control is a full-width play/pause button at the bottom of the Dashboard page (classic look), or a play-button/timer in 'New look' mode. There is no text label such as 'Connect', 'Connected' or 'Disconnected' on the button in either dashboard; connected state is shown only by timer/colour. On desktop Windows/Linux the title bar shows 'Running'/'Stopped' (RU 'Запущено'/'Остановлено').",
+  "The assistant must NOT say 'Connected' or 'Disconnected' as a screen label, nor 'Start'/'Connect' as a button on the Dashboard. 'Start'/'Stop' exist only in the desktop tray menu and Android shortcuts.",
+  "Icon-only controls (no visible text, only tooltip on hover/long-press): Sync (profiles), Test latency, Switch mode, Export logs, profile card three-dot menu. Describe them by icon and tooltip.",
+  "Visible UI depends on the subscription's provider headers: flclashx-globalmode=false hides all mode switching; flclashx-newboard switches to the New-look dashboard; flclashx-serverinfo controls the 'Change Server' card; support-url controls 'Support'; flclashx-buyplan/buytraffic add hard-coded Russian buttons 'Продлить подписку' / 'Докупить трафик' (not localized). A user's screen may therefore differ from the labels above; the Proxies nav tab exists only when the hasProxies setting is on, and the Logs entry only when Logcat is on (openLogs).",
+  "The 'Add profile' sheet title concatenates words without a space: 'AddProfile' / 'ДобавитьПрофиль' (profiles.dart:37). The page title opened from Settings > 'Basic configuration' ('Конфигурация ядра') is 'Override' / 'Переопределение' (tools.dart:260).",
+  "Some labels are hard-coded and identical in all languages: 'VPN' (Android toggle and Dashboard card), 'DNS', 'IPv6', 'zashboard'. TUN is only on desktop; Android uses the 'VPN' switch instead. System proxy exists on desktop; on Android the same string is the sub-option of VPN.",
+  "No 'copy subscription link' or 'share/QR of subscription' feature exists at v0.4.2. The only QR display is the Android TV 'Add from Phone' / 'Receive Subscription' dialog.",
+  "Android TV is detected at runtime (system.isAndroidTV) and uses the Android layout; TV differences found: 'Add from Phone' item and 'Select Profile' menu entry. No separate TV-only locale strings.",
+  "iOS exists in the fork's tree? Not verified and not in the recommended platform list; macOS differences: no custom title bar status (shows app name), extra 'Auto set system DNS' switch.",
+  "Not visually verified in a running app; all labels come from the arb files and the Dart code at the tag. The Dart-generated l10n (lib/l10n/l10n.dart, intl/messages_*.dart) was spot-checked against the arb for newDashboard and supportedLocales only.",
+  "The 'Requests'/'Запросы' key exists in arb but the Connections page tabs use 'Active'/'Активные' and 'Log'/'Журнал'. The RU 'Sync' is 'Обновление' (not 'Синхронизация'); RU 'Update' is 'Обновить'."
+ ]
+}

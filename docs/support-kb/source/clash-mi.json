@@ -1,0 +1,614 @@
+{
+ "app": "Clash Mi (KaringX/clashmi)",
+ "source_available": true,
+ "repo": "https://github.com/KaringX/clashmi",
+ "release_tag": "v1.0.31.1703",
+ "release_date": "2026-10-09",
+ "commit_sha": "daef7be6c40d49a98a174a82c10599e163e71afd",
+ "ru_locale_present": true,
+ "languages_available": [
+  "English",
+  "简体中文",
+  "繁體中文",
+  "日本語",
+  "한국어",
+  "عربي",
+  "Русский",
+  "فارسی",
+  "Español"
+ ],
+ "locale_files": [
+  "lib/i18n/en.i18n.json",
+  "lib/i18n/ru.i18n.json",
+  "lib/i18n/zh-CN.i18n.json",
+  "lib/i18n/zh-TW.i18n.json",
+  "lib/i18n/ja.i18n.json",
+  "lib/i18n/ko.i18n.json",
+  "lib/i18n/ar.i18n.json",
+  "lib/i18n/fa.i18n.json",
+  "lib/i18n/es.i18n.json"
+ ],
+ "provenance": "read from the app's source/locale files at the release tag (closed-source apps: official docs or installed bundle), then adversarially re-checked by a second agent; NOT a live UI check",
+ "labels": [
+  {
+   "flow": "connect/disconnect",
+   "key": "meta.disconnected",
+   "en": "Disconnected",
+   "ru": "Отключено",
+   "file": "lib/screens/home_screen_widgets.dart:247-248",
+   "screen": "Home, top card (HomeScreenWidgetPart1)",
+   "state": "disconnected",
+   "platform_note": "Status text sits next to a green/grey dot; the same card has a Switch (no text label) that toggles connect/disconnect. While connecting/disconnecting only a spinner is shown, no text.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "connect/disconnect",
+   "key": "meta.connected",
+   "en": "Connected",
+   "ru": "Подключено",
+   "file": "lib/screens/home_screen_widgets.dart:247-248",
+   "screen": "Home, top card",
+   "state": "connected",
+   "platform_note": "Same on all platforms. iOS/macOS home-screen quick actions are titled 'ON'/'OFF' (hardcoded, not localized; home_screen_widgets.dart:171-175).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "proxy mode",
+   "key": "meta.rule",
+   "en": "Rule",
+   "ru": "Правила",
+   "file": "lib/screens/home_screen_widgets.dart:360",
+   "screen": "Home, segmented button under the status row",
+   "state": "both",
+   "platform_note": "Visible in both states; ru label is 'Правила', not 'Правило'.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "proxy mode",
+   "key": "meta.global",
+   "en": "Global",
+   "ru": "Глобально",
+   "file": "lib/screens/home_screen_widgets.dart:364",
+   "screen": "Home, segmented button",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "proxy mode",
+   "key": "meta.direct",
+   "en": "Direct",
+   "ru": "Напрямую",
+   "file": "lib/screens/home_screen_widgets.dart:368",
+   "screen": "Home, segmented button",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "profiles",
+   "key": "meta.myProfiles",
+   "en": "My Profiles",
+   "ru": "Профили",
+   "file": "lib/screens/home_screen_widgets.dart:392",
+   "screen": "Home list row (opens profiles screen); same string is the profiles screen title (profiles_board_screen.dart:86)",
+   "state": "both",
+   "platform_note": "RU is 'Профили' (no 'Мои').",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "key": "meta.add",
+   "en": "Add",
+   "ru": "Добавить",
+   "file": "lib/screens/profiles_board_screen.dart:130",
+   "screen": "My Profiles / Профили, top-right '+' icon (tooltip only, no visible text)",
+   "state": "both",
+   "platform_note": "Icon button with Tooltip; opens a bottom sheet with the add methods.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "key": "meta.profileAddUrlOrContent",
+   "en": "Add Profile Link",
+   "ru": "Добавление подписки",
+   "file": "lib/screens/profiles_board_screen.dart:235",
+   "screen": "Add sheet item (opens link/URL entry screen, same title at add_profile_by_url_screen.dart:154)",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "key": "meta.importFromClipboard",
+   "en": "Import From Clipboard",
+   "ru": "Импорт из буфера обмена",
+   "file": "lib/screens/profiles_board_screen.dart:249",
+   "screen": "Add sheet item",
+   "state": "both",
+   "platform_note": "Reads clipboard text and opens the link screen with it pre-filled; does nothing if clipboard is empty (lines 262-264).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "key": "meta.qrcodeScan",
+   "en": "Scan QR Code",
+   "ru": "Сканировать QR-код",
+   "file": "lib/screens/profiles_board_screen.dart:279",
+   "screen": "Add sheet item",
+   "state": "both",
+   "platform_note": "Camera scanner; desktop availability not verified.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "key": "meta.profileImport",
+   "en": "Import Profile File",
+   "ru": "Импорт файла конфигурации",
+   "file": "lib/screens/profiles_board_screen.dart:307",
+   "screen": "Add sheet item",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "key": "meta.profileUrlOrContent",
+   "en": "$p Profile Link",
+   "ru": "Ссылка на профиль $p",
+   "file": "lib/screens/add_profile_by_url_screen.dart:214",
+   "screen": "Link entry screen, text field label ($p = 'Clash')",
+   "state": "both",
+   "platform_note": "Renders as 'Clash Profile Link' / 'Ссылка на профиль Clash'.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "key": "meta.remark",
+   "en": "Remark",
+   "ru": "Примечание",
+   "file": "lib/screens/add_profile_by_url_screen.dart:256",
+   "screen": "Link entry screen, second field",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "key": "meta.save",
+   "en": "Save",
+   "ru": "Сохранить",
+   "file": "lib/screens/add_profile_by_url_screen.dart:182",
+   "screen": "Link entry screen, top-right icon (tooltip only)",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "key": "meta.addSuccess",
+   "en": "Added successfully",
+   "ru": "Добавлено успешно",
+   "file": "lib/screens/add_profile_by_url_screen.dart:109",
+   "screen": "Dialog after adding",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "add subscription",
+   "key": "loginScreen.login",
+   "en": "Login",
+   "ru": "Вход",
+   "file": "lib/screens/profiles_board_screen.dart:190",
+   "screen": "Add sheet item (provider account login, not a plain subscription)",
+   "state": "both",
+   "platform_note": "Order in sheet depends on device region (CN first).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "update subscription",
+   "key": "meta.update",
+   "en": "Update",
+   "ru": "Обновить",
+   "file": "lib/screens/profiles_board_screen.dart:114 (update all, cloud-download icon tooltip); lib/screens/profiles_board_screen_widgets.dart:357 (one profile, in the profile's more-menu)",
+   "screen": "My Profiles / Профили",
+   "state": "both",
+   "platform_note": "Same word for both. Update-all is an icon-only button in the header (shows a spinner while updating); single update is in the per-profile menu opened by the profile row's more button (onTapMore), remote profiles only.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "update subscription",
+   "key": "meta.updateFailed",
+   "en": "Update failed:$p",
+   "ru": "Не удалось обновить:$p",
+   "file": "lib/i18n/en.i18n.json, ru.i18n.json (key meta.updateFailed)",
+   "screen": "Error text",
+   "state": "both",
+   "platform_note": "Usage site not traced; listed only for reference.",
+   "verify": "refuted",
+   "verify_problem": "The key exists in en/ru JSON with the claimed text, but no UI code uses it at the tag. A grep of lib/ outside the generated lib/i18n/strings*.g.dart finds no use of tcontext.meta.updateFailed. Only unrelated model fields named updateFailed (DateTime, in profile_manager.dart and profile_patch_manager.dart) turn up. It is a dead string and users never see it, so it should not be listed as a UI label. Update errors are shown as err.message in an alert dialog (profiles_board_screen_widgets.dart:359-375).",
+   "ru_corrected": "(not shown in UI)",
+   "en_corrected": "(not shown in UI)"
+  },
+  {
+   "flow": "share subscription",
+   "key": "meta.copyUrl",
+   "en": "Copy Link",
+   "ru": "Скопировать ссылку",
+   "file": "lib/screens/profiles_board_screen_widgets.dart:377",
+   "screen": "Per-profile more-menu",
+   "state": "both",
+   "platform_note": "Hidden when the provider sets hideNodeDetails (line 375).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "share subscription",
+   "key": "meta.qrcode",
+   "en": "QR Code",
+   "ru": "QR-код",
+   "file": "lib/screens/profiles_board_screen_widgets.dart:386",
+   "screen": "Per-profile more-menu (opens QR screen, title qrcode_screen.dart:92)",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "profile menu",
+   "key": "meta.view / meta.edit",
+   "en": "View / Edit",
+   "ru": "Просмотр / Редактировать",
+   "file": "lib/screens/profiles_board_screen_widgets.dart:328",
+   "screen": "Per-profile more-menu (View for remote, Edit for local)",
+   "state": "both",
+   "platform_note": "",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "profile menu",
+   "key": "meta.profileEdit",
+   "en": "Profile Edit",
+   "ru": "Редактирование профилей",
+   "file": "lib/screens/profiles_board_screen_widgets.dart:402",
+   "screen": "Per-profile more-menu",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "profile menu",
+   "key": "meta.remove",
+   "en": "Remove",
+   "ru": "Удалить",
+   "file": "lib/screens/profiles_board_screen_widgets.dart:417",
+   "screen": "Per-profile more-menu",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "choose server/node",
+   "key": "meta.proxy",
+   "en": "Proxy",
+   "ru": "Прокси",
+   "file": "lib/screens/home_screen_widgets.dart:524 (row, only inside if (connected)); lib/screens/proxy_board_screen.dart:75 (screen title)",
+   "screen": "Home list row showing current node, opens proxy/group screen",
+   "state": "connected",
+   "platform_note": "Row is added only while connected (home_screen_widgets.dart:521). Node and group names come from the subscription and are not localized.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "latency test",
+   "key": "meta.latencyTest",
+   "en": "Latency Checks",
+   "ru": "Обнаружение задержки",
+   "file": "lib/screens/proxy_board_screen.dart:139",
+   "screen": "Proxy screen, lightning-bolt icon in header (tooltip only)",
+   "state": "connected",
+   "platform_note": "Reachable only while connected, since the Proxy row exists only then. Spinner with counter while testing.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "choose server/node",
+   "key": "meta.sort",
+   "en": "Reorder",
+   "ru": "Отсортировать",
+   "file": "lib/screens/proxy_board_screen.dart:85",
+   "screen": "Proxy screen, sort icon (tooltip only; toggles sort by delay)",
+   "state": "connected",
+   "platform_note": "EN says Reorder, RU says Отсортировать.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "choose server/node",
+   "key": "meta.proxyGroups",
+   "en": "Proxy Group",
+   "ru": "Группа агентов",
+   "file": "lib/screens/proxygroup_screen.dart:68",
+   "screen": "Proxy group screen title",
+   "state": "connected",
+   "platform_note": "RU wording is 'Группа агентов' (not 'прокси').",
+   "verify": "refuted",
+   "verify_problem": "The text matches (EN 'Proxy Group', RU 'Группа агентов') and the title is at proxygroup_screen.dart:68. The flow is wrong. ProxyGroupsScreen is not a way to choose a server or node. It is the proxy-group template editor, reached only from profile_settings_edit_screen.dart:386-415 (showClashSettingsProxyGroups), which opens from the profile editor (Profile Edit). It requires a connection and that this profile is the active one, otherwise it shows the profileNeedActive alert. The real node-selection screen is Home > Proxy (ProxyBoardScreen, title meta.proxy), where group and node names come from the core API.",
+   "ru_corrected": "Группа агентов (только в редакторе профиля, не выбор узла)",
+   "en_corrected": "Proxy Group (profile editor only, not node selection)"
+  },
+  {
+   "flow": "settings entry",
+   "key": "meta.settingApp",
+   "en": "App Settings",
+   "ru": "Настройки приложения",
+   "file": "lib/screens/home_screen_widgets.dart:1166",
+   "screen": "Home, second card list",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "settings entry",
+   "key": "meta.settingCore",
+   "en": "Core Settings",
+   "ru": "Настройки ядра",
+   "file": "lib/screens/home_screen_widgets.dart:1176",
+   "screen": "Home, second card list (title also at group_helper.dart:1927)",
+   "state": "both",
+   "platform_note": "",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "TUN",
+   "key": "meta.tun",
+   "en": "TUN",
+   "ru": "TUN",
+   "file": "lib/screens/group_helper.dart:1749 (item in Core Settings); 2346 (TUN screen title)",
+   "screen": "Core Settings > TUN",
+   "state": "both",
+   "platform_note": "Same text in EN and RU.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "TUN",
+   "key": "meta.enable",
+   "en": "Enable",
+   "ru": "Включить",
+   "file": "lib/screens/group_helper.dart:2083 (inside showClashSettingsTUN, starts line 2060)",
+   "screen": "TUN screen, enable switch",
+   "state": "both",
+   "platform_note": "Other TUN screen items: tun.stack 'Network stack'/'Сетевой стек', tun.dnsHijack 'DNS Hijack'/'Перехват DNS', tun.strictRoute 'Strict Route'/'Строгая маршрутизация'. Android adds tun.allowBypass 'Allow Apps to Bypass VPN'/'Разрешить приложениям обходить VPN'; Android+iOS add tun.appendHttpProxy 'Append HTTP Proxy to VPN'/'Подключите HTTP-прокси к VPN'. Changes likely need reconnect (not verified).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "system proxy",
+   "key": "meta.autoSetSystemProxy",
+   "en": "Auto Set System Proxy when Connected",
+   "ru": "Установить системный прокси после подключения",
+   "file": "lib/screens/group_helper.dart:1381",
+   "screen": "App Settings (switch)",
+   "state": "both",
+   "platform_note": "There is no separate live System Proxy toggle on the home screen. This is the only system-proxy switch found. It appears in the shared settings list; per-platform hiding not fully verified. A bypass list item 'Domain names that are allowed to bypass the system proxy' is PC only (PlatformUtils.isPC, line ~1388).",
+   "verify": "refuted",
+   "verify_problem": "The text matches. The availability claim is false. The switch sits in options5 in showAppSettings, and group_helper.dart:1516-1518 adds options5 only if PlatformUtils.isPC() (Windows, macOS, Linux). On iOS and Android there is no system-proxy switch at all. The default is true only on Windows (setting_manager.dart:328-332). It is not a shared list item and state 'both' does not cover mobile.",
+   "ru_corrected": "Установить системный прокси после подключения (только ПК)",
+   "en_corrected": "Auto Set System Proxy when Connected (PC only)"
+  },
+  {
+   "flow": "language",
+   "key": "meta.language",
+   "en": "Language",
+   "ru": "Язык",
+   "file": "lib/screens/group_helper.dart:1116",
+   "screen": "App Settings > Language (opens language_settings_screen.dart)",
+   "state": "both",
+   "platform_note": "Language list in screen order: English, Español, 简体中文, 繁體中文, Русский, فارسی, then 日本語, 한국어, عربي (language_settings_screen.dart:39-52). Russian is available.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "logs",
+   "key": "meta.coreLog",
+   "en": "Core Log",
+   "ru": "Журнал ядра",
+   "file": "lib/screens/home_screen_widgets.dart:1185 (row), 1221 (viewer title)",
+   "screen": "Home, second card list; opens a text viewer with core stdout/stderr",
+   "state": "both",
+   "platform_note": "Related: meta.logLevel 'Log Level'/'Уровень журнала' in App Settings (group_helper.dart:1231) and Core Settings (1651).",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "diagnostics",
+   "key": "meta.networkCheck",
+   "en": "Network Check",
+   "ru": "Проверка сети",
+   "file": "lib/screens/home_screen_widgets.dart:610",
+   "screen": "Home, icon tile under the Proxy row",
+   "state": "connected",
+   "platform_note": "Tile exists only inside if (connected). Screen items: NetCheckScreen.domainLabel 'Domain'/'Домен', NetCheckScreen.checkButton 'Check'/'Проверить', section '1. DNS Query'/'1. DNS-запрос', '2. HTTP (via TUN, enable TUN first)'/'2. HTTP (через TUN, сначала включите TUN)', '4. Table'-style route section '4. Route Table'/'4. Таблица маршрутов'.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "connected-only",
+   "key": "meta.board",
+   "en": "Board",
+   "ru": "Панель",
+   "file": "lib/screens/home_screen_widgets.dart:562",
+   "screen": "Home, icon tile under the Proxy row (web dashboard)",
+   "state": "connected",
+   "platform_note": "Only shown while connected.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "connected-only",
+   "key": "meta.runtimeProfile",
+   "en": "Runtime Profile",
+   "ru": "Конфигурация времени выполнения",
+   "file": "lib/screens/home_screen_widgets.dart:586",
+   "screen": "Home, icon tile under the Proxy row",
+   "state": "connected",
+   "platform_note": "Only shown while connected.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "connected-only",
+   "key": "traffic counters (no i18n key)",
+   "en": "↑ <total up>  ↓ <total down> and ↑ <speed>/s  ↓ <speed>/s",
+   "ru": "↑ <total up>  ↓ <total down> and ↑ <speed>/s  ↓ <speed>/s",
+   "file": "lib/screens/home_screen_widgets.dart:942-950 (built), 318-340 (shown only if connected)",
+   "screen": "Home top card, two lines under the status row",
+   "state": "connected",
+   "platform_note": "Arrows and numbers only, no words, so no translation. No separate connection-list screen was found in lib/screens.",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "settings extras",
+   "key": "meta.autoConnectAfterLaunch",
+   "en": "Auto Connection after Launch",
+   "ru": "Автоматическое подключение после запуска",
+   "file": "lib/screens/group_helper.dart:1371",
+   "screen": "App Settings (switch)",
+   "state": "both",
+   "platform_note": "",
+   "verify": "refuted",
+   "verify_problem": "The text matches. It sits in the same options5 group (group_helper.dart:1358-1372), which is added only on PC (Windows, macOS, Linux; group_helper.dart:1516-1518). It is not shown in App Settings on iOS and Android. Android TV exposes it only via the Android-only TV Mode path, which is not verified.",
+   "ru_corrected": "Автоматическое подключение после запуска (только ПК)",
+   "en_corrected": "Auto Connection after Launch (PC only)"
+  },
+  {
+   "flow": "settings extras",
+   "key": "meta.tvMode",
+   "en": "TV Mode",
+   "ru": "Режим ТВ",
+   "file": "lib/screens/group_helper.dart:1167 (inside Platform.isAndroid)",
+   "screen": "App Settings",
+   "state": "both",
+   "platform_note": "Android only (covers Android TV).",
+   "verify": "confirmed"
+  }
+ ],
+ "menu_paths": [
+  {
+   "task": "connect",
+   "path_en": "Home > switch at the right of the status row (Disconnected -> Connected)",
+   "path_ru": "Главный экран > переключатель справа от строки статуса (Отключено -> Подключено)",
+   "evidence": "lib/screens/home_screen_widgets.dart:247-248, 277-298"
+  },
+  {
+   "task": "switch proxy mode",
+   "path_en": "Home > Rule | Global | Direct segmented button",
+   "path_ru": "Главный экран > переключатель Правила | Глобально | Напрямую",
+   "evidence": "lib/screens/home_screen_widgets.dart:356-370"
+  },
+  {
+   "task": "add subscription by link",
+   "path_en": "Home > My Profiles > + (Add) > Add Profile Link > paste into 'Clash Profile Link' > Save",
+   "path_ru": "Главный экран > Профили > + (Добавить) > Добавление подписки > вставить в 'Ссылка на профиль Clash' > Сохранить",
+   "evidence": "lib/screens/home_screen_widgets.dart:392; lib/screens/profiles_board_screen.dart:127-131,235; lib/screens/add_profile_by_url_screen.dart:182,214"
+  },
+  {
+   "task": "add subscription from clipboard",
+   "path_en": "Home > My Profiles > + (Add) > Import From Clipboard",
+   "path_ru": "Главный экран > Профили > + (Добавить) > Импорт из буфера обмена",
+   "evidence": "lib/screens/profiles_board_screen.dart:249-276"
+  },
+  {
+   "task": "add subscription by QR",
+   "path_en": "Home > My Profiles > + (Add) > Scan QR Code",
+   "path_ru": "Главный экран > Профили > + (Добавить) > Сканировать QR-код",
+   "evidence": "lib/screens/profiles_board_screen.dart:279-303"
+  },
+  {
+   "task": "add subscription from file",
+   "path_en": "Home > My Profiles > + (Add) > Import Profile File",
+   "path_ru": "Главный экран > Профили > + (Добавить) > Импорт файла конфигурации",
+   "evidence": "lib/screens/profiles_board_screen.dart:307-318"
+  },
+  {
+   "task": "update all subscriptions",
+   "path_en": "Home > My Profiles > cloud-download icon in header (tooltip: Update)",
+   "path_ru": "Главный экран > Профили > значок облака со стрелкой в шапке (подсказка: Обновить)",
+   "evidence": "lib/screens/profiles_board_screen.dart:102-122,170-172"
+  },
+  {
+   "task": "update one subscription",
+   "path_en": "Home > My Profiles > more button on the profile row > Update",
+   "path_ru": "Главный экран > Профили > кнопка 'ещё' в строке профиля > Обновить",
+   "evidence": "lib/screens/profiles_board_screen_widgets.dart:228,280-282,357-360"
+  },
+  {
+   "task": "copy subscription link",
+   "path_en": "Home > My Profiles > more button on the profile row > Copy Link",
+   "path_ru": "Главный экран > Профили > кнопка 'ещё' в строке профиля > Скопировать ссылку",
+   "evidence": "lib/screens/profiles_board_screen_widgets.dart:375-383"
+  },
+  {
+   "task": "show subscription QR",
+   "path_en": "Home > My Profiles > more button on the profile row > QR Code",
+   "path_ru": "Главный экран > Профили > кнопка 'ещё' в строке профиля > QR-код",
+   "evidence": "lib/screens/profiles_board_screen_widgets.dart:386-396"
+  },
+  {
+   "task": "choose server / test latency",
+   "path_en": "Connect first, then Home > Proxy > pick a group/node; lightning icon in header = Latency Checks",
+   "path_ru": "Сначала подключиться, затем Главный экран > Прокси > выбрать группу/узел; значок молнии в шапке = Обнаружение задержки",
+   "evidence": "lib/screens/home_screen_widgets.dart:521-540; lib/screens/proxy_board_screen.dart:75,139-147"
+  },
+  {
+   "task": "enable TUN",
+   "path_en": "Home > Core Settings > TUN > Enable",
+   "path_ru": "Главный экран > Настройки ядра > TUN > Включить",
+   "evidence": "lib/screens/home_screen_widgets.dart:1176; lib/screens/group_helper.dart:1749,2083"
+  },
+  {
+   "task": "system proxy",
+   "path_en": "Home > App Settings > Auto Set System Proxy when Connected",
+   "path_ru": "Главный экран > Настройки приложения > Установить системный прокси после подключения",
+   "evidence": "lib/screens/home_screen_widgets.dart:1166; lib/screens/group_helper.dart:1381"
+  },
+  {
+   "task": "change language",
+   "path_en": "Home > App Settings > Language > Русский",
+   "path_ru": "Главный экран > Настройки приложения > Язык > Русский",
+   "evidence": "lib/screens/group_helper.dart:1116-1135; lib/screens/language_settings_screen.dart:39-44,278"
+  },
+  {
+   "task": "view logs",
+   "path_en": "Home > Core Log",
+   "path_ru": "Главный экран > Журнал ядра",
+   "evidence": "lib/screens/home_screen_widgets.dart:1185,1221"
+  },
+  {
+   "task": "network diagnostics",
+   "path_en": "Connect first, then Home > Network Check > Domain > Check",
+   "path_ru": "Сначала подключиться, затем Главный экран > Проверка сети > Домен > Проверить",
+   "evidence": "lib/screens/home_screen_widgets.dart:609-610; lib/screens/net_check_screen.dart:307,325"
+  }
+ ],
+ "menu_path_issues": [
+  "enable TUN: the path 'Home > Core Settings > TUN > Enable' is incomplete. In showClashSettingsTUN (group_helper.dart:2060-2090) the first switch is meta.overwrite (EN 'Overwrite', RU 'Переопределить', line 2074). The Enable switch has onSwitch null (disabled) unless Overwrite is on. The same Overwrite condition disables every other TUN item (lines 2118-2302). Correct path: Core Settings > TUN > turn on 'Переопределить' > turn on 'Включить'. Core Settings sub-item (line 1749) has no platform condition. The Network Check HTTP-via-TUN step needs configs.tun.enable (net_check_screen.dart:75-78) and otherwise shows 'TUN is not enabled' / 'TUN не включён'.",
+  "system proxy: the path 'Home > App Settings > Auto Set System Proxy when Connected' only exists on PC (Windows/macOS/Linux). It is hidden on iOS and Android (group_helper.dart:1516-1518). The default is on for Windows only.",
+  "change language: the sequence 'App Settings > Язык > Русский' is correct (group_helper.dart:1116; language_settings_screen.dart:277-283, which sets the locale and pops). The ordering note is wrong in its tail. After en, es, zhCn, zhTw, ru, fa, the rest follow AppLocale.values order from strings.g.dart (en, ar, es, fa, ja, ko, ru, zhCn, zhTw), so the tail is ar, ja, ko (عربي, 日本語, 한국어), not ja, ko, ar. Native names come from the locales map in en.i18n.json, so the labels are the same in any UI language.",
+  "add subscription sheet: 'Login' is shown always. For a CN region locale it comes before 'Add Profile Link', otherwise last. The sheet also has a first item 'Get Profile' ('Получить профиль'; on non-iOS 'Get Profile / Buy Profile' = 'Получить профиль / Купить профиль'), opening a web page. It is hidden when the provider sets hideRecommendMenu (profiles_board_screen.dart:180-230).",
+  "choose server: the path 'Connected > Home > Proxy' is correct. The Proxy row, Board, Runtime Profile and Network Check tiles are inside if (connected) (home_screen_widgets.dart:521-620). The Proxy screen header has the sort icon (tooltip 'Reorder'/'Отсортировать', toggling delayTestSort) and the lightning icon (tooltip 'Latency Checks'/'Обнаружение задержки'). Both are tooltip-only. 'Отсортировать' is a toggle for sorting by delay, not a one-off action.",
+  "update/share/QR/copy paths are correct: the more button is a three-dot icon (Icons.more_vert_outlined) in the profile row (profiles_board_screen_widgets.dart:228). Update, Copy Link and QR Code exist only for remote profiles. Copy Link, QR Code, and View/Edit are hidden when provider.hideNodeDetails is true. For a local profile the menu shows Edit instead of View, and no Update, Copy Link or QR Code."
+ ],
+ "missing_flows": [
+  "Select the active profile: tapping a profile row in Профили/My Profiles calls ProfileManager.setCurrent and closes the screen (profiles_board_screen_widgets.dart onTap); rows are drag-reorderable. Not in the table.",
+  "Add-sheet item 'Get Profile / Buy Profile' (meta.getProfile / meta.buyProfile, 'Получить профиль / Купить профиль'; iOS shows only getProfile), listed above the other add methods.",
+  "Connecting and disconnecting transitions: while connecting, disconnecting or reasserting, only a spinner is shown over the switch. Traffic lines are shown only when connected. Both are correctly noted, but there is no text label for them.",
+  "Profile-needs-active alert (meta.profileNeedActive) when opening Proxy Groups from the profile editor while disconnected or with a non-active profile.",
+  "System tray (PC) uses meta.rule in main.dart:583 and likely other mode labels, so the mode switch is also available in the tray menu. Not verified further.",
+  "TUN 'Overwrite' switch (meta.overwrite = 'Переопределить') is the prerequisite for any TUN or DNS core setting. Without it Enable is greyed out.",
+  "Log Level in App Settings (group_helper.dart:1231) and Core Settings (1651) is listed only as a note. The Core Log viewer shows core stdout/stderr, last 50 KB (home_screen_widgets.dart:1185-1230), which matches the table.",
+  "Mode switch on mobile: the Rule/Global/Direct segmented button has no platform condition and works in both states; it calls ClashSettingManager.setConfigsMode and then refreshes the proxy. Confirmed, but the table does not say it applies instantly with no reconnect."
+ ],
+ "caveats": [
+  "Source cloned shallow into the session scratchpad at tag v1.0.31.1703, which points directly at commit daef7be6c40d49a98a174a82c10599e163e71afd (release published 2026-10-09). The installed macOS app is 1.0.22, so labels may differ slightly; EN labels My Profiles, Import From Clipboard, Core Settings > TUN match the hint.",
+  "i18n uses the slang package: JSON files lib/i18n/{en,ru,...}.i18n.json with generated lib/i18n/strings*.g.dart. Keys are nested (meta.*, tun.*, NetCheckScreen.*). en and ru have the same 349 leaf keys, so no RU fallback to EN was found.",
+  "Several RU strings are odd and users will see them as is: Rule = 'Правила' (not 'Правило'), My Profiles = 'Профили', Proxy Group = 'Группа агентов', Reset = 'Перезагрузить', Latency Checks = 'Обнаружение задержки', Reorder = 'Отсортировать'. The assistant must quote these exactly.",
+  "There is no separate Subscription/Update All text button or System Proxy toggle on the home screen. Update-all, Add and Save are icon-only buttons whose only text is a tooltip. The per-profile actions live in a menu opened from a 'more' button on the profile row.",
+  "Proxy row, Board, Runtime Profile and Network Check tiles are built only while connected (home_screen_widgets.dart:521 if (connected)). Choosing a node and running a latency test therefore requires being connected.",
+  "Traffic counters are arrows plus numbers with no word labels. No separate connection-list screen was found in lib/screens. The 'Board' tile opens a web dashboard.",
+  "The home status text has only two states, Connected and Disconnected. Connecting and disconnecting show a spinner without text.",
+  "Platform differences were checked only partly by Platform.is* conditions: TV Mode is Android only; tun.allowBypass is Android only; appendHttpProxy is Android and iOS; Hide VPN Icon is iOS only; the system-proxy bypass list is PC only. Whether the QR scanner works on desktop was not verified.",
+  "The 'Add' sheet order and presence of 'Login' / 'Get Profile / Buy Profile' depend on device region (CN) and the current profile's provider settings.",
+  "Nothing was run: labels come from source and locale files only, not from screenshots of the app. No repo outside the temp scratchpad was touched."
+ ]
+}

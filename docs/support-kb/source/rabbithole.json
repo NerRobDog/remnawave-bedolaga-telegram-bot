@@ -1,0 +1,964 @@
+{
+ "app": "RabbitHole (RABBIT HOLE STUDIO LTD, bundle com.rabbithole.RabbitHole, Mihomo-based VPN client)",
+ "source_available": false,
+ "repo": "",
+ "release_tag": "none (closed source); App Store version 1.7.1",
+ "release_date": "2026-11-06 (App Store currentVersionReleaseDate of 1.7.1)",
+ "commit_sha": "",
+ "ru_locale_present": true,
+ "languages_available": [
+  "ar",
+  "hy",
+  "be",
+  "en",
+  "fr",
+  "ka",
+  "de",
+  "he",
+  "hi",
+  "id",
+  "it",
+  "ja",
+  "kk",
+  "ms",
+  "fa",
+  "pl",
+  "pt",
+  "ru",
+  "zh",
+  "es",
+  "th",
+  "tr",
+  "tk",
+  "uk",
+  "ur",
+  "uz",
+  "vi"
+ ],
+ "locale_files": [
+  "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings (RU, 292 entries; keys are the English source text)",
+  "/Applications/RabbitHole.app/Contents/Resources/en.lproj/Localizable.strings (only 5 entries; EN UI text = the key itself)",
+  "/Applications/RabbitHole.app/Contents/Resources/zashboard/assets/index-CoHJCU3w.js (embedded Zashboard web UI, own EN and RU tables)",
+  "https://rabbit-hole-1.gitbook.io/rabbit-hole-docs (official docs, English only)"
+ ],
+ "provenance": "read from the app's source/locale files at the release tag (closed-source apps: official docs or installed bundle), then adversarially re-checked by a second agent; NOT a live UI check",
+ "labels": [
+  {
+   "flow": "1 connect/disconnect",
+   "key": "Connect",
+   "en": "Connect",
+   "ru": "Подключиться",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "disconnected",
+   "screen": "Configs (main screen)",
+   "platform_note": "Docs call it the 'connection button' on the Configs screen: https://rabbit-hole-1.gitbook.io/rabbit-hole-docs/using-the-app/configs",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "1 connect/disconnect",
+   "key": "Disconnect",
+   "en": "Disconnect",
+   "ru": "Отключиться",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "connected",
+   "screen": "Configs (main screen)",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "1 connect/disconnect",
+   "key": "Connecting...",
+   "en": "Connecting...",
+   "ru": "Подключение...",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "unknown",
+   "screen": "Configs",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "1 connect/disconnect",
+   "key": "Disconnecting...",
+   "en": "Disconnecting...",
+   "ru": "Отключение...",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "unknown",
+   "screen": "Configs",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "1 connect/disconnect",
+   "key": "Not connected",
+   "en": "Not connected",
+   "ru": "Не подключено",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "disconnected",
+   "screen": "Configs",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "1 connect/disconnect",
+   "key": "Connected | %@",
+   "en": "Connected | %@",
+   "ru": "Подключено | %@",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "connected",
+   "screen": "Configs",
+   "platform_note": "%@ is a runtime value (likely timer or server name; not verified)",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "1 connect/disconnect",
+   "key": "VPN is on",
+   "en": "VPN is on",
+   "ru": "VPN включен",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "connected",
+   "screen": "unknown (where shown not verified)",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "1 connect/disconnect",
+   "key": "Connection error",
+   "en": "Connection error",
+   "ru": "Ошибка подключения",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "unknown",
+   "screen": "unknown",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "1 connect/disconnect",
+   "key": "Proxy is not selected",
+   "en": "Proxy is not selected",
+   "ru": "Прокси не выбран",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "disconnected",
+   "screen": "Configs",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "1 connect/disconnect",
+   "key": "Config not selected",
+   "en": "Config not selected",
+   "ru": "Конфигурация не выбрана",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "disconnected",
+   "screen": "Configs",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "1 connect/disconnect",
+   "key": "Set up VPN",
+   "en": "Set up VPN",
+   "ru": "Настроить VPN",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "disconnected",
+   "screen": "first-run / VPN permission (not verified)",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "1 connect/disconnect",
+   "key": "Allow the app to add a VPN configuration to your device. It won’t work without permission.",
+   "en": "Allow the app to add a VPN configuration to your device. It won’t work without permission.",
+   "ru": "Разрешите приложению добавить конфигурацию VPN на ваше устройство. Без разрешения оно не будет работать.",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "disconnected",
+   "screen": "first connect (system VPN profile prompt)",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "1 connect/disconnect",
+   "key": "VPN profile not installed",
+   "en": "VPN profile not installed",
+   "ru": "Профиль VPN не установлен",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "disconnected",
+   "screen": "unknown",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "1 connect/disconnect",
+   "key": "Toggle VPN",
+   "en": "Toggle VPN",
+   "ru": "Переключить VPN",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "macOS shortcut setting / menu bar item",
+   "platform_note": "macOS only. Default shortcut Option (⌥) + / per https://rabbit-hole-1.gitbook.io/rabbit-hole-docs/using-the-app/settings",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "1 connect/disconnect",
+   "key": "Shortcut",
+   "en": "Shortcut",
+   "ru": "Сочетания клавиш",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Settings",
+   "platform_note": "macOS only",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "1 connect/disconnect",
+   "key": "Open main window",
+   "en": "Open main window",
+   "ru": "Открыть главное окно",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "macOS menu bar item",
+   "platform_note": "macOS only",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "2 proxy mode",
+   "key": "Global (Zashboard)",
+   "en": "Global",
+   "ru": "Глобальный",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/zashboard/assets/index-CoHJCU3w.js",
+   "state": "connected",
+   "screen": "Zashboard web dashboard (embedded)",
+   "platform_note": "This is the Mihomo Zashboard UI bundled in the app, not a native screen. How the user opens it was not verified (the native strings 'Dashboard' => 'Дашборд' and 'Zashboard' exist).",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "2 proxy mode",
+   "key": "Rule (Zashboard)",
+   "en": "Rule",
+   "ru": "Правило",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/zashboard/assets/index-CoHJCU3w.js",
+   "state": "connected",
+   "screen": "Zashboard web dashboard (embedded)",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "2 proxy mode",
+   "key": "Direct (Zashboard)",
+   "en": "Direct",
+   "ru": "Прямой",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/zashboard/assets/index-CoHJCU3w.js",
+   "state": "connected",
+   "screen": "Zashboard web dashboard (embedded)",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "2 routing (native substitute for mode)",
+   "key": "Routing",
+   "en": "Routing",
+   "ru": "Маршрутизация",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Settings",
+   "platform_note": "Docs: modes Default / Off / Excluded / Included https://rabbit-hole-1.gitbook.io/rabbit-hole-docs/using-the-app/settings",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "2 routing",
+   "key": "Default",
+   "en": "Default",
+   "ru": "По умолчанию",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Settings > Routing",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "2 routing",
+   "key": "Off",
+   "en": "Off",
+   "ru": "Выкл",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Settings > Routing",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "2 routing",
+   "key": "Excluded",
+   "en": "Excluded",
+   "ru": "Исключено",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Settings > Routing",
+   "platform_note": "The explanatory text in the same file spells it 'Исключённые'",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "2 routing",
+   "key": "Included",
+   "en": "Included",
+   "ru": "Включено",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Settings > Routing",
+   "platform_note": "The explanatory text in the same file spells it 'Включённые'",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "3 add subscription",
+   "key": "Configs",
+   "en": "Configs",
+   "ru": "Конфиги",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "main screen title",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "3 add subscription",
+   "key": "Add config",
+   "en": "Add config",
+   "ru": "Добавить конфиг",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Configs (the '+' button per docs)",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "3 add subscription",
+   "key": "Add configs",
+   "en": "Add configs",
+   "ru": "Добавить конфигурации",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Configs / empty state",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "3 add subscription",
+   "key": "Add VPN Configurations",
+   "en": "Add VPN Configurations",
+   "ru": "Добавить конфигурации VPN",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "disconnected",
+   "screen": "empty state / first run (not verified)",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "3 add subscription",
+   "key": "tap to add vpn settings",
+   "en": "tap to add vpn settings",
+   "ru": "Нажмите, чтобы добавить настройки VPN",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "disconnected",
+   "screen": "Configs (hint)",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "3 add subscription",
+   "key": "Tap on the \"+\" button to add configs",
+   "en": "Tap on the \"+\" button to add configs",
+   "ru": "Нажмите кнопку «+», чтобы добавить конфигурации",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "disconnected",
+   "screen": "Configs (empty state)",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "3 add subscription",
+   "key": "Paste via clipboard",
+   "en": "Paste via clipboard",
+   "ru": "Вставка из буфера",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Add config menu",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "3 add subscription",
+   "key": "Add via URL",
+   "en": "Add via URL",
+   "ru": "Добавить по URL",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Add config menu",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "3 add subscription",
+   "key": "Scan QR",
+   "en": "Scan QR",
+   "ru": "Сканировать QR",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Add config menu",
+   "platform_note": "Camera scan; macOS availability not verified",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "3 add subscription",
+   "key": "Upload YAML",
+   "en": "Upload YAML",
+   "ru": "Загрузить YAML",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Add config menu",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "3 add subscription",
+   "key": "Add subscription link",
+   "en": "Add via URL",
+   "ru": "Добавить ссылку на подписку",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Add config menu / URL dialog",
+   "platform_note": "en.lproj maps this key to 'Add via URL' (en.lproj/Localizable.strings), so EN differs from the key",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "3 add subscription",
+   "key": "Add sub link",
+   "en": "Add sub link",
+   "ru": "Добавить ссылку на подписку",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "unknown",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "3 add subscription",
+   "key": "Enter name and paste the link that provider gave you",
+   "en": "Enter name and paste the link that provider gave you",
+   "ru": "Введите название и вставьте ссылку от провайдера",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "URL dialog",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "3 add subscription",
+   "key": "Pasteboard is empty",
+   "en": "Pasteboard is empty",
+   "ru": "Буфер обмена пуст",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "clipboard add error",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "3 add subscription",
+   "key": "Unable to add config using the provided link",
+   "en": "Unable to add config using the provided link",
+   "ru": "Не удалось добавить конфигурацию с помощью предоставленной ссылки",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "error",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "3 add subscription",
+   "key": "Unable to add config using the provided QR-code",
+   "en": "Unable to add config using the provided QR-code",
+   "ru": "Невозможно добавить конфигурацию с помощью предоставленного QR-кода",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "error",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "3 add subscription",
+   "key": "Create config",
+   "en": "Create config",
+   "ru": "Создать конфигурацию",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "manual config (not needed for providers)",
+   "platform_note": "Docs for 1.7.x say manual group creation was removed; this string is from installed 1.3.2",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "3 deep link",
+   "key": "rabbithole://add/",
+   "en": "rabbithole://add/<subscription URL>",
+   "ru": "rabbithole://add/<ссылка на подписку>",
+   "file": "https://rabbit-hole-1.gitbook.io/rabbit-hole-docs/for-devs/deep-links-and-user-flow",
+   "state": "both",
+   "screen": "not a UI label; deep link scheme from docs",
+   "platform_note": "RU is my own gloss of the placeholder, the scheme itself is verbatim",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "4 update subscription",
+   "key": "Refresh",
+   "en": "Refresh",
+   "ru": "Обновить",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Configs (per-config; whether a global 'update all' exists was not found)",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "4 update subscription",
+   "key": "SUBSCRIPTION UPDATED",
+   "en": "SUBSCRIPTION UPDATED",
+   "ru": "ПОДПИСКА ОБНОВЛЕНА",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "confirmation",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "4 subscription info",
+   "key": "Subscription end date: %@",
+   "en": "Subscription end date: %@",
+   "ru": "Дата окончания подписки: %@",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "config card",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "4 subscription info",
+   "key": "Traffic reset date: %@",
+   "en": "Traffic reset date: %@",
+   "ru": "Дата сброса трафика: %@",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "config card",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "5 choose server / latency",
+   "key": "Selector",
+   "en": "Selector",
+   "ru": "Селектор",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Configs (proxy group)",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "5 choose server / latency",
+   "key": "Sorting & Filters",
+   "en": "Sorting & Filters",
+   "ru": "Сортировка и фильтры",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Configs",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "5 choose server / latency",
+   "key": "SORT BY",
+   "en": "SORT BY",
+   "ru": "СОРТИРОВАТЬ ПО",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Sorting & Filters",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "5 choose server / latency",
+   "key": "Alphabetical",
+   "en": "Alphabetical",
+   "ru": "В алфавитном порядке",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Sorting & Filters",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "5 choose server / latency",
+   "key": "Ping",
+   "en": "Ping",
+   "ru": "Пинг",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Settings > Ping (and sort option)",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "5 choose server / latency",
+   "key": "Ping service",
+   "en": "Ping service",
+   "ru": "Пингуемый сервис",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Settings > Ping",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "5 choose server / latency",
+   "key": "Ping delay",
+   "en": "Ping delay",
+   "ru": "Интервал пинга",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Settings > Ping",
+   "platform_note": "RU text in the longer explanation calls it 'Задержка пинга' (inconsistent inside the app)",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "5 choose server / latency",
+   "key": "Ping mode",
+   "en": "Ping mode",
+   "ru": "Режим пинга",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Settings > Ping",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "5 choose server / latency",
+   "key": "Dynamic switch",
+   "en": "Dynamic switch",
+   "ru": "Автопереключение",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Settings (auto-pick fastest proxy)",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "5 choose server / latency",
+   "key": "Switch tolerance (ms)",
+   "en": "Switch tolerance (ms)",
+   "ru": "Допуск переключения (мс)",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Settings",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "5 choose server / latency",
+   "key": "Select allowed protocols",
+   "en": "Select allowed protocols",
+   "ru": "Разрешенные протоколы",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Settings",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "5 choose server / latency",
+   "key": "Zashboard Proxies",
+   "en": "Proxies",
+   "ru": "Прокси",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/zashboard/assets/index-CoHJCU3w.js",
+   "state": "connected",
+   "screen": "Zashboard web dashboard",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "6 system proxy / TUN",
+   "key": "Exclude APNs",
+   "en": "Exclude APNs",
+   "ru": "Исключить APNs",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Settings",
+   "platform_note": "No 'System proxy' or 'TUN' toggle found in the app strings; do not name one",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "6 networks",
+   "key": "Enable all networks",
+   "en": "Enable all networks",
+   "ru": "Включить все сети",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Settings",
+   "platform_note": "Description string 'When enabled, all network traffic is routed through the VPN tunnel, except for system traffic…' likely belongs to it; pairing not verified",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "7 language",
+   "key": "Language",
+   "en": "Language",
+   "ru": "Язык",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Settings",
+   "platform_note": "Behaviour (in-app picker vs system language) not verified; Russian is listed in App Store languages and ru.lproj exists",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "7 appearance",
+   "key": "Appearance",
+   "en": "Appearance",
+   "ru": "Оформление",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Settings",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "7 appearance",
+   "key": "iCloud sync",
+   "en": "iCloud sync",
+   "ru": "Синхронизация через iCloud",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Settings",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "8 share/copy link",
+   "key": "(none found)",
+   "en": "n/a",
+   "ru": "n/a",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "unknown",
+   "screen": "n/a",
+   "platform_note": "No Share/Copy link/Show QR string. Only 'send to Apple TV' transfer exists per docs. Do not tell users to share or copy a subscription link from the app.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "9 logs / diagnostics",
+   "key": "Logs",
+   "en": "Logs",
+   "ru": "Логи",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Settings",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "9 logs / diagnostics",
+   "key": "Open logs",
+   "en": "Open logs",
+   "ru": "Открыть логи",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Settings > Logs",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "9 logs / diagnostics",
+   "key": "Log level",
+   "en": "Log level",
+   "ru": "Логи",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Settings > Logs",
+   "platform_note": "RU is 'Логи', not 'Уровень логов'",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "9 logs / diagnostics",
+   "key": "Logs will start recording after connection",
+   "en": "Logs will start recording after connection",
+   "ru": "Логи начнут записываться после подключения",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "disconnected",
+   "screen": "Logs",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "9 logs / diagnostics",
+   "key": "Logs are off",
+   "en": "Logs are off",
+   "ru": "Логи выключены",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Logs",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "9 logs / diagnostics",
+   "key": "Session is active. Waiting for logs...",
+   "en": "Session is active. Waiting for logs...",
+   "ru": "Сессия активна. Ожидание логов…",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "connected",
+   "screen": "Logs",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "9 logs / diagnostics",
+   "key": "No messages",
+   "en": "No messages",
+   "ru": "Нет сообщений",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Logs",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "10 connected-only",
+   "key": "Available traffic",
+   "en": "Available traffic",
+   "ru": "Доступный трафик",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Configs (provider traffic bar; shown only if the provider sends traffic data)",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "10 connected-only",
+   "key": "Available %@ GB (%lld%%)",
+   "en": "Available %@ GB (%lld%%)",
+   "ru": "Доступно %1$@ ГБ (%2$lld%%)",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Configs (Health bar)",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "10 connected-only",
+   "key": "Used %@ GB (%lld%%)",
+   "en": "Used %@ GB (%lld%%)",
+   "ru": "Использовано %1$@ ГБ (%2$lld%%)",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/ru.lproj/Localizable.strings",
+   "state": "both",
+   "screen": "Configs (Progress bar)",
+   "verify": "confirmed"
+  },
+  {
+   "flow": "10 connected-only",
+   "key": "Zashboard Connections",
+   "en": "Connections",
+   "ru": "Подключения",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/zashboard/assets/index-CoHJCU3w.js",
+   "state": "connected",
+   "screen": "Zashboard web dashboard",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "10 connected-only",
+   "key": "Zashboard Upload",
+   "en": "Upload",
+   "ru": "Отправлено",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/zashboard/assets/index-CoHJCU3w.js",
+   "state": "connected",
+   "screen": "Zashboard web dashboard",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "10 connected-only",
+   "key": "Zashboard Download",
+   "en": "Download",
+   "ru": "Загружено",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/zashboard/assets/index-CoHJCU3w.js",
+   "state": "connected",
+   "screen": "Zashboard web dashboard",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "10 connected-only",
+   "key": "Zashboard Active",
+   "en": "Active",
+   "ru": "Активные",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/zashboard/assets/index-CoHJCU3w.js",
+   "state": "connected",
+   "screen": "Zashboard Connections tab",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "10 connected-only",
+   "key": "Zashboard Closed",
+   "en": "Closed",
+   "ru": "Закрытые",
+   "file": "/Applications/RabbitHole.app/Contents/Resources/zashboard/assets/index-CoHJCU3w.js",
+   "state": "connected",
+   "screen": "Zashboard Connections tab",
+   "verify": "not_checked"
+  }
+ ],
+ "menu_paths": [
+  {
+   "task": "First connect and add VPN profile",
+   "path_en": "Connect > allow the system to add the VPN configuration",
+   "path_ru": "Подключиться > разрешить добавление конфигурации VPN",
+   "evidence": "https://rabbit-hole-1.gitbook.io/rabbit-hole-docs/getting-started/quickstart (step 2); strings 'Allow the app to add a VPN configuration to your device…' in ru.lproj/Localizable.strings"
+  },
+  {
+   "task": "Add a subscription (URL, clipboard, QR, YAML)",
+   "path_en": "Configs > + (Add config) > Add via URL | Paste via clipboard | Scan QR | Upload YAML",
+   "path_ru": "Конфиги > + (Добавить конфиг) > Добавить по URL | Вставка из буфера | Сканировать QR | Загрузить YAML",
+   "evidence": "Docs quickstart + using-the-app/configs (EN); labels from ru.lproj/Localizable.strings. Exact grouping of the four items under '+' not verified in UI code (closed source)."
+  },
+  {
+   "task": "Add a subscription by provider deep link",
+   "path_en": "Open rabbithole://add/<URL>, confirm adding, then Connect",
+   "path_ru": "Открыть ссылку rabbithole://add/<ссылка>, подтвердить добавление, затем Подключиться",
+   "evidence": "https://rabbit-hole-1.gitbook.io/rabbit-hole-docs/for-devs/deep-links-and-user-flow"
+  },
+  {
+   "task": "Connect / disconnect",
+   "path_en": "Configs > select config (and proxy if needed) > Connect / Disconnect",
+   "path_ru": "Конфиги > выбрать конфигурацию (и прокси при необходимости) > Подключиться / Отключиться",
+   "evidence": "Docs using-the-app/configs section 'Connect'; Localizable.strings keys Connect / Disconnect"
+  },
+  {
+   "task": "Connect / disconnect on macOS by keyboard",
+   "path_en": "Option (⌥) + / (default); Settings > Shortcut > Reset to restore",
+   "path_ru": "Option (⌥) + / (по умолчанию); Настройки > Сочетания клавиш > Сбросить",
+   "evidence": "Docs using-the-app/settings 'macOS shortcuts'; ru.lproj keys 'Shortcut', 'Reset', 'Toggle VPN'"
+  },
+  {
+   "task": "Change routing mode",
+   "path_en": "Settings > Routing > Default | Off | Excluded | Included",
+   "path_ru": "Настройки > Маршрутизация > По умолчанию | Выкл | Исключено | Включено",
+   "evidence": "Docs using-the-app/settings 'Routing'; ru.lproj keys"
+  },
+  {
+   "task": "Switch proxy mode Global / Rule / Direct",
+   "path_en": "Zashboard dashboard (embedded) > Global | Rule | Direct",
+   "path_ru": "Дашборд Zashboard (встроенный) > Глобальный | Правило | Прямой",
+   "evidence": "/Applications/RabbitHole.app/Contents/Resources/zashboard/assets/index-CoHJCU3w.js tables; how the app opens the dashboard is NOT verified, so tell users to use Routing unless confirmed"
+  },
+  {
+   "task": "Sort / filter servers, latency",
+   "path_en": "Configs > Sorting & Filters > Alphabetical | Ping; Settings > Ping (Ping service, Ping delay)",
+   "path_ru": "Конфиги > Сортировка и фильтры > В алфавитном порядке | Пинг; Настройки > Пинг (Пингуемый сервис, Интервал пинга)",
+   "evidence": "Docs using-the-app/configs 'Sorting and filters' and settings 'Ping'; ru.lproj keys"
+  },
+  {
+   "task": "Automatically pick fastest server",
+   "path_en": "Settings > Dynamic switch",
+   "path_ru": "Настройки > Автопереключение",
+   "evidence": "Docs using-the-app/settings 'Dynamic switch'; ru.lproj key 'Dynamic switch'"
+  },
+  {
+   "task": "Open logs",
+   "path_en": "Settings > Logs > Open logs (pick Log level first; logs start after connecting)",
+   "path_ru": "Настройки > Логи > Открыть логи (сначала выбрать уровень; логи пишутся после подключения)",
+   "evidence": "Docs using-the-app/settings 'Logs'; ru.lproj keys 'Open logs', 'Logs will start recording after connection'"
+  },
+  {
+   "task": "Delete or rename a config",
+   "path_en": "Configs > config editor > Edit config / Delete config",
+   "path_ru": "Конфиги > редактор конфигурации > Редактировать конфигурацию / Удалить конфигурацию",
+   "evidence": "Docs using-the-app/configs 'Add and edit'; ru.lproj keys"
+  }
+ ],
+ "menu_path_issues": [
+  "VERSION: strings were read from installed 1.3.2 (build 156), not 1.7.1. Docs are dated ~1 month ago and describe 1.7.x. Labels that exist in 1.3.2 may have changed or been removed in 1.7.1 (the table already admits this for 'Create config'). The RU strings were not checked against the real 1.7.1 App Store build.",
+  "'Toggle VPN' / 'Option (⌥) + /': EN docs and the EN key say 'Option (⌥) + /', but the RU value of the long shortcut text says 'Option (⌥) + \\' (backslash). Likely a typo in the RU string. Tell RU users 'Option (⌥) + /' only after checking the keyboard on the machine.",
+  "Dynamic switch interval: docs say default 30 s; the RU/EN explanatory string says 100 s and calls the field 'Задержка пинга' while the label is 'Интервал пинга'. Do not state a default interval in the answer.",
+  "'Language': key exists, but the docs Settings page (iCloud sync, Dynamic switch, Ping, Appearance, Routing, Logs, macOS shortcuts) does not list a Language item, and the app ships 30 lproj folders. Whether it is an in-app picker or opens system language settings is unverified. Tell users to change the app language via system settings unless confirmed.",
+  "Zashboard path 'Zashboard dashboard (embedded) > Global | Rule | Direct': the three strings are verbatim in the bundled JS (EN and RU tables), and native keys 'Dashboard'/'Дашборд' and 'Zashboard' exist, but nothing shows how the user opens the dashboard or which language it uses (it has EN, RU, ZH tables). Keep the caveat; native route-level control is Settings > Routing.",
+  "Zashboard RU wording differs from native wording: Zashboard 'Logs' tab is 'Журнал', native Settings > Logs is 'Логи'. Do not mix them in one path.",
+  "Settings > Routing: the labels 'Исключено'/'Включено' are verbatim, but the explanatory text in the same screen uses 'Исключённые'/'Включённые' and 'Выкл' for Off. Both are valid app text; quote the label forms.",
+  "Sort path: docs list three sort options (original order, latency/ping, alphabetical). No 'original order' string was found in ru.lproj (maybe the 'Default' label). The path lists only Alphabetical | Ping; 'Default' as the third sort option is unverified.",
+  "Add menu path 'Configs > + (Add config)': docs say 'Use +' and name the ways (QR code, clipboard, URL, YAML file); the exact label of the '+' item and the grouping of the four items under it are not verifiable (closed source). Docs also list a fifth way, the deep link. The claimed URL dialog hint 'Add sub link' vs 'Add via URL' vs 'Add subscription link' are three separate keys with unknown screens.",
+  "Delete/rename path 'Configs > config editor > Edit config / Delete config': docs only say the editor lets you rename or delete. 'Edit config' / 'Редактировать конфигурацию' and 'Delete config' / 'Удалить конфигурацию' (plus confirm 'Delete config?') exist, but which is the entry button and which is inside the editor is unverified.",
+  "Logs path 'Settings > Logs > Open logs': docs only say Settings has Logs. Log levels exist in strings: Silent/Тихий, Error, Warn, Info, Debug. Key 'If you need logs, select the logging mode in the settings' confirms level is chosen in Settings. Logs are erased after the session ends (string says so), worth adding to the instructions.",
+  "First connect path: the string and docs step 2 agree ('allow the app to add a VPN configuration'). 'Set up VPN' screen is unverified; the system dialog itself is macOS text, not app text."
+ ],
+ "missing_flows": [
+  "Apple TV transfer (docs: iPhone > configuration editor > Apple TV option): no Apple TV string in macOS ru.lproj; iOS-only, do not offer on macOS.",
+  "Filter by protocol: strings 'Displayed protocols' / 'Отображаемые протоколы' and 'DISPLAYED PROTOCOLS' exist (docs: filter by protocol type). Not in the table; separate from 'Select allowed protocols' (dynamic switch only).",
+  "Delete/confirm and edit: 'Delete config?', 'Delete', 'Edit', 'Edit config', 'Save', 'Cancel', 'Name'/'Название', 'URL' labels in the add-by-URL dialog are not in the table.",
+  "Remote vs local group labels: 'REMOTE GROUP' / 'УДАЛЁННАЯ ГРУППА', 'LOCAL GROUP' / 'ЛОКАЛЬНАЯ ГРУППА', 'Create group', 'Group name'. Add if users ask about adding manual configs.",
+  "Proxy mode/Tunneling: native keys 'Mode'/'Режим', 'Tunneling'/'Туннелирование', 'System'/'Системная' exist; their screen and meaning are unverified. Possibly the real native mode switch. Needs a live look in the running app before naming them.",
+  "Support button: 'Support'/'Поддержка' (docs: shown only if the provider supplies a support link).",
+  "Hidden proxies: 'HIDDEN PROXIES' / 'СКРЫТЫЕ ПРОКСИ' for proxies removed from the list.",
+  "Appearance sub-options (docs: light/dark theme, black/white logo, Progress Bar vs Health Bar): specific labels not listed.",
+  "Copy/share subscription link, System proxy and TUN toggle: confirmed absent in strings; keep the 'not available' note.",
+  "macOS app language: the app ships 30 localizations; add a system-settings route for language if the in-app picker is not confirmed."
+ ],
+ "caveats": [
+  "CLOSED SOURCE: no GitHub repo found (gh search, no org). source_available=false. 'file' values are the installed bundle or doc URLs, not source files; there are no file:line evidences and no release tag or commit sha.",
+  "MAIN LIMIT: strings come from the macOS app installed on this Mac, /Applications/RabbitHole.app, version 1.3.2 (CFBundleShortVersionString), while the App Store version is 1.7.1 (2026-11-06). Release notes say the interface was redesigned since then; some labels may have changed or been removed (the docs say manual group creation was removed). Re-check with a current build before the assistant quotes any label to users.",
+  "The hint labels 'Добавить настройки VPN' and 'Подключиться' were only partly confirmed: 'Подключиться' = Connect verbatim. 'Добавить настройки VPN' does NOT exist in 1.3.2; closest are 'Нажмите, чтобы добавить настройки VPN' and 'Добавить конфигурации VPN'.",
+  "EN text: en.lproj has only 5 entries; the English UI text is the key itself (SwiftUI source-language keys), except where en.lproj overrides it (e.g. 'Add subscription link' shows 'Add via URL').",
+  "Official docs (GitBook) exist in English only; there is no Russian doc space (ru path 404). RU labels come only from ru.lproj. The docs describe 1.7.x behaviour.",
+  "Russian is available: ru.lproj present (292 entries) and App Store lists RU among 28 languages. Not verified whether Language in Settings is an in-app picker or opens system settings.",
+  "The app has NO verified 'System proxy' or 'TUN' toggle, no 'Rule/Global/Direct' native switch, no 'share/copy subscription link/QR' and no verified 'update all subscriptions' button. Rule/Global/Direct exist only inside the bundled Zashboard web UI; how to open it is unverified. Do not name these controls to users.",
+  "Docs describe app-specific features worth knowing: Apple TV transfer from the config editor, display modes Single/Full (configured by provider headers), Health bar vs Progress bar for traffic, Settings > Appearance, iCloud sync.",
+  "Strings with %@ / %lld are runtime templates; what fills 'Connected | %@' was not verified (likely timer or server name).",
+  "Screen names ('Configs', 'Settings') come from the docs; on macOS vs iOS layout differences were not observable without running the app (macOS-only: Shortcut, Toggle VPN, Open main window, per-app routing per App Store text). I did not launch the app.",
+  "The RU label for 'Log level' is 'Логи' and for 'Ping delay' is 'Интервал пинга' (while its help text says 'Задержка пинга'); quote exactly.",
+  "Required OS: App Store reports minimum iOS 17.0; the macOS 15+ hint was not verified."
+ ]
+}
