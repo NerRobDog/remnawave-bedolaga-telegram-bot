@@ -1,0 +1,279 @@
+{
+ "app": "Happ",
+ "source_available": false,
+ "repo": "https://github.com/Happ-proxy (happ-android, happ-desktop, happ-ios: release-only repos, no source code)",
+ "release_tag": "android 4.10.1; desktop 4.8.1; ios: no GitHub releases",
+ "release_date": "android 2026-11-04; desktop 2026-11-06",
+ "commit_sha": "android 4.10.1 = c87cc5ea28b5748aab8a4225f998d3080d2c18ae (release-only repo, sha does not point to app source)",
+ "ru_locale_present": true,
+ "languages_available": [
+  "en",
+  "ru"
+ ],
+ "locale_files": [],
+ "provenance": "read from the app's source/locale files at the release tag (closed-source apps: official docs or installed bundle), then adversarially re-checked by a second agent; NOT a live UI check",
+ "labels": [
+  {
+   "flow": "add subscription",
+   "key": "(none, closed source)",
+   "en": "Clipboard",
+   "ru": "Буфер обмена",
+   "file": "https://www.happ.su/main/faq/adding-configuration-subscription ; https://www.happ.su/main/ru/faq/adding-configuration-subscription",
+   "state": "disconnected",
+   "screen": "Adding subscription (docs list methods, no menu path)",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "add subscription",
+   "key": "(none)",
+   "en": "QR code",
+   "ru": "QR-код",
+   "file": "https://www.happ.su/main/faq/adding-configuration-subscription ; https://www.happ.su/main/ru/faq/adding-configuration-subscription",
+   "state": "disconnected",
+   "screen": "Adding subscription",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "add subscription",
+   "key": "(none)",
+   "en": "Deep link",
+   "ru": "Диплинк",
+   "file": "https://www.happ.su/main/faq/adding-configuration-subscription ; https://www.happ.su/main/ru/faq/adding-configuration-subscription",
+   "state": "disconnected",
+   "screen": "Adding subscription",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "add subscription errors",
+   "key": "(none)",
+   "en": "Clipboard is empty",
+   "ru": "",
+   "file": "https://www.happ.su/main/faq/errors (RU text not read)",
+   "state": "disconnected",
+   "screen": "error on import",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "add subscription errors",
+   "key": "(none)",
+   "en": "The subscription URL is not valid",
+   "ru": "",
+   "file": "https://www.happ.su/main/faq/errors (RU text not read)",
+   "state": "disconnected",
+   "screen": "error on import",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "add subscription errors",
+   "key": "(none)",
+   "en": "Timeout while adding a subscription",
+   "ru": "",
+   "file": "https://www.happ.su/main/faq/errors (RU text not read)",
+   "state": "disconnected",
+   "screen": "error; server did not answer within 9 seconds on add/update",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "share subscription link or QR",
+   "key": "(none)",
+   "en": "Copy to Clipboard",
+   "ru": "В буфер обмена",
+   "file": "https://www.happ.su/main/faq/share-configuration ; https://www.happ.su/main/ru/faq/podelitsya-konfiguraciei",
+   "state": "both",
+   "screen": "Share menu (purple arrow icon after swipe right on server header)",
+   "platform_note": "Swipe gesture, so mobile layout. Works only for non-encrypted, non-hidden subscription servers and for local-list servers.",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "share subscription link or QR",
+   "key": "(none)",
+   "en": "QR Code",
+   "ru": "QR-код",
+   "file": "https://www.happ.su/main/faq/share-configuration ; https://www.happ.su/main/ru/faq/podelitsya-konfiguraciei",
+   "state": "both",
+   "screen": "Share menu",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "share subscription link or QR",
+   "key": "(none)",
+   "en": "JSON",
+   "ru": "JSON",
+   "file": "https://www.happ.su/main/faq/share-configuration ; https://www.happ.su/main/ru/faq/podelitsya-konfiguraciei",
+   "state": "both",
+   "screen": "Share menu",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "latency test",
+   "key": "(none)",
+   "en": "Check Current Connection",
+   "ru": "Проверить текущее соединение",
+   "file": "https://www.happ.su/main/faq/ping ; https://www.happ.su/main/ru/faq/ping",
+   "state": "connected",
+   "screen": "Ping",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "latency test",
+   "key": "(none)",
+   "en": "Ping on Launch",
+   "ru": "Пинг при запуске",
+   "file": "https://www.happ.su/main/faq/ping ; https://www.happ.su/main/ru/faq/ping",
+   "state": "both",
+   "screen": "Settings > Subscriptions",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "latency test",
+   "key": "(none)",
+   "en": "Time (ms)",
+   "ru": "Время (мс)",
+   "file": "https://www.happ.su/main/faq/ping ; https://www.happ.su/main/ru/faq/ping",
+   "state": "both",
+   "screen": "Settings > Ping",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "latency test",
+   "key": "(none)",
+   "en": "Status Icon",
+   "ru": "Иконка состояния",
+   "file": "https://www.happ.su/main/faq/ping ; https://www.happ.su/main/ru/faq/ping",
+   "state": "both",
+   "screen": "Settings > Ping",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "latency test",
+   "key": "(none)",
+   "en": "Timeout",
+   "ru": "Тайм-аут",
+   "file": "https://www.happ.su/main/faq/ping ; https://www.happ.su/main/ru/faq/ping",
+   "state": "both",
+   "screen": "Ping error message",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "latency test",
+   "key": "(none)",
+   "en": "ICMP Ping / TCP Ping / Ping via Proxy (Via Proxy GET, Via Proxy HEAD)",
+   "ru": "ICMP Ping / TCP Ping / Via Proxy GET / Via Proxy HEAD (RU doc keeps these in Latin)",
+   "file": "https://www.happ.su/main/faq/ping ; https://www.happ.su/main/ru/faq/ping",
+   "state": "both",
+   "screen": "Ping test modes",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "settings sections",
+   "key": "(none)",
+   "en": "Settings",
+   "ru": "Настройки",
+   "file": "https://www.happ.su/main/faq/ping ; https://www.happ.su/main/ru/faq/ping",
+   "state": "both",
+   "screen": "Settings",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "settings sections",
+   "key": "(none)",
+   "en": "Subscriptions",
+   "ru": "Подписки",
+   "file": "https://www.happ.su/main/faq/ping ; https://www.happ.su/main/ru/faq/ping",
+   "state": "both",
+   "screen": "Settings > Subscriptions",
+   "verify": "not_checked"
+  },
+  {
+   "flow": "TV import",
+   "key": "(none)",
+   "en": "Web Import",
+   "ru": "",
+   "file": "https://www.happ.su/main/faq/android-tv ; https://www.happ.su/main/faq/apple-tv-tvos (RU pages not read: fetch failed)",
+   "state": "disconnected",
+   "screen": "TV import screen",
+   "platform_note": "TV only. Shows a code and QR; enter the code at tv.happ.su. On Apple TV the import screen opens on first launch or via the '+' button; Local network import (scan the TV's QR in Happ on a phone) is also offered.",
+   "verify": "not_checked"
+  }
+ ],
+ "menu_paths": [
+  {
+   "task": "add a subscription (mobile)",
+   "path_en": "Clipboard / QR code / Deep link (methods only; path to the add button is not documented)",
+   "path_ru": "Буфер обмена / QR-код / Диплинк",
+   "evidence": "https://www.happ.su/main/faq/adding-configuration-subscription ; https://www.happ.su/main/ru/faq/adding-configuration-subscription"
+  },
+  {
+   "task": "share a server config / subscription",
+   "path_en": "Main screen > swipe right on the server header > purple arrow icon > Copy to Clipboard / QR Code / JSON",
+   "path_ru": "Главный экран > смахнуть вправо по заголовку сервера > фиолетовая иконка со стрелкой > В буфер обмена / QR-код / JSON",
+   "evidence": "https://www.happ.su/main/faq/share-configuration ; https://www.happ.su/main/ru/faq/podelitsya-konfiguraciei"
+  },
+  {
+   "task": "ping a whole subscription",
+   "path_en": "Main screen > speedometer icon in the subscription header",
+   "path_ru": "RU label not documented (icon only)",
+   "evidence": "https://www.happ.su/main/faq/ping"
+  },
+  {
+   "task": "ping a single config",
+   "path_en": "Swipe the config to the right > speedometer icon in the actions panel",
+   "path_ru": "RU phrasing not verified",
+   "evidence": "https://www.happ.su/main/faq/ping"
+  },
+  {
+   "task": "auto ping on launch",
+   "path_en": "Settings > Subscriptions > Ping on Launch",
+   "path_ru": "Настройки > Подписки > Пинг при запуске",
+   "evidence": "https://www.happ.su/main/ru/faq/ping"
+  },
+  {
+   "task": "change ping display",
+   "path_en": "Settings > Ping > Time (ms) / Status Icon",
+   "path_ru": "Настройки > Ping > Время (мс) / Иконка состояния",
+   "evidence": "https://www.happ.su/main/ru/faq/ping"
+  },
+  {
+   "task": "add a subscription on Android TV",
+   "path_en": "Web Import > code and QR appear > enter the code at tv.happ.su (or scan the QR with a phone)",
+   "path_ru": "RU page not read",
+   "evidence": "https://www.happ.su/main/faq/android-tv"
+  },
+  {
+   "task": "add a subscription on Apple TV",
+   "path_en": "Import screen (first launch or '+' button) > scan the TV's QR in Happ on the phone, or Web Import > tv.happ.su > Send",
+   "path_ru": "RU page not read",
+   "evidence": "https://www.happ.su/main/faq/apple-tv-tvos"
+  }
+ ],
+ "menu_path_issues": [
+  "The 'add a subscription (mobile)' path is incomplete and the methods are not a navigation path (see refuted). The '+' > Manual Input > Done path exists in both EN and RU docs.",
+  "Apple TV path: 'Local network import' is the first-listed option and 'Web Import' is the fallback. The RU page says Web Import is for when the local network is unavailable. The EN heading is 'Import via local network' (RU 'Импорт по локальной сети').",
+  "RU Android TV path was marked 'RU page not read' but is available. It matches the EN steps and keeps 'Web Import' in Latin.",
+  "The docs show the main screen 'Settings' only inside paths. The settings icon or tab location is not documented, and platform differences (mobile vs desktop vs TV) are not stated.",
+  "'Check Current Connection': the docs do not state that it appears only when connected, so state=connected is unverified.",
+  "'Share' states 'both' (connected and disconnected), but the docs do not say so. They also describe a swipe gesture, so the flow is mobile only.",
+  "The task cited no source for the Android 4.10.1 and desktop 4.8.1 labels. The docs do not tie their wording to those builds, and the labels may differ in the actual apps."
+ ],
+ "missing_flows": [
+  "connect/disconnect: connect button and connected-state labels are not in the table",
+  "mode switch (proxy/VPN/TUN/routing mode)",
+  "update subscription: manual refresh and the pull-to-refresh/update icon; only the 9 s timeout error is mentioned",
+  "server choice: selecting a server or configuration, and the auto/best-ping option",
+  "system proxy / TUN toggle on desktop",
+  "language setting: where the language is switched. The user asked to check the Russian UI, so the app's real RU locale strings are still unchecked.",
+  "logs: viewing and exporting logs",
+  "manual input: '+' > Manual Input > Done (RU: Ручной ввод, Готово)",
+  "other error messages in the docs without labels: 'Configuration {config type} is not valid', 'JSON (or array) configuration is not valid', 'Invalid deeplink URL', 'Unknown content type', 'Wrong data for import routing profile'. RU texts were not read for these.",
+  "Apple TV local-network import (RU 'Импорт по локальной сети') and the tv.happ.su 'Send' (RU 'Отправить') button, as a separate import path",
+  "no verification against the real apps: RU strings in the actual app, as opposed to the docs, are unchecked. Examples: 'Буффер' typo, 'Ping' kept Latin, 'Timeout'."
+ ],
+ "caveats": [
+  "Happ is CLOSED SOURCE. github.com/Happ-proxy/happ-android, happ-desktop and happ-ios hold only a README and release binaries (happ-ios has no releases). No source, no locale files, no key names: nothing was verified in code. Every label comes from the official happ.su docs, a secondary source, summarized by an LLM fetch tool, so quotes may be imperfect.",
+  "No verified labels for: connect/disconnect button and its connected/disconnected states, proxy mode (Rule/Global/Direct), update one/all subscriptions, add by URL or file, system proxy and TUN toggles, language setting, logs/diagnostics, traffic/speed counters while connected. The assistant must not name any button for these.",
+  "ru_locale_present=true is inferred only because happ.su Russian docs quote Russian UI labels. The app's own Russian locale files were not seen. The doc label 'Диплинк' may not match the in-app text.",
+  "Gesture and icon descriptions (swipe, speedometer) are mobile-layout; desktop (Windows/macOS/Linux) layout was not verified. RU texts for error messages and Web Import were not obtained (RU Apple TV/Android TV pages failed to load).",
+  "Release tags differ per repo: android 4.10.1 (2026-11-04, changelog: Xray 26.10.31, minor fixes), desktop 4.8.1 (2026-11-06); no iOS/tvOS tag. Docs may describe a different version.",
+  "To get exact EN/RU strings, the owner could approve downloading the Android APK (not downloaded: needs explicit permission) and reading res/values*/strings.xml."
+ ]
+}
