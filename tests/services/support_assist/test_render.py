@@ -3,6 +3,7 @@ from app.services.support_assist.flags import Flag
 from app.services.support_assist.render import (
     TRUNCATED_DRAFT_NOTICE,
     build_card_keyboard,
+    flag_facts,
     render_card,
     render_card_checked,
 )
@@ -193,3 +194,23 @@ def test_fallback_card_marks_low_flags_as_note_not_ok():
 def test_model_card_accepts_note_icon():
     card = Card(facts=[CardFact(icon='ℹ️', text='Клиент на Happ')], cause='c', owner_action='', ask_client=[], draft='d')
     assert 'ℹ️ Клиент на Happ' in render_card(card, [], 7)
+
+
+def test_flag_facts_are_icon_and_text_per_flag_by_severity():
+    flags = [*FLAGS, Flag('l', 'low', 'Заметка'), Flag('u', 'unknown', 'Нет данных')]
+    assert flag_facts(flags) == [
+        ('🔴', 'Подписка истекла'),
+        ('⚠️', 'Много устройств'),
+        ('✅', 'Всё в порядке'),
+        ('ℹ️', 'Заметка'),
+        ('❓', 'Нет данных'),
+    ]
+
+
+def test_flag_facts_survive_an_unknown_severity_from_old_rows():
+    assert flag_facts([Flag('x', 'weird', 'Старый флаг')]) == [('❓', 'Старый флаг')]  # type: ignore[arg-type]
+
+
+def test_fallback_card_text_is_built_from_flag_facts():
+    text = render_card(None, FLAGS, 7)
+    assert all(f'{icon} {fact}' in text for icon, fact in flag_facts(FLAGS))

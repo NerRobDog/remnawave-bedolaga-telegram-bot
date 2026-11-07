@@ -32,6 +32,7 @@ from app.handlers.admin import support_assist as sa, tickets as admin_tickets
 from app.keyboards.group_callbacks import is_group_safe_callback
 from app.middlewares.chat_type_filter import ChatTypeFilterMiddleware
 from app.services.event_emitter import event_emitter
+from app.services.support_assist import decision
 from app.services.support_assist.render import build_card_keyboard
 from app.services.support_settings_service import SupportSettingsService
 from app.states import SupportAssistStates
@@ -475,9 +476,9 @@ async def test_double_tap_reaches_the_client_once(monkeypatch, bot, notify):
 async def test_two_admins_pressing_at_once_reach_the_client_once(monkeypatch, bot, notify):
     """Оба прочитали карточку как 'shown' до того, как кто-то её занял: решает условный UPDATE."""
     async with world(monkeypatch) as w:
-        stale = await sa.get_card(w.db, 5)
+        stale = await decision.get_card(w.db, 5)
         w.db.expunge_all()
-        monkeypatch.setattr(sa, 'get_card', AsyncMock(return_value=stale))
+        monkeypatch.setattr(decision, 'get_card', AsyncMock(return_value=stale))
         first = _callback('sa:send:5', ADMIN_TG)
         second = _callback('sa:send:5', MODERATOR_TG)
 
@@ -1106,10 +1107,18 @@ async def test_skip_on_a_decided_card_changes_nothing(monkeypatch, bot, notify):
 
 
 def test_card_buttons_and_manual_reply_share_one_send_function():
-    assert sa.send_admin_reply is admin_tickets.send_admin_reply
+    assert decision.send_admin_reply is admin_tickets.send_admin_reply
     manual = inspect.getsource(admin_tickets.handle_admin_ticket_reply)
     assert 'send_admin_reply' in manual
     assert 'add_message' not in manual  # последовательность живёт в одной функции, а не копируется
+
+
+def test_telegram_buttons_and_the_cabinet_share_one_decision_path():
+    from app.cabinet.routes import admin_ticket_assist as cabinet
+
+    assert sa.decide_and_send is decision.decide_and_send is cabinet.decide_and_send
+    assert sa.dismiss_card is decision.dismiss_card is cabinet.dismiss_card
+    assert sa.mark_card_message is decision.mark_card_message is cabinet.mark_card_message
 
 
 @pytest.mark.asyncio

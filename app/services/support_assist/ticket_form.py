@@ -151,17 +151,17 @@ def platform_label(platform: str, lang: str, options: FormOptions) -> str:
     return get_texts(lang).t(f'TICKET_FORM_PLATFORM_{platform.upper()}', platform)
 
 
-def render_diagnostics(d: dict, lang: str, options: FormOptions | None = None) -> str:
-    """Ответы анкеты построчно «Поле: вариант» для уведомления владельцу и карточки.
+def diagnostics_rows(d: dict, lang: str, options: FormOptions | None = None) -> list[tuple[str, str]]:
+    """Ответы анкеты парами («Поле», «вариант») в порядке вопросов.
 
     Простой текст, без HTML: свободный текст клиента экранирует вызывающий. Неизвестные
     поля и негодные значения (старые или повреждённые данные) пропускаются.
     """
     if not isinstance(d, dict):
-        return ''
+        return []
     options = options or fallback_options()
     texts = get_texts(lang)
-    lines: list[str] = []
+    rows: list[tuple[str, str]] = []
     for field in FORM_FIELD_IDS:
         value = d.get(field)
         if not looks_valid(field, value):
@@ -177,5 +177,10 @@ def render_diagnostics(d: dict, lang: str, options: FormOptions | None = None) -
         extra = d.get(other_key(field)) if value == OTHER_OPTION else None
         if isinstance(extra, str) and extra.strip():
             shown = f'{shown} — {clean_other_text(extra)}'
-        lines.append(f'{texts.t(f"TICKET_FORM_{field.upper()}_LABEL")}: {shown}')
-    return '\n'.join(lines)
+        rows.append((texts.t(f'TICKET_FORM_{field.upper()}_LABEL'), shown))
+    return rows
+
+
+def render_diagnostics(d: dict, lang: str, options: FormOptions | None = None) -> str:
+    """Ответы анкеты построчно «Поле: вариант» для уведомления владельцу и карточки (см. ``diagnostics_rows``)."""
+    return '\n'.join(f'{label}: {shown}' for label, shown in diagnostics_rows(d, lang, options))
