@@ -3,7 +3,8 @@ from dataclasses import FrozenInstanceError
 import pytest
 
 from app.services.support_assist.flags import Flag, compute_flags
-from tests.services.support_assist.fixtures import SCENARIOS, healthy, prev_day
+from app.services.support_assist.snapshot import Snapshot
+from tests.services.support_assist.fixtures import AS_OF, SCENARIOS, healthy, prev_day
 
 
 HIGH_MID = {'high', 'mid'}
@@ -64,6 +65,50 @@ def test_no_subscription_snapshot():
         squad_nodes=[],
     )
     assert _codes(compute_flags(s)) == {'no_subscription'}
+
+
+@pytest.mark.parametrize('source', ['snapshot', 'bot_db'])
+def test_failed_subscription_read_is_not_reported_as_no_subscription(source):
+    # сбой сбора или чтения БД бота оставляет subscription=None: это «не знаем», а не «подписки нет»
+    flags = compute_flags(Snapshot(as_of=AS_OF, missing=[source]))
+    codes = _codes(flags)
+    assert 'no_subscription' not in codes
+    assert codes == {'data_unavailable'}
+    gap = flags[0]
+    assert gap.sev == 'unknown'
+    assert 'нет подписки' not in gap.text.lower()
+    assert 'подписк' in gap.text  # прямо сказано, что о подписке данных нет
+
+
+def test_real_absence_of_subscription_is_still_reported():
+    s = Snapshot(as_of=AS_OF, account={'id': 1, 'status': 'active', 'language': 'ru'}, subscription=None)
+    assert _codes(compute_flags(s)) == {'no_subscription'}
+
+
+def test_panel_down_lists_every_missing_source():
+    panel_sources = ['panel_user', 'sub_requests', 'devices', 'usage', 'squad_nodes', 'nodes']
+    s = healthy(
+        panel_user=None,
+        devices=[],
+        sub_requests=[],
+        sub_requests_total=None,
+        usage_by_day={},
+        squad_nodes=[],
+        missing=panel_sources,
+    )
+    flags = compute_flags(s)
+    assert _codes(flags) == {'data_unavailable'}
+    gap = flags[0]
+    assert gap.sev == 'unknown'
+    for label in ('профиль в панели', 'запросы подписки', 'устройства', 'трафик', 'ноды тарифа', 'состояние нод'):
+        assert label in gap.text
+
+
+def test_data_gap_flag_comes_first_and_only_when_something_is_missing():
+    assert 'data_unavailable' not in _codes(compute_flags(healthy()))
+    flags = compute_flags(healthy(usage_by_day={}, missing=['usage'], restrictions=['restriction_subscription: x']))
+    assert flags[0].code == 'data_unavailable'
+    assert 'restricted' in _codes(flags)
 
 
 def test_daily_paused_suppresses_desync_status():

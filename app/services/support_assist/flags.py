@@ -14,11 +14,25 @@ from typing import Literal
 from app.services.support_assist.snapshot import Snapshot
 
 
-Severity = Literal['high', 'mid', 'low', 'info']
+# 'unknown' — не отклонение и не норма, а «данных нет»: в карточке это строка с ❓.
+Severity = Literal['high', 'mid', 'low', 'info', 'unknown']
 
 _LIVE_STATUSES = {'active', 'trial'}
 _MB = 1024 * 1024
 _HISTORY_CAP = 24  # панель отдаёт не больше 24 последних запросов подписки
+
+# Без этих источников подписка клиента неизвестна: ``Snapshot.subscription is None`` тогда значит
+# «не прочитали», а не «подписки нет».
+_SUBSCRIPTION_SOURCES = frozenset({'snapshot', 'bot_db'})
+# Подписи остальных источников: сбой любого из них делает карточку неполной.
+_SOURCE_LABELS = {
+    'panel_user': 'профиль в панели',
+    'sub_requests': 'запросы подписки',
+    'devices': 'устройства',
+    'usage': 'трафик',
+    'squad_nodes': 'ноды тарифа',
+    'nodes': 'состояние нод',
+}
 
 
 @dataclass(frozen=True)
@@ -38,12 +52,24 @@ def _fmt(value: datetime | None) -> str:
     return value.strftime('%Y-%m-%d %H:%M') if value else '—'
 
 
+def _data_gap_text(missing: list[str], *, subscription_unknown: bool) -> str:
+    if subscription_unknown:
+        return 'Нет данных о клиенте: проверки не отработали, подписка, платежи и панель неизвестны'
+    return 'Нет данных: ' + ', '.join(_SOURCE_LABELS.get(name, name) for name in missing)
+
+
 def compute_flags(s: Snapshot) -> list[Flag]:
     now = s.as_of
     flags: list[Flag] = []
 
     def add(code: str, sev: Severity, text: str) -> None:
         flags.append(Flag(code, sev, text))
+
+    # Сбой источника нельзя выдавать ни за норму, ни за отсутствие записи: помечаем его первой
+    # строкой, чтобы её увидел владелец и урезание длинной карточки убирало её последней.
+    subscription_unknown = bool(_SUBSCRIPTION_SOURCES & set(s.missing))
+    if s.missing:
+        add('data_unavailable', 'unknown', _data_gap_text(s.missing, subscription_unknown=subscription_unknown))
 
     sub = s.subscription
     pu = s.panel_user
@@ -57,7 +83,9 @@ def compute_flags(s: Snapshot) -> list[Flag]:
 
     # --- подписка в боте
     if not sub:
-        add('no_subscription', 'high', 'У клиента нет подписки в боте')
+        # None и при сбое чтения, и когда подписки правда нет; сбой уже помечен data_unavailable
+        if not subscription_unknown:
+            add('no_subscription', 'high', 'У клиента нет подписки в боте')
     else:
         end = sub.get('end_date')
         status = sub.get('status')

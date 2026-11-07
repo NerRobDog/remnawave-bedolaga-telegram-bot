@@ -12,7 +12,7 @@ from app.services.support_assist.flags import Flag
 
 TELEGRAM_LIMIT = 4096
 
-_SEV_ICON = {'high': '🔴', 'mid': '⚠️', 'low': '✅', 'info': '✅'}
+_SEV_ICON = {'high': '🔴', 'mid': '⚠️', 'low': '✅', 'info': '✅', 'unknown': '❓'}
 
 
 def _e(value: str) -> str:

@@ -35,6 +35,12 @@ def test_fallback_card_without_model():
     assert '🔴' in text and '⚠️' in text and '✅' in text
 
 
+def test_fallback_card_marks_unavailable_data_with_question_mark():
+    flags = [Flag('data_unavailable', 'unknown', 'Нет данных: устройства'), Flag('ok', 'info', 'Всё в порядке')]
+    text = render_card(None, flags, 7)
+    assert '❓ Нет данных: устройства' in text
+
+
 def test_long_draft_fits_telegram_limit():
     text = render_card(_card(draft='я' * 10_000), FLAGS, 1)
     assert len(text) <= 4096
