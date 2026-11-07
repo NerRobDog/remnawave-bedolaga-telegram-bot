@@ -11,7 +11,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
@@ -51,6 +51,34 @@ _background_tasks: set[asyncio.Task[None]] = set()
 # Тикеты, по которым конвейер уже идёт в этом процессе: вторая карточка параллельно не нужна.
 _in_flight: set[int] = set()
 _pipeline_slots = asyncio.Semaphore(MAX_CONCURRENT_PIPELINES)
+
+
+@dataclass(frozen=True, slots=True)
+class _TicketView:
+    """Простые значения тикета, снятые сразу после загрузки.
+
+    Любой откат сессии (``end_transaction`` после сбойного commit, IntegrityError в
+    ``mark_auto_ask_sent``) протухает все загруженные в неё ORM-строки, а чтение протухшего
+    атрибута в async-сессии бросает MissingGreenlet: ``expire_on_commit=False`` защищает только
+    от commit. Поэтому дальше конвейер читает только эти копии, а не ORM-объекты.
+    """
+
+    language: str | None
+    # None — у тикета нет сообщений клиента.
+    first_text: str | None
+    first_has_media: bool
+    client_texts: list[str]
+
+
+def _view_of(ticket: Ticket) -> _TicketView:
+    client_messages = sorted((m for m in ticket.messages if not m.is_from_admin), key=lambda m: m.id)
+    first = client_messages[0] if client_messages else None
+    return _TicketView(
+        language=getattr(ticket.user, 'language', None),
+        first_text=(first.message_text or '') if first is not None else None,
+        first_has_media=bool(first.has_media) if first is not None else False,
+        client_texts=[_client_text(m) for m in client_messages[-MAX_CLIENT_MESSAGES:]],
+    )
 
 
 def notification_bot() -> Bot | None:
@@ -142,7 +170,8 @@ async def _run(
     ticket = await TicketCRUD.get_ticket_by_id(db, ticket_id, load_messages=True, load_user=True)
     if ticket is None:
         return None
-    client_messages = sorted((m for m in ticket.messages if not m.is_from_admin), key=lambda m: m.id)
+    # Копии простых значений: после любого отката сессии ORM-объекты тикета читать нельзя.
+    view = _view_of(ticket)
 
     # 2. Снимок и флаги. collect_snapshot сам закрывает транзакцию перед запросами к панели; при
     # сбое или обрыве по таймауту сессия может остаться в сбойном состоянии, приводим её в порядок.
@@ -174,9 +203,9 @@ async def _run(
     await end_transaction(db)
 
     # 3. Автовопрос клиенту (только на новый тикет, один раз).
-    if trigger == 'new_ticket' and settings.SUPPORT_ASSIST_AUTO_ASK_ENABLED and client_messages:
+    if trigger == 'new_ticket' and settings.SUPPORT_ASSIST_AUTO_ASK_ENABLED and view.first_text is not None:
         try:
-            await _auto_ask(db, bot, ticket, row, client_messages[0], snapshot, flags)
+            await _auto_ask(db, bot, ticket_id, card_id, view, snapshot, flags)
         except Exception:
             logger.exception('support_assist.auto_ask_failed', ticket_id=ticket_id)
         # Уведомление клиенту читает БД (последнее сообщение, вебхуки): закрываем транзакцию до Claude.
@@ -186,7 +215,7 @@ async def _run(
     if client is None:
         result = CardResult(card=None, error='no_api_key')
     else:
-        result = await generate_card(client, payload, [_client_text(m) for m in client_messages[-MAX_CLIENT_MESSAGES:]])
+        result = await generate_card(client, payload, view.client_texts)
     if result.error:
         logger.warning('support_assist.card_without_model', ticket_id=ticket_id, error=result.error)
 
@@ -225,25 +254,31 @@ def _client_text(message: Any) -> str:
 async def _auto_ask(
     db: AsyncSession,
     bot: Bot,
-    ticket: Ticket,
-    row: SupportAssistCard,
-    first: Any,
+    ticket_id: int,
+    card_id: int,
+    view: _TicketView,
     snapshot: Snapshot,
     flags: list[Flag],
 ) -> None:
-    text = first.message_text or ''
-    has_media = bool(first.has_media)
+    text = view.first_text or ''
+    has_media = view.first_has_media
     if not is_bare(text, has_media):
         return
     question_ids = pick_questions(text, has_media, snapshot, flags)
     if not question_ids:
         return
-    # Сначала занимаем «право спросить»: уникальный индекс не даёт спросить дважды.
-    if not await mark_auto_ask_sent(db, row.id, question_ids):
-        logger.info('support_assist.auto_ask_already_sent', ticket_id=ticket.id)
+    # К этому месту сессия могла откатиться (сбой сбора, end_transaction), и тикет из _run протух.
+    # Чтение свежее; ORM-тикет нужен только отправке (уведомления берут из него id, пользователя, статус).
+    ticket = await TicketCRUD.get_ticket_by_id(db, ticket_id, load_messages=False, load_user=True)
+    if ticket is None:
+        return
+    # Сначала занимаем «право спросить»: уникальный индекс не даёт спросить дважды. Проигрыш откатывает
+    # сессию и протухает ticket, поэтому после него в этой ветке только ticket_id.
+    if not await mark_auto_ask_sent(db, card_id, question_ids):
+        logger.info('support_assist.auto_ask_already_sent', ticket_id=ticket_id)
         return
 
-    lang = (snapshot.account or {}).get('language') or getattr(ticket.user, 'language', None)
+    lang = (snapshot.account or {}).get('language') or view.language
     body = render_questions(question_ids, lang or settings.DEFAULT_LANGUAGE)
     # Сообщение системы, а не владельца. Статус и updated_at тикета не трогаем: он остаётся OPEN,
     # и SLA-напоминание владельцу сработает в обычный срок.

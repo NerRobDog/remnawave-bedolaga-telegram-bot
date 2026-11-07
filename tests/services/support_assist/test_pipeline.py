@@ -470,18 +470,6 @@ async def test_concurrent_runs_ask_the_client_once(env, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_auto_ask_claim_lost_in_db_sends_nothing(env, cabinet, monkeypatch):
-    """Страховка на случай второго процесса: уникальный индекс не даёт спросить дважды."""
-    monkeypatch.setattr(settings, 'SUPPORT_ASSIST_AUTO_ASK_ENABLED', True)
-    monkeypatch.setattr(settings, 'SUPPORT_ASSIST_RECOMPUTE_MINUTES', 0)
-    await _run(env)
-    await _run(env, now=NOW + timedelta(seconds=1))
-    assert env.notify.await_count == 1
-    assert cabinet.emit.await_count == 1 and cabinet.push.await_count == 1
-    assert env.bot.send_message.await_count == 2  # карточка новая, вопросы — нет
-
-
-@pytest.mark.asyncio
 async def test_auto_ask_failure_does_not_block_the_card(env, monkeypatch):
     monkeypatch.setattr(settings, 'SUPPORT_ASSIST_AUTO_ASK_ENABLED', True)
     env.notify.side_effect = RuntimeError('telegram down')
@@ -626,18 +614,8 @@ async def test_snapshot_hang_is_cut_off_and_card_still_sent(env, monkeypatch):
     env.db.commit.assert_awaited()  # транзакция, оставшаяся от оборванного сбора, закрыта до записи карточки
 
 
-@pytest.mark.asyncio
-async def test_failed_session_after_snapshot_timeout_is_rolled_back(env, monkeypatch):
-    monkeypatch.setattr(pipeline, 'SNAPSHOT_TIMEOUT_SECONDS', 0.05)
-
-    async def hang(db, api, ticket, now):
-        await asyncio.sleep(3600)
-
-    monkeypatch.setattr(pipeline, 'collect_snapshot', hang)
-    env.db.commit.side_effect = [RuntimeError('PendingRollbackError'), None, None, None]
-    card = await asyncio.wait_for(_run(env), 5)
-    assert card.status == 'shown'
-    env.db.rollback.assert_awaited_once()
+# Откаты сессии (сбой commit после обрыва сбора, проигранный захват автовопроса по уникальному индексу)
+# здесь не проверяются: подменные тикеты не протухают и проходят ложно. Они в test_pipeline_real_db.py.
 
 
 @pytest.mark.asyncio
