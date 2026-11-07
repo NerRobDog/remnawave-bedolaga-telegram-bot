@@ -289,3 +289,62 @@ async def test_snapshot_without_a_form_has_no_diagnostics(monkeypatch):
     for value in (None, 'x', ['ios']):
         s = await snap.collect_snapshot(AsyncMock(), _api(), MagicMock(user_id=7, id=1, diagnostics=value), NOW)
         assert s.diagnostics is None
+
+
+# --- панельный аккаунт в мультитарифном режиме ----------------------------------
+
+
+def _db_with(user_panel_id, sub_panel_id):
+    user = SimpleNamespace(
+        id=7,
+        status='active',
+        language='ru',
+        auth_type='telegram',
+        remnawave_id=user_panel_id,
+        created_at=NOW,
+        restriction_subscription=False,
+        restriction_topup=False,
+        restriction_reason=None,
+    )
+    sub = SimpleNamespace(
+        status='active',
+        end_date=NOW,
+        device_limit=5,
+        is_daily_paused=False,
+        is_trial=False,
+        last_revoke_at=None,
+        remnawave_id=sub_panel_id,
+    )
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = user
+    result.first.return_value = (sub, 'T', False)
+    result.all.return_value = []
+    result.scalar_one.return_value = 0
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=result)
+    return db
+
+
+@pytest.mark.asyncio
+async def test_multi_tariff_reads_the_subscription_panel_account(monkeypatch):
+    """В мультитарифе у каждой подписки свой аккаунт в панели; аккаунт пользователя может быть чужим."""
+    monkeypatch.setattr(type(snap.settings), 'is_multi_tariff_enabled', lambda self: True)
+    data = await snap._load_bot_data(_db_with(100, 200), MagicMock(user_id=7, id=1), NOW)
+    assert data['account']['remnawave_id'] == 200
+
+
+@pytest.mark.asyncio
+async def test_multi_tariff_without_subscription_panel_id_reads_no_panel(monkeypatch):
+    """Подписка ещё без аккаунта в панели: аккаунт пользователя не подставляем, панель не читаем."""
+    monkeypatch.setattr(type(snap.settings), 'is_multi_tariff_enabled', lambda self: True)
+    data = await snap._load_bot_data(_db_with(100, None), MagicMock(user_id=7, id=1), NOW)
+    assert data['account']['remnawave_id'] is None
+
+
+@pytest.mark.asyncio
+async def test_single_tariff_keeps_the_user_panel_account(monkeypatch):
+    monkeypatch.setattr(type(snap.settings), 'is_multi_tariff_enabled', lambda self: False)
+    data = await snap._load_bot_data(_db_with(100, 200), MagicMock(user_id=7, id=1), NOW)
+    assert data['account']['remnawave_id'] == 100
+    data = await snap._load_bot_data(_db_with(None, 200), MagicMock(user_id=7, id=1), NOW)
+    assert data['account']['remnawave_id'] == 200

@@ -19,6 +19,7 @@ import structlog
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database.crud.support_assist import end_transaction
 from app.database.models import (
     ButtonClickLog,
@@ -142,8 +143,13 @@ async def _load_bot_data(db: AsyncSession, ticket: Ticket, now: datetime) -> dic
             'last_revoke_at': sub.last_revoke_at,
             'remnawave_id': sub.remnawave_id,
         }
-        if account is not None and subscription['remnawave_id']:
-            account['remnawave_id'] = account['remnawave_id'] or subscription['remnawave_id']
+    if account is not None:
+        sub_panel_id = subscription['remnawave_id'] if subscription else None
+        if settings.is_multi_tariff_enabled():
+            # Мультитариф: у каждой подписки свой аккаунт в панели, аккаунт пользователя может быть чужим.
+            account['remnawave_id'] = sub_panel_id
+        else:
+            account['remnawave_id'] = account['remnawave_id'] or sub_panel_id
 
     clicks = (
         await db.execute(
