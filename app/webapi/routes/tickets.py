@@ -52,6 +52,7 @@ def _serialize_message(message: TicketMessage) -> TicketMessageResponse:
         user_id=message.user_id,
         message_text=message.message_text,
         is_from_admin=message.is_from_admin,
+        is_system=getattr(message, 'is_system', False) is True,
         has_media=bool(message.has_media) or bool(items),
         media_type=message.media_type,
         media_file_id=message.media_file_id,

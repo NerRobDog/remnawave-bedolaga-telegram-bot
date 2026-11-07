@@ -1,6 +1,7 @@
 import html
 import time
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import structlog
 from aiogram import Bot, Dispatcher, F, types
@@ -156,6 +157,13 @@ async def _refresh_group_ticket_card(callback: types.CallbackQuery, db: AsyncSes
         logger.debug('Не удалось обновить групповую карточку тикета', ticket_id=ticket_id, error=error)
 
 
+def _message_sender_label(msg: Any) -> str:
+    """Подпись автора сообщения в админском просмотре; автовопрос ассистента не выдаём за ответ поддержки."""
+    if getattr(msg, 'is_system', False) is True:
+        return '🤖 автовопрос'
+    return '👤 Пользователь' if msg.is_user_message else '🛠️ Поддержка'
+
+
 async def view_admin_ticket(
     callback: types.CallbackQuery,
     db_user: User,
@@ -240,7 +248,7 @@ async def view_admin_ticket(
     if ticket.messages:
         message_blocks.append(f'💬 Сообщения ({len(ticket.messages)}):\n\n')
         for msg in ticket.messages:
-            sender = '👤 Пользователь' if msg.is_user_message else '🛠️ Поддержка'
+            sender = _message_sender_label(msg)
             block = f'{sender} ({format_local_datetime(msg.created_at, "%d.%m %H:%M")}):\n{html.escape(msg.message_text or "")}\n\n'
             for item in get_ticket_media(msg):
                 label = {'photo': 'фото', 'video': 'видео', 'document': 'файл'}[item['type']]
@@ -837,7 +845,7 @@ async def handle_admin_block_duration_input(message: types.Message, state: FSMCo
             if updated.messages:
                 ticket_text += f'💬 Сообщения ({len(updated.messages)}):\n\n'
                 for msg in updated.messages:
-                    sender = '👤 Пользователь' if msg.is_user_message else '🛠️ Поддержка'
+                    sender = _message_sender_label(msg)
                     ticket_text += f'{sender} ({format_local_datetime(msg.created_at, "%d.%m %H:%M")}):\n'
                     ticket_text += f'{html.escape(msg.message_text)}\n\n'
                     if getattr(msg, 'has_media', False) and getattr(msg, 'media_type', None) in {'photo', 'video'}:

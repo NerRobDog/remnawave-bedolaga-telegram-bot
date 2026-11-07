@@ -42,6 +42,12 @@ class AdminTicketUserInfo(BaseModel):
         from_attributes = True
 
 
+class AdminTicketMessageResponse(TicketMessageResponse):
+    """Сообщение тикета для админа: отличает автовопрос ассистента (is_system) от ответа человека."""
+
+    is_system: bool = False
+
+
 class AdminTicketResponse(BaseModel):
     """Ticket data for admin."""
 
@@ -54,7 +60,7 @@ class AdminTicketResponse(BaseModel):
     closed_at: datetime | None = None
     messages_count: int = 0
     user: AdminTicketUserInfo | None = None
-    last_message: TicketMessageResponse | None = None
+    last_message: AdminTicketMessageResponse | None = None
 
     class Config:
         from_attributes = True
@@ -72,7 +78,7 @@ class AdminTicketDetailResponse(BaseModel):
     closed_at: datetime | None = None
     is_reply_blocked: bool = False
     user: AdminTicketUserInfo | None = None
-    messages: list[TicketMessageResponse] = []
+    messages: list[AdminTicketMessageResponse] = []
 
     class Config:
         from_attributes = True
@@ -168,7 +174,7 @@ class TicketSettingsUpdateRequest(BaseModel):
     cabinet_admin_notifications_enabled: bool | None = Field(None, description='Enable admin notifications in cabinet')
 
 
-def _message_to_response(message: TicketMessage) -> TicketMessageResponse:
+def _message_to_response(message: TicketMessage) -> AdminTicketMessageResponse:
     """Convert TicketMessage to response."""
     raw_items = getattr(message, 'media_items', None) or None
     items = None
@@ -180,10 +186,11 @@ def _message_to_response(message: TicketMessage) -> TicketMessageResponse:
         except (TypeError, KeyError, ValueError) as exc:
             logger.warning('Failed to parse media_items', message_id=message.id, error=str(exc))
             items = None
-    return TicketMessageResponse(
+    return AdminTicketMessageResponse(
         id=message.id,
         message_text=message.message_text or '',
         is_from_admin=message.is_from_admin,
+        is_system=getattr(message, 'is_system', False) is True,
         has_media=bool(message.media_file_id) or bool(items),
         media_type=message.media_type,
         media_file_id=message.media_file_id,
@@ -418,7 +425,7 @@ async def get_ticket_detail(
     )
 
 
-@router.post('/{ticket_id}/reply', response_model=TicketMessageResponse)
+@router.post('/{ticket_id}/reply', response_model=AdminTicketMessageResponse)
 async def reply_to_ticket(
     ticket_id: int,
     request: AdminReplyRequest,
