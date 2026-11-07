@@ -21,7 +21,7 @@ from aiogram import Bot
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.database.crud.support_assist import create_card, last_card_for_ticket, mark_auto_ask_sent
+from app.database.crud.support_assist import create_card, end_transaction, last_card_for_ticket, mark_auto_ask_sent
 from app.database.crud.ticket import TicketCRUD
 from app.database.database import AsyncSessionLocal
 from app.database.models import SupportAssistCard, Ticket, TicketMessage
@@ -40,11 +40,17 @@ Trigger = Literal['new_ticket', 'new_message']
 
 # Сколько последних сообщений клиента уходит в запрос к модели.
 MAX_CLIENT_MESSAGES = 10
+# Потолок на весь сбор снимка (страховка поверх таймаутов отдельных источников).
+SNAPSHOT_TIMEOUT_SECONDS = 45.0
+# Сколько разборов идёт одновременно в этом процессе: при сбое панели или Claude всплеск тикетов
+# иначе превращается в десятки параллельных запросов наружу.
+MAX_CONCURRENT_PIPELINES = 4
 
 # Сильные ссылки на фоновые задачи: без них цикл событий может собрать задачу до конца.
 _background_tasks: set[asyncio.Task[None]] = set()
 # Тикеты, по которым конвейер уже идёт в этом процессе: вторая карточка параллельно не нужна.
 _in_flight: set[int] = set()
+_pipeline_slots = asyncio.Semaphore(MAX_CONCURRENT_PIPELINES)
 
 
 def notification_bot() -> Bot | None:
@@ -81,7 +87,8 @@ async def _run_safe(bot: Bot, ticket_id: int, trigger: Trigger) -> None:
     try:
         from app.services.remnawave_service import remnawave_service
 
-        async with AsyncSessionLocal() as db, remnawave_service.get_api_client() as api:
+        # Ждём очередь до открытия сессии БД: ожидающий разбор не должен занимать соединение.
+        async with _pipeline_slots, AsyncSessionLocal() as db, remnawave_service.get_api_client() as api:
             if settings.ANTHROPIC_API_KEY:
                 async with anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY) as client:
                     await run_assist(db, bot, api, client, ticket_id, trigger, datetime.now(UTC))
@@ -137,11 +144,14 @@ async def _run(
         return None
     client_messages = sorted((m for m in ticket.messages if not m.is_from_admin), key=lambda m: m.id)
 
-    # 2. Снимок и флаги.
+    # 2. Снимок и флаги. collect_snapshot сам закрывает транзакцию перед запросами к панели; при
+    # сбое или обрыве по таймауту сессия может остаться в сбойном состоянии, приводим её в порядок.
     try:
-        snapshot = await collect_snapshot(db, api, ticket, now)
+        async with asyncio.timeout(SNAPSHOT_TIMEOUT_SECONDS):
+            snapshot = await collect_snapshot(db, api, ticket, now)
     except Exception:
         logger.exception('support_assist.snapshot_failed', ticket_id=ticket_id)
+        await end_transaction(db)
         snapshot = Snapshot(as_of=now, missing=['snapshot'])
     flags = compute_flags(snapshot)
     payload = build_payload(snapshot, flags)
@@ -157,6 +167,11 @@ async def _run(
         flags=[asdict(f) for f in flags],
         status='failed',
     )
+    # id берём сейчас: после отката в mark_auto_ask_sent или end_transaction объект протухает,
+    # а обращение к протухшему атрибуту в async-сессии бросает MissingGreenlet.
+    card_id = row.id
+    # commit() + refresh() в create_card оставляют транзакцию открытой, а дальше идут сеть и Claude.
+    await end_transaction(db)
 
     # 3. Автовопрос клиенту (только на новый тикет, один раз).
     if trigger == 'new_ticket' and settings.SUPPORT_ASSIST_AUTO_ASK_ENABLED and client_messages:
@@ -164,6 +179,8 @@ async def _run(
             await _auto_ask(db, bot, ticket, row, client_messages[0], snapshot, flags)
         except Exception:
             logger.exception('support_assist.auto_ask_failed', ticket_id=ticket_id)
+        # Уведомление клиенту читает БД (последнее сообщение, вебхуки): закрываем транзакцию до Claude.
+        await end_transaction(db)
 
     # 4. Карточка от модели (или без неё).
     if client is None:
@@ -179,7 +196,7 @@ async def _run(
         bot,
         chat_id,
         render_card(result.card, flags, ticket_id),
-        build_card_keyboard(row.id, show_send),
+        build_card_keyboard(card_id, show_send),
     )
 
     # 6. Запись результата: токены и цена сохраняются, даже если отправка не удалась.
@@ -230,21 +247,65 @@ async def _auto_ask(
     body = render_questions(question_ids, lang or settings.DEFAULT_LANGUAGE)
     # Сообщение системы, а не владельца. Статус и updated_at тикета не трогаем: он остаётся OPEN,
     # и SLA-напоминание владельцу сработает в обычный срок.
-    db.add(
-        TicketMessage(
-            ticket_id=ticket.id,
-            user_id=ticket.user_id,
-            message_text=body,
-            is_from_admin=True,
-            is_system=True,
-            has_media=False,
-        )
+    message = TicketMessage(
+        ticket_id=ticket.id,
+        user_id=ticket.user_id,
+        message_text=body,
+        is_from_admin=True,
+        is_system=True,
+        has_media=False,
     )
+    db.add(message)
     await db.commit()
 
-    from app.handlers.admin.tickets import notify_user_about_ticket_reply
+    # Доставка клиенту: те же три шага, что у ручного ответа из кабинета (reply_to_ticket в
+    # admin_tickets.py), плюс Telegram или e-mail из бота. Тикет с кабинета или из мобильного
+    # приложения иначе увидел бы вопросы только после перезагрузки. Каждый шаг изолирован.
+    await _emit_message_added(db, ticket, message, body)
 
-    await notify_user_about_ticket_reply(bot, ticket, body, db)
+    try:
+        from app.handlers.admin.tickets import notify_user_about_ticket_reply
+
+        await notify_user_about_ticket_reply(bot, ticket, body, db)
+    except Exception:
+        logger.exception('support_assist.auto_ask_telegram_failed', ticket_id=ticket.id)
+
+    await _notify_in_cabinet(db, ticket, body)
+
+
+async def _emit_message_added(db: AsyncSession, ticket: Ticket, message: TicketMessage, body: str) -> None:
+    """Событие для моста мобильного сокета поддержки; сообщение уже сохранено."""
+    try:
+        from app.services.event_emitter import event_emitter
+
+        await event_emitter.emit(
+            'ticket.message_added',
+            {
+                'ticket_id': ticket.id,
+                'message_id': message.id,
+                'user_id': ticket.user_id,
+                'is_from_admin': True,
+                'message_text': body[:200],
+                'has_media': False,
+                'status': ticket.status,
+            },
+            db=db,
+        )
+    except Exception:
+        logger.exception('support_assist.auto_ask_event_failed', ticket_id=ticket.id)
+
+
+async def _notify_in_cabinet(db: AsyncSession, ticket: Ticket, body: str) -> None:
+    """Уведомление в кабинете и push по WebSocket, как после ответа админа из кабинета."""
+    try:
+        from app.cabinet.routes.websocket import notify_user_ticket_reply
+        from app.database.crud.ticket_notification import TicketNotificationCRUD
+
+        notification = await TicketNotificationCRUD.create_user_notification_for_admin_reply(db, ticket, body)
+        if notification:
+            await notify_user_ticket_reply(ticket.user_id, ticket.id, body[:100])
+    except Exception:
+        logger.exception('support_assist.auto_ask_cabinet_failed', ticket_id=ticket.id)
 
 
 async def _send_card(bot: Bot, chat_id: int, text: str, keyboard: Any) -> int | None:

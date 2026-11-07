@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import inspect
 import json
 from datetime import timedelta
@@ -74,11 +75,36 @@ class Env:
         self.claimed: set[int] = set()
         self.snapshot: Snapshot | Exception = healthy()
         self.ticket = _ticket()
-        self.notify = AsyncMock()
+        self.notify = AsyncMock(side_effect=self._read_something)
         self.bot = MagicMock()
         self.bot.send_message = AsyncMock(return_value=SimpleNamespace(message_id=555))
         self.db = MagicMock()
-        self.db.commit = AsyncMock()
+        # in_tx имитирует занятое соединение: чтение или commit+refresh открывают транзакцию, commit закрывает.
+        self.db.in_tx = False
+        self.db.commit = AsyncMock(side_effect=self._commit)
+        self.db.rollback = AsyncMock(side_effect=self._commit)
+        self.db.add = MagicMock(side_effect=lambda obj: setattr(obj, 'id', 321))
+
+    async def _commit(self):
+        self.db.in_tx = False
+
+    async def _read_something(self, *args, **kwargs):
+        self.db.in_tx = True  # notify_user_about_ticket_reply читает последнее сообщение тикета
+
+
+@pytest.fixture(autouse=True)
+def cabinet(monkeypatch):
+    """Три кабинетных побочных эффекта ручного ответа: событие, запись уведомления, push по WebSocket."""
+    emit = AsyncMock()
+    notification = AsyncMock(return_value=SimpleNamespace(id=1))
+    push = AsyncMock()
+    monkeypatch.setattr('app.services.event_emitter.event_emitter.emit', emit)
+    monkeypatch.setattr(
+        'app.database.crud.ticket_notification.TicketNotificationCRUD.create_user_notification_for_admin_reply',
+        notification,
+    )
+    monkeypatch.setattr('app.cabinet.routes.websocket.notify_user_ticket_reply', push)
+    return SimpleNamespace(emit=emit, notification=notification, push=push)
 
 
 @pytest.fixture
@@ -96,6 +122,7 @@ def env(monkeypatch):
         monkeypatch.setattr(settings, name, value)
 
     async def last_card(db, ticket_id):
+        db.in_tx = True
         rows = [c for c in e.cards if c.ticket_id == ticket_id]
         return rows[-1] if rows else None
 
@@ -103,6 +130,7 @@ def env(monkeypatch):
         await asyncio.sleep(0)
         row = SimpleNamespace(id=len(e.cards) + 1, **fields)
         e.cards.append(row)
+        db.in_tx = True  # commit() + refresh() оставляют транзакцию открытой
         return row
 
     async def mark_auto_ask(db, card_id, question_ids):
@@ -302,10 +330,13 @@ async def test_payload_sent_to_model_has_no_client_identity(env):
 
 
 @pytest.mark.asyncio
-async def test_auto_ask_off_sends_nothing_to_client(env):
+async def test_auto_ask_off_sends_nothing_to_client(env, cabinet):
     await _run(env)
     env.notify.assert_not_awaited()
     env.db.add.assert_not_called()
+    cabinet.emit.assert_not_awaited()
+    cabinet.notification.assert_not_awaited()
+    cabinet.push.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -367,13 +398,14 @@ async def test_concurrent_runs_ask_the_client_once(env, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_auto_ask_claim_lost_in_db_sends_nothing(env, monkeypatch):
+async def test_auto_ask_claim_lost_in_db_sends_nothing(env, cabinet, monkeypatch):
     """Страховка на случай второго процесса: уникальный индекс не даёт спросить дважды."""
     monkeypatch.setattr(settings, 'SUPPORT_ASSIST_AUTO_ASK_ENABLED', True)
     monkeypatch.setattr(settings, 'SUPPORT_ASSIST_RECOMPUTE_MINUTES', 0)
     await _run(env)
     await _run(env, now=NOW + timedelta(seconds=1))
     assert env.notify.await_count == 1
+    assert cabinet.emit.await_count == 1 and cabinet.push.await_count == 1
     assert env.bot.send_message.await_count == 2  # карточка новая, вопросы — нет
 
 
@@ -403,6 +435,161 @@ async def test_questions_come_in_the_users_language(env, monkeypatch):
     await _run(env)
     text = env.notify.call_args.args[2]
     assert not any('а' <= ch.lower() <= 'я' for ch in text)  # без кириллицы
+
+
+# --- автовопрос: доставка в кабинет ------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_auto_ask_is_also_delivered_in_the_cabinet(env, cabinet, monkeypatch):
+    """Как ручной ответ из кабинета (admin_tickets.reply_to_ticket): событие, уведомление, push."""
+    monkeypatch.setattr(settings, 'SUPPORT_ASSIST_AUTO_ASK_ENABLED', True)
+    updated_before = env.ticket.updated_at
+    await _run(env)
+
+    body = env.notify.call_args.args[2]
+    cabinet.emit.assert_awaited_once()
+    event, payload = cabinet.emit.call_args.args
+    assert event == 'ticket.message_added'
+    assert (
+        payload
+        == {
+            'ticket_id': 1,
+            'message_id': 321,  # id сохранённого системного сообщения
+            'user_id': 7,
+            'is_from_admin': True,
+            'message_text': body[:200],
+            'has_media': False,
+            'status': 'open',
+        }
+    )
+    assert cabinet.emit.call_args.kwargs == {'db': env.db}
+    cabinet.notification.assert_awaited_once_with(env.db, env.ticket, body)
+    cabinet.push.assert_awaited_once_with(7, 1, body[:100])
+    assert env.ticket.status == 'open' and env.ticket.updated_at == updated_before
+
+
+@pytest.mark.asyncio
+async def test_cabinet_delivery_survives_a_telegram_failure(env, cabinet, monkeypatch):
+    monkeypatch.setattr(settings, 'SUPPORT_ASSIST_AUTO_ASK_ENABLED', True)
+    env.notify.side_effect = RuntimeError('telegram down')
+    card = await _run(env)
+    cabinet.emit.assert_awaited_once()
+    cabinet.push.assert_awaited_once()
+    assert card.status == 'shown'
+
+
+@pytest.mark.asyncio
+async def test_event_failure_does_not_block_telegram_or_cabinet_notification(env, cabinet, monkeypatch):
+    monkeypatch.setattr(settings, 'SUPPORT_ASSIST_AUTO_ASK_ENABLED', True)
+    cabinet.emit.side_effect = RuntimeError('listener crashed')
+    card = await _run(env)
+    env.notify.assert_awaited_once()
+    cabinet.notification.assert_awaited_once()
+    cabinet.push.assert_awaited_once()
+    assert card.status == 'shown'
+
+
+@pytest.mark.asyncio
+async def test_no_push_when_cabinet_notifications_are_off(env, cabinet, monkeypatch):
+    monkeypatch.setattr(settings, 'SUPPORT_ASSIST_AUTO_ASK_ENABLED', True)
+    cabinet.notification.return_value = None  # SupportSettingsService: кабинетные уведомления выключены
+    await _run(env)
+    cabinet.emit.assert_awaited_once()
+    cabinet.push.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_notification_failure_does_not_block_the_card(env, cabinet, monkeypatch):
+    monkeypatch.setattr(settings, 'SUPPORT_ASSIST_AUTO_ASK_ENABLED', True)
+    cabinet.notification.side_effect = RuntimeError('db error')
+    card = await _run(env)
+    cabinet.push.assert_not_awaited()
+    assert card.status == 'shown'
+
+
+# --- соединение с БД не держится на время сети --------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('auto_ask', [False, True])
+async def test_no_transaction_is_open_during_model_call_and_card_send(env, monkeypatch, auto_ask):
+    """Транзакция держит соединение пула; idle_in_transaction_session_timeout на проде — 300 с."""
+    monkeypatch.setattr(settings, 'SUPPORT_ASSIST_AUTO_ASK_ENABLED', auto_ask)
+    seen = {}
+    real_generate = pipeline.generate_card
+
+    async def spy_generate(client, payload, texts):
+        seen['generate'] = env.db.in_tx
+        return await real_generate(client, payload, texts)
+
+    async def spy_send(**kwargs):
+        seen['send'] = env.db.in_tx
+        return SimpleNamespace(message_id=555)
+
+    monkeypatch.setattr(pipeline, 'generate_card', spy_generate)
+    env.bot.send_message = AsyncMock(side_effect=spy_send)
+
+    card = await _run(env)
+    assert seen == {'generate': False, 'send': False}
+    assert card.status == 'shown'
+    assert env.notify.await_count == (1 if auto_ask else 0)
+
+
+@pytest.mark.asyncio
+async def test_snapshot_hang_is_cut_off_and_card_still_sent(env, monkeypatch):
+    monkeypatch.setattr(pipeline, 'SNAPSHOT_TIMEOUT_SECONDS', 0.05)
+
+    async def hang(db, api, ticket, now):
+        db.in_tx = True
+        await asyncio.sleep(3600)
+
+    monkeypatch.setattr(pipeline, 'collect_snapshot', hang)
+    card = await asyncio.wait_for(_run(env), 5)
+    assert card.status == 'shown'
+    assert 'snapshot' in card.facts['missing']
+    env.bot.send_message.assert_awaited_once()
+    env.db.commit.assert_awaited()  # транзакция, оставшаяся от оборванного сбора, закрыта до записи карточки
+
+
+@pytest.mark.asyncio
+async def test_failed_session_after_snapshot_timeout_is_rolled_back(env, monkeypatch):
+    monkeypatch.setattr(pipeline, 'SNAPSHOT_TIMEOUT_SECONDS', 0.05)
+
+    async def hang(db, api, ticket, now):
+        await asyncio.sleep(3600)
+
+    monkeypatch.setattr(pipeline, 'collect_snapshot', hang)
+    env.db.commit.side_effect = [RuntimeError('PendingRollbackError'), None, None, None]
+    card = await asyncio.wait_for(_run(env), 5)
+    assert card.status == 'shown'
+    env.db.rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_run_safe_caps_concurrent_pipelines(monkeypatch):
+    # свежий семафор: у модульного после состязания в одном цикле событий остаётся привязка к нему
+    monkeypatch.setattr(pipeline, '_pipeline_slots', asyncio.Semaphore(2))
+    monkeypatch.setattr(settings, 'ANTHROPIC_API_KEY', None)
+    state = {'running': 0, 'peak': 0, 'started': 0}
+
+    @contextlib.asynccontextmanager
+    async def fake_ctx(*args, **kwargs):
+        yield MagicMock()
+
+    async def fake_run(db, bot, api, client, ticket_id, trigger, now):
+        state['running'] += 1
+        state['started'] += 1
+        state['peak'] = max(state['peak'], state['running'])
+        await asyncio.sleep(0.01)
+        state['running'] -= 1
+
+    monkeypatch.setattr(pipeline, 'AsyncSessionLocal', fake_ctx)
+    monkeypatch.setattr('app.services.remnawave_service.remnawave_service.get_api_client', fake_ctx)
+    monkeypatch.setattr(pipeline, 'run_assist', fake_run)
+    await asyncio.gather(*[pipeline._run_safe(MagicMock(), i, 'new_ticket') for i in range(6)])
+    assert state['started'] == 6
+    assert state['peak'] == 2
 
 
 # --- SLA --------------------------------------------------------------------
