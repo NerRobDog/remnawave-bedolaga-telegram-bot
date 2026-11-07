@@ -231,3 +231,21 @@ def test_payload_diagnostics_survives_garbage_in_the_column():
         payload = build_payload(healthy(diagnostics=garbage), [])
         assert payload['diagnostics'] in (None, {})
         json.dumps(payload)
+
+
+def test_restrictions_in_payload_and_flag_text_are_kinds_only():
+    """Даже если в снимок попал текст причины (@ник, id), в нагрузку к LLM уходят только виды запретов."""
+    reason = 'subscription: chargeback @leakuser 123456789'
+    snap = healthy(restrictions=['subscription', 'topup', reason])
+
+    flags = compute_flags(snap)
+    payload = build_payload(snap, flags)
+
+    assert payload['restrictions'] == ['subscription', 'topup']
+    dumped = json.dumps(payload, ensure_ascii=False)
+    assert 'leakuser' not in dumped
+    assert '123456789' not in dumped
+    restricted = next(f for f in flags if f.code == 'restricted')
+    assert 'leakuser' not in restricted.text
+    assert 'продления' in restricted.text
+    assert 'пополнения' in restricted.text

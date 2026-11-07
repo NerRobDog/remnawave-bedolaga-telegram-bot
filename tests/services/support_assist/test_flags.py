@@ -106,7 +106,7 @@ def test_panel_down_lists_every_missing_source():
 
 def test_data_gap_flag_comes_first_and_only_when_something_is_missing():
     assert 'data_unavailable' not in _codes(compute_flags(healthy()))
-    flags = compute_flags(healthy(usage_by_day={}, missing=['usage'], restrictions=['restriction_subscription: x']))
+    flags = compute_flags(healthy(usage_by_day={}, missing=['usage'], restrictions=['subscription']))
     assert flags[0].code == 'data_unavailable'
     assert 'restricted' in _codes(flags)
 

@@ -185,7 +185,7 @@ def s10() -> Snapshot:
 
 
 def s11() -> Snapshot:
-    return healthy(restrictions=['restriction_subscription: chargeback'])
+    return healthy(restrictions=['subscription'])
 
 
 def s12() -> Snapshot:
@@ -230,7 +230,7 @@ def leaky_snapshot() -> Snapshot:
         cabinet_actions_7d=[{'button_id': 'POST /cabinet/subscription/revoke', 'at': _ago(minutes=15)}],
         transactions_48h=[{'type': 'deposit', 'status': 'pending', 'at': _ago(minutes=40)}],
         past_tickets=[{'created_at': _ago(days=3), 'status': 'closed'}],
-        restrictions=['restriction_subscription: chargeback'],
+        restrictions=['subscription'],
     )
     return Snapshot(
         as_of=base.as_of,

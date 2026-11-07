@@ -37,6 +37,9 @@ logger = structlog.get_logger(__name__)
 
 _ACTION_PREFIXES = ('POST%', 'DELETE%', 'PATCH%')
 
+# Виды запретов аккаунта, единственное, что снимок говорит о ``restriction_*``.
+RESTRICTION_KINDS = ('subscription', 'topup')
+
 # Потолок на один запрос к панели вместе с её повторами. Источники идут параллельно, поэтому
 # зависшая панель задерживает снимок на это время один раз, а не по разу на каждый источник.
 PANEL_SOURCE_TIMEOUT_SECONDS = 20.0
@@ -61,6 +64,7 @@ class Snapshot:
     bot_errors_24h: int = 0
     past_tickets: list[dict] = field(default_factory=list)
     other_tickets_2h: int = 0
+    # Виды запретов из ``RESTRICTION_KINDS``; причину (текст админа) не хранит.
     restrictions: list[str] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)
     # Ответы обязательной анкеты из тикета (id вариантов); None — анкеты нет (старый тикет, флаг выключен).
@@ -107,12 +111,13 @@ async def _load_bot_data(db: AsyncSession, ticket: Ticket, now: datetime) -> dic
         if user
         else None
     )
+    # Только виды запретов: ``restriction_reason`` — свободный текст админа (там бывают @ники и id), в снимок не идёт.
     restrictions: list[str] = []
     if user:
         if user.restriction_subscription:
-            restrictions.append(f'запрет продления/покупки: {user.restriction_reason or "без причины"}')
+            restrictions.append('subscription')
         if user.restriction_topup:
-            restrictions.append(f'запрет пополнения: {user.restriction_reason or "без причины"}')
+            restrictions.append('topup')
 
     row = (
         await db.execute(

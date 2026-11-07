@@ -1,6 +1,7 @@
 import asyncio
 import time
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -124,6 +125,38 @@ async def test_history_without_a_usable_total_is_unknown_not_zero(monkeypatch, r
     assert s.sub_requests_total is None
     assert s.sub_requests == []
     assert 'never_fetched' not in {f.code for f in flags.compute_flags(s)}
+
+
+ADMIN_REASON = 'chargeback @leakuser 123456789'
+
+
+@pytest.mark.asyncio
+async def test_restrictions_carry_kinds_only_never_the_admin_written_reason():
+    """``restriction_reason`` — свободный текст админа (там бывают @ники и id): в снимок не попадает."""
+    user = SimpleNamespace(
+        id=7,
+        status='active',
+        language='ru',
+        auth_type='telegram',
+        remnawave_id=None,
+        created_at=NOW,
+        restriction_subscription=True,
+        restriction_topup=True,
+        restriction_reason=ADMIN_REASON,
+    )
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = user
+    result.first.return_value = None
+    result.all.return_value = []
+    result.scalar_one.return_value = 0
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=result)
+
+    data = await snap._load_bot_data(db, MagicMock(user_id=7, id=1), NOW)
+
+    assert data['restrictions'] == ['subscription', 'topup']
+    assert 'leakuser' not in repr(data)
+    assert '123456789' not in repr(data)
 
 
 @pytest.mark.asyncio
