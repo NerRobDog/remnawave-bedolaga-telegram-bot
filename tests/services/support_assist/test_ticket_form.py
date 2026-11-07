@@ -34,9 +34,9 @@ from tests.fixtures.sqlite_memory import memory_session
 
 
 FULL = {
+    'location': 'russia',
     'platform': 'ios',
     'app': 'Happ',
-    'location': 'russia',
     'network': 'wifi',
     'symptom': 'nothing',
     'since': 'today',
@@ -65,7 +65,7 @@ LANGS = ('ru', 'en', 'ua', 'fa', 'zh')
 
 
 def test_form_fields_match_the_spec():
-    assert FORM_FIELD_IDS == ('platform', 'app', 'location', 'network', 'symptom', 'since')
+    assert FORM_FIELD_IDS == ('location', 'platform', 'app', 'network', 'symptom', 'since')
     assert STATIC_OPTIONS == {
         'location': ('russia', 'abroad'),
         'network': ('mobile', 'wifi', 'both'),
@@ -480,17 +480,29 @@ async def _start(bot_env, state, flag: bool, monkeypatch) -> SimpleNamespace:
 
 
 @pytest.mark.asyncio
-async def test_bot_flag_on_first_step_asks_for_the_platform(bot_env, monkeypatch):
+async def test_bot_flag_on_first_step_asks_for_the_location(bot_env, monkeypatch):
     state = _state()
     callback = await _start(bot_env, state, True, monkeypatch)
     assert await state.get_state() == bot_tickets.TicketStates.waiting_for_form
     buttons = _buttons(callback)
+    assert [b for b in buttons if b.startswith('tf:')] == ['tf:location:russia', 'tf:location:abroad']
+    assert _labels(callback)[:2] == ['Россия', 'За рубежом']
+    assert 'cancel_ticket_creation' in buttons  # из анкеты можно выйти
+    assert get_texts('ru').t('TICKET_FORM_LOCATION_PROMPT') in _shown_text(callback)
+    assert (await state.get_data())['prompt_message_id'] == 77
+
+
+@pytest.mark.asyncio
+async def test_bot_step_after_location_shows_the_platform_buttons(bot_env, monkeypatch):
+    state = _state()
+    await _start(bot_env, state, True, monkeypatch)
+    callback = await _answer(state, bot_env, 'location', 'abroad')
+    assert (await state.get_data())['diagnostics'] == {'location': 'abroad'}
+    buttons = _buttons(callback)
     assert [b for b in buttons if b.startswith('tf:')] == [f'tf:platform:{i}' for i in range(5)]
     labels = _labels(callback)
     assert labels[:5] == ['iOS', 'Андроид', 'Apple TV', 'Роутер', 'Другое']  # из конфига, затем router/other
-    assert 'cancel_ticket_creation' in buttons  # из анкеты можно выйти
     assert get_texts('ru').t('TICKET_FORM_PLATFORM_PROMPT') in _shown_text(callback)
-    assert (await state.get_data())['prompt_message_id'] == 77
 
 
 @pytest.mark.asyncio
@@ -506,6 +518,12 @@ async def _answer(state, bot_env, field: str, option: str) -> SimpleNamespace:
     callback = _callback(option if option.startswith('tf:') else _data(field, option))
     await bot_tickets.handle_ticket_form_answer(callback, state, bot_env)
     return callback
+
+
+async def _start_at_platform(bot_env, state, monkeypatch) -> None:
+    """Начать анкету и ответить на первый вопрос (место), чтобы следующим был вопрос об устройстве."""
+    await _start(bot_env, state, True, monkeypatch)
+    await _answer(state, bot_env, 'location', 'russia')
 
 
 @pytest.mark.asyncio
@@ -530,48 +548,53 @@ async def test_bot_each_step_asks_the_next_field(bot_env, monkeypatch):
     for index, (field, option) in enumerate(list(FULL.items())[:-1]):
         callback = await _answer(state, bot_env, field, option)
         nxt = order[index + 1]
-        first = '0' if nxt == 'app' else STATIC_OPTIONS[nxt][0]
+        first = '0' if nxt in ('platform', 'app') else STATIC_OPTIONS[nxt][0]
         assert f'tf:{nxt}:{first}' in _buttons(callback)
 
 
 @pytest.mark.asyncio
 async def test_bot_app_buttons_come_from_the_chosen_platform(bot_env, monkeypatch):
     state = _state()
-    await _start(bot_env, state, True, monkeypatch)
+    await _start_at_platform(bot_env, state, monkeypatch)
     callback = await _answer(state, bot_env, 'platform', 'android')
     assert [b for b in _buttons(callback) if b.startswith('tf:')] == ['tf:app:0', 'tf:app:1', 'tf:app:other']
     assert _labels(callback)[:3] == ['FlClashX', 'Happ', 'Другое']
     await _answer(state, bot_env, 'app', 'tf:app:0')
-    assert (await state.get_data())['diagnostics'] == {'platform': 'android', 'app': 'FlClashX'}
+    assert (await state.get_data())['diagnostics'] == {'location': 'russia', 'platform': 'android', 'app': 'FlClashX'}
 
 
 @pytest.mark.asyncio
 async def test_bot_router_offers_every_app(bot_env, monkeypatch):
     state = _state()
-    await _start(bot_env, state, True, monkeypatch)
+    await _start_at_platform(bot_env, state, monkeypatch)
     callback = await _answer(state, bot_env, 'platform', 'router')
     assert _labels(callback)[:5] == ['Clash Mi', 'RabbitHole', 'FlClashX', 'Happ', 'Другое']
 
 
 @pytest.mark.asyncio
-async def test_bot_location_step_has_two_buttons(bot_env, monkeypatch):
+async def test_bot_app_step_follows_platform_then_network(bot_env, monkeypatch):
     state = _state()
-    await _start(bot_env, state, True, monkeypatch)
-    await _answer(state, bot_env, 'platform', 'ios')
+    await _start_at_platform(bot_env, state, monkeypatch)
+    callback = await _answer(state, bot_env, 'platform', 'ios')
+    assert [b for b in _buttons(callback) if b.startswith('tf:')] == [
+        'tf:app:0',
+        'tf:app:1',
+        'tf:app:2',
+        'tf:app:other',
+    ]
     callback = await _answer(state, bot_env, 'app', 'Clash Mi')
-    assert [b for b in _buttons(callback) if b.startswith('tf:')] == ['tf:location:russia', 'tf:location:abroad']
-    assert get_texts('ru').t('TICKET_FORM_LOCATION_PROMPT') in _shown_text(callback)
-    await _answer(state, bot_env, 'location', 'abroad')
-    assert (await state.get_data())['diagnostics']['location'] == 'abroad'
+    assert [b for b in _buttons(callback) if b.startswith('tf:')] == [
+        f'tf:network:{o}' for o in STATIC_OPTIONS['network']
+    ]
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('data', ['tf:platform:99', 'tf:platform:-1', 'tf:platform:ios', 'tf:platform:'])
 async def test_bot_ignores_a_platform_index_out_of_range(bot_env, monkeypatch, data):
     state = _state()
-    await _start(bot_env, state, True, monkeypatch)
+    await _start_at_platform(bot_env, state, monkeypatch)
     await _answer(state, bot_env, 'platform', data)
-    assert (await state.get_data()).get('diagnostics') in (None, {})
+    assert (await state.get_data())['diagnostics'] == {'location': 'russia'}
 
 
 def test_bot_callback_data_fits_64_bytes_with_long_names():
@@ -612,18 +635,18 @@ async def test_bot_ignores_a_button_of_the_wrong_step(bot_env, monkeypatch):
 @pytest.mark.asyncio
 async def test_bot_ignores_an_unknown_option(bot_env, monkeypatch):
     state = _state()
-    await _start(bot_env, state, True, monkeypatch)
+    await _start_at_platform(bot_env, state, monkeypatch)
     await _answer(state, bot_env, 'platform', 'tf:platform:amiga')
-    assert (await state.get_data()).get('diagnostics') in (None, {})
+    assert (await state.get_data())['diagnostics'] == {'location': 'russia'}
 
 
 @pytest.mark.asyncio
 async def test_bot_double_tap_does_not_skip_a_question(bot_env, monkeypatch):
     state = _state()
-    await _start(bot_env, state, True, monkeypatch)
+    await _start_at_platform(bot_env, state, monkeypatch)
     await _answer(state, bot_env, 'platform', 'ios')
     await _answer(state, bot_env, 'platform', 'android')  # второй тап по тому же экрану
-    assert (await state.get_data())['diagnostics'] == {'platform': 'ios'}
+    assert (await state.get_data())['diagnostics'] == {'location': 'russia', 'platform': 'ios'}
 
 
 @pytest.mark.asyncio
@@ -637,7 +660,7 @@ async def test_bot_form_button_outside_the_form_state_is_ignored(bot_env):
 @pytest.mark.asyncio
 async def test_bot_other_asks_for_a_short_text_and_stores_it(bot_env, monkeypatch):
     state = _state()
-    await _start(bot_env, state, True, monkeypatch)
+    await _start_at_platform(bot_env, state, monkeypatch)
     callback = await _answer(state, bot_env, 'platform', 'other')
     assert await state.get_state() == bot_tickets.TicketStates.waiting_for_form_other
     assert get_texts('ru').t('TICKET_FORM_OTHER_PROMPT').split('{')[0] in _shown_text(callback)
@@ -651,7 +674,7 @@ async def test_bot_other_asks_for_a_short_text_and_stores_it(bot_env, monkeypatc
     )
     await bot_tickets.handle_ticket_form_other_input(message, state, bot_env)
     data = await state.get_data()
-    assert data['diagnostics'] == {'platform': 'other', 'platform_other': 'Steam Deck'}
+    assert data['diagnostics'] == {'location': 'russia', 'platform': 'other', 'platform_other': 'Steam Deck'}
     assert await state.get_state() == bot_tickets.TicketStates.waiting_for_form
     shown = message.bot.edit_message_text.await_args.kwargs
     assert 'tf:app:0' in [b.callback_data for row in shown['reply_markup'].inline_keyboard for b in row]
@@ -660,7 +683,7 @@ async def test_bot_other_asks_for_a_short_text_and_stores_it(bot_env, monkeypatc
 @pytest.mark.asyncio
 async def test_bot_other_text_that_is_too_long_is_refused(bot_env, monkeypatch):
     state = _state()
-    await _start(bot_env, state, True, monkeypatch)
+    await _start_at_platform(bot_env, state, monkeypatch)
     await _answer(state, bot_env, 'platform', 'other')
     message = SimpleNamespace(
         text='x' * (OTHER_MAX_LENGTH + 1),

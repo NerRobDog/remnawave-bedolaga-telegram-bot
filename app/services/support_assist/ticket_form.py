@@ -26,7 +26,7 @@ from app.services.support_assist.form_options import (
 
 
 # Порядок полей — порядок вопросов в боте.
-FORM_FIELD_IDS: tuple[str, ...] = ('platform', 'app', 'location', 'network', 'symptom', 'since')
+FORM_FIELD_IDS: tuple[str, ...] = ('location', 'platform', 'app', 'network', 'symptom', 'since')
 
 # Поля со статичными вариантами (id вариантов и тексты в локалях).
 STATIC_OPTIONS: dict[str, tuple[str, ...]] = {
