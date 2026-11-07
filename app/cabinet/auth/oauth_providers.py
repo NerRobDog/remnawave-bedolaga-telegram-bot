@@ -122,17 +122,24 @@ async def generate_oauth_state(provider: str, extra_data: dict[str, str] | None 
     return state
 
 
-async def validate_oauth_state(state: str, provider: str) -> dict[str, Any] | None:
+async def validate_oauth_state(state: str, provider: str | None = None) -> dict[str, Any] | None:
     """Validate and consume a CSRF state token from Redis.
 
     Uses atomic GETDEL to prevent TOCTOU race conditions.
     Returns the stored data dict (with 'provider' key + any extra data) or None if invalid.
+
+    Args:
+        state: The state token to validate.
+        provider: If provided, verifies it matches the stored provider.
+                  If None, skips provider check (used for server-complete flow).
     """
     key = cache_key('oauth_state', state)
     data: Any = await cache.getdel(key)
     if data is None:
         return None
-    if not isinstance(data, dict) or data.get('provider') != provider:
+    if not isinstance(data, dict):
+        return None
+    if provider is not None and data.get('provider') != provider:
         return None
     return data
 
@@ -291,6 +298,12 @@ class YandexProvider(OAuthProvider):
             provider='yandex',
             provider_id=str(data['id']),
             email=email,
+            # Yandex не возвращает proof-of-ownership flag, но default email обычно
+            # привязан и юзается провайдером. Помечаем как verified для UX (recovery,
+            # account linking, panel sync), а защита от admin escalation работает
+            # через email_verification_source='oauth_yandex' — этот источник НЕ в
+            # TRUSTED_EMAIL_VERIFICATION_SOURCES, поэтому match с ADMIN_EMAILS
+            # для Superadmin grant не сработает.
             email_verified=bool(email),
             first_name=data.get('first_name'),
             last_name=data.get('last_name'),
@@ -466,6 +479,11 @@ class VKProvider(OAuthProvider):
             provider='vk',
             provider_id=str(user_id),
             email=email,
+            # VK ID не cryptographically proves email ownership, но если юзер
+            # прошёл OAuth flow и VK выдал email — обычно он валидный. Помечаем
+            # как verified для UX; защита от admin-escalation выполняется на
+            # уровне email_verification_source='oauth_vk' (не trusted для
+            # ADMIN_EMAILS match — см. TRUSTED_EMAIL_VERIFICATION_SOURCES).
             email_verified=bool(email),
             first_name=user_data.get('first_name'),
             last_name=user_data.get('last_name'),
@@ -483,7 +501,25 @@ _PROVIDERS: dict[str, type[OAuthProvider]] = {
 }
 
 
-def get_provider(name: str) -> OAuthProvider | None:
+def resolve_oauth_redirect_uri(origin: str | None) -> str:
+    """Pick the OAuth redirect_uri for the request's origin.
+
+    Returns "{origin}/auth/oauth/callback" when origin is an allowed cabinet
+    origin (so mirror/alternate domains can complete OAuth on their own host),
+    else falls back to CABINET_URL. Canonical domain behaviour is unchanged.
+    """
+    default = f'{settings.CABINET_URL}/auth/oauth/callback'
+    if not origin:
+        return default
+    origin = origin.rstrip('/')
+    allowed = {o.rstrip('/') for o in settings.get_cabinet_allowed_origins()}
+    allowed.add(settings.CABINET_URL.rstrip('/'))
+    if origin in allowed:
+        return f'{origin}/auth/oauth/callback'
+    return default
+
+
+def get_provider(name: str, redirect_uri: str | None = None) -> OAuthProvider | None:
     """Get an OAuth provider instance if enabled.
 
     Returns None if the provider is not enabled or not found.
@@ -497,7 +533,8 @@ def get_provider(name: str) -> OAuthProvider | None:
     if not provider_class:
         return None
 
-    redirect_uri = f'{settings.CABINET_URL}/auth/oauth/callback'
+    if not redirect_uri:
+        redirect_uri = f'{settings.CABINET_URL}/auth/oauth/callback'
 
     return provider_class(
         client_id=config['client_id'],

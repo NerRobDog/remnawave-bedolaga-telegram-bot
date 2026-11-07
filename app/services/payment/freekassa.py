@@ -24,7 +24,7 @@ class FreekassaPaymentMixin:
         self,
         db: AsyncSession,
         *,
-        user_id: int,
+        user_id: int | None,
         amount_kopeks: int,
         description: str = 'Пополнение баланса',
         email: str | None = None,
@@ -68,7 +68,7 @@ class FreekassaPaymentMixin:
             return None
 
         # Генерируем уникальный order_id
-        order_id = f'fk_{user_id}_{uuid.uuid4().hex[:12]}'
+        order_id = f'fk_{user_id or "guest"}_{uuid.uuid4().hex[:12]}'
         amount_rubles = amount_kopeks / 100
         currency = settings.FREEKASSA_CURRENCY
 
@@ -124,7 +124,7 @@ class FreekassaPaymentMixin:
                 description=description,
                 payment_url=payment_url,
                 expires_at=expires_at,
-                metadata_json=json.dumps(metadata, ensure_ascii=False),
+                metadata_json=metadata,
             )
 
             logger.info(
@@ -198,7 +198,14 @@ class FreekassaPaymentMixin:
                 logger.warning('Freekassa webhook: платеж не найден order_id', order_id=order_id)
                 return False
 
-            # Проверка дублирования
+            # Lock payment row immediately to prevent concurrent webhook processing (TOCTOU race)
+            locked = await freekassa_crud.get_freekassa_payment_by_id_for_update(db, payment.id)
+            if not locked:
+                logger.error('Freekassa webhook: не удалось заблокировать платёж', payment_id=payment.id)
+                return False
+            payment = locked
+
+            # Re-check is_paid from the locked row
             if payment.is_paid:
                 logger.info('Freekassa webhook: платеж уже обработан order_id', order_id=order_id)
                 return True
@@ -213,7 +220,7 @@ class FreekassaPaymentMixin:
                 )
                 return False
 
-            # Обновляем статус платежа
+            # Inline field updates — NO intermediate commit that would release FOR UPDATE lock
             callback_payload = {
                 'merchant_id': merchant_id,
                 'amount': amount,
@@ -221,16 +228,15 @@ class FreekassaPaymentMixin:
                 'intid': intid,
                 'cur_id': cur_id,
             }
-
-            payment = await freekassa_crud.update_freekassa_payment_status(
-                db=db,
-                payment=payment,
-                status='success',
-                is_paid=True,
-                freekassa_order_id=intid,
-                payment_system_id=cur_id,
-                callback_payload=callback_payload,
-            )
+            payment.status = 'success'
+            payment.is_paid = True
+            payment.paid_at = datetime.now(UTC)
+            payment.callback_payload = callback_payload
+            payment.freekassa_order_id = intid
+            if cur_id is not None:
+                payment.payment_system_id = cur_id
+            payment.updated_at = datetime.now(UTC)
+            await db.flush()
 
             # Финализируем платеж (начисляем баланс, создаем транзакцию)
             return await self._finalize_freekassa_payment(db, payment, intid=intid, trigger='webhook')
@@ -250,17 +256,30 @@ class FreekassaPaymentMixin:
         """Создаёт транзакцию, начисляет баланс и отправляет уведомления."""
         payment_module = import_module('app.services.payment_service')
 
+        # FOR UPDATE lock already acquired by caller — just check idempotency
         if payment.transaction_id:
-            logger.info(
-                'Freekassa платеж уже привязан к транзакции (trigger=)', order_id=payment.order_id, trigger=trigger
-            )
+            logger.info('Freekassa платеж уже привязан к транзакции', order_id=payment.order_id, trigger=trigger)
+            return True
+
+        # --- Guest purchase flow (landing page) ---
+        fk_metadata = dict(getattr(payment, 'metadata_json', {}) or {})
+        from app.services.payment.common import try_fulfill_guest_purchase
+
+        guest_result = await try_fulfill_guest_purchase(
+            db,
+            metadata=fk_metadata,
+            payment_amount_kopeks=payment.amount_kopeks,
+            provider_payment_id=str(intid) if intid else payment.order_id,
+            provider_name='freekassa',
+        )
+        if guest_result is not None:
             return True
 
         # Получаем пользователя
         user = await payment_module.get_user_by_id(db, payment.user_id)
         if not user:
             logger.error(
-                'Пользователь не найден для Freekassa платежа (trigger=)',
+                'Пользователь не найден для Freekassa платежа',
                 user_id=payment.user_id,
                 order_id=payment.order_id,
                 trigger=trigger,
@@ -278,16 +297,18 @@ class FreekassaPaymentMixin:
             external_id=str(intid) if intid else payment.order_id,
             is_completed=True,
             created_at=getattr(payment, 'created_at', None),
+            commit=False,
         )
 
-        # Связываем платеж с транзакцией
-        freekassa_crud = import_module('app.database.crud.freekassa')
-        await freekassa_crud.update_freekassa_payment_status(
-            db=db,
-            payment=payment,
-            status=payment.status,
-            transaction_id=transaction.id,
-        )
+        # Связываем платеж с транзакцией (без commit, чтобы сохранить атомарность)
+        payment.transaction_id = transaction.id
+        payment.updated_at = datetime.now(UTC)
+        await db.flush()
+
+        # Lock user row to prevent concurrent balance race conditions
+        from app.database.crud.user import lock_user_for_update
+
+        user = await lock_user_for_update(db, user)
 
         old_balance = user.balance_kopeks
         was_first_topup = not user.has_made_first_topup
@@ -303,6 +324,19 @@ class FreekassaPaymentMixin:
 
         await db.commit()
 
+        # Emit deferred side-effects after atomic commit
+        from app.database.crud.transaction import emit_transaction_side_effects
+
+        await emit_transaction_side_effects(
+            db,
+            transaction,
+            amount_kopeks=payment.amount_kopeks,
+            user_id=payment.user_id,
+            type=TransactionType.DEPOSIT,
+            payment_method=PaymentMethod.FREEKASSA,
+            external_id=str(intid) if intid else payment.order_id,
+        )
+
         # Обработка реферального пополнения
         try:
             from app.services.referral_service import process_referral_topup
@@ -311,7 +345,7 @@ class FreekassaPaymentMixin:
         except Exception as error:
             logger.error('Ошибка обработки реферального пополнения Freekassa', error=error)
 
-        if was_first_topup and not user.has_made_first_topup:
+        if was_first_topup and not user.has_made_first_topup and not user.referred_by_id:
             user.has_made_first_topup = True
             await db.commit()
 
@@ -340,7 +374,7 @@ class FreekassaPaymentMixin:
                 logger.error('Ошибка отправки админ уведомления Freekassa', error=error)
 
         # Отправка уведомления пользователю
-        if getattr(self, 'bot', None) and user.telegram_id:
+        if getattr(self, 'bot', None) and user.telegram_id and settings.is_notifications_enabled():
             try:
                 keyboard = await self.build_topup_success_keyboard(user)
 
@@ -387,7 +421,7 @@ class FreekassaPaymentMixin:
             )
 
         logger.info(
-            '✅ Обработан Freekassa платеж для пользователя (trigger=)',
+            '✅ Обработан Freekassa платеж для пользователя',
             order_id=payment.order_id,
             user_id=payment.user_id,
             trigger=trigger,
@@ -470,32 +504,43 @@ class FreekassaPaymentMixin:
                 if fk_status == 1:
                     logger.info('Freekassa payment confirmed via API', order_id=payment.order_id)
 
-                    callback_payload = {
-                        'check_source': 'api',
-                        'fk_order_data': target_order,
-                    }
+                    # Lock payment row before finalization to prevent concurrent double-processing
+                    locked = await freekassa_crud.get_freekassa_payment_by_id_for_update(db, payment.id)
+                    if not locked:
+                        logger.error('Freekassa status check: не удалось заблокировать платёж', payment_id=payment.id)
+                    elif locked.is_paid:
+                        # Another concurrent handler already processed — skip
+                        logger.info('Freekassa платеж уже оплачен после блокировки', order_id=locked.order_id)
+                        payment = locked
+                    else:
+                        payment = locked
 
-                    # ID заказа на стороне FK (fk_order_id или id)
-                    fk_intid = str(target_order.get('fk_order_id') or target_order.get('id'))
+                        callback_payload = {
+                            'check_source': 'api',
+                            'fk_order_data': target_order,
+                        }
 
-                    # Обновляем статус
-                    payment = await freekassa_crud.update_freekassa_payment_status(
-                        db=db,
-                        payment=payment,
-                        status='success',
-                        is_paid=True,
-                        freekassa_order_id=fk_intid,
-                        payment_system_id=int(target_order.get('curID')) if target_order.get('curID') else None,
-                        callback_payload=callback_payload,
-                    )
+                        # ID заказа на стороне FK (fk_order_id или id)
+                        fk_intid = str(target_order.get('fk_order_id') or target_order.get('id'))
 
-                    # Финализируем
-                    await self._finalize_freekassa_payment(
-                        db,
-                        payment,
-                        intid=fk_intid,
-                        trigger='api_check',
-                    )
+                        # Inline field updates — NO intermediate commit that would release FOR UPDATE lock
+                        payment.status = 'success'
+                        payment.is_paid = True
+                        payment.paid_at = datetime.now(UTC)
+                        payment.callback_payload = callback_payload
+                        payment.freekassa_order_id = fk_intid
+                        if target_order.get('curID'):
+                            payment.payment_system_id = int(target_order['curID'])
+                        payment.updated_at = datetime.now(UTC)
+                        await db.flush()
+
+                        # Финализируем
+                        await self._finalize_freekassa_payment(
+                            db,
+                            payment,
+                            intid=fk_intid,
+                            trigger='api_check',
+                        )
         except Exception as e:
             logger.error('Error checking Freekassa payment status', e=e)
 

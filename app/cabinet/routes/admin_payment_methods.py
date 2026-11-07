@@ -4,15 +4,17 @@ from datetime import datetime
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import User
 from app.services.payment_method_config_service import (
+    DEFAULT_QUICK_AMOUNTS,
     _get_method_defaults,
     get_all_configs,
     get_all_promo_groups,
     get_config_by_method_id,
+    normalize_quick_amounts,
     update_config,
     update_sort_order,
 )
@@ -39,8 +41,11 @@ class PaymentMethodConfigResponse(BaseModel):
     is_enabled: bool
     display_name: str | None = None
     default_display_name: str
+    description: str | None = None
     sub_options: dict | None = None
     available_sub_options: list[SubOptionInfo] | None = None
+    quick_amounts: list[int] | None = None
+    default_quick_amounts: list[int] = Field(default_factory=lambda: list(DEFAULT_QUICK_AMOUNTS))
     min_amount_kopeks: int | None = None
     max_amount_kopeks: int | None = None
     default_min_amount_kopeks: int
@@ -49,6 +54,7 @@ class PaymentMethodConfigResponse(BaseModel):
     first_topup_filter: str
     promo_group_filter_mode: str
     allowed_promo_group_ids: list[int] = Field(default_factory=list)
+    open_url_direct: bool = False
     is_provider_configured: bool
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -60,15 +66,39 @@ class PaymentMethodConfigResponse(BaseModel):
 class PaymentMethodConfigUpdateRequest(BaseModel):
     is_enabled: bool | None = None
     display_name: str | None = Field(default=None, description='Null to reset to default')
-    sub_options: dict | None = None
+    sub_options: dict[str, bool] | None = None
     min_amount_kopeks: int | None = Field(default=None, ge=0)
     max_amount_kopeks: int | None = Field(default=None, ge=0)
     user_type_filter: str | None = Field(default=None, pattern='^(all|telegram|email)$')
+
+    @field_validator('sub_options', mode='before')
+    @classmethod
+    def validate_sub_options(cls, v: dict[str, bool] | None) -> dict[str, bool] | None:
+        if not v:
+            return None
+        if len(v) > 20:
+            raise ValueError('sub_options cannot have more than 20 keys')
+        for key in v:
+            if not isinstance(key, str) or len(key) > 50:
+                raise ValueError('sub_options keys must be strings of at most 50 characters')
+        return v
+
+    quick_amounts: list[int] | None = None
+    reset_quick_amounts: bool = False
+
+    @field_validator('quick_amounts')
+    @classmethod
+    def validate_quick_amounts(cls, v: list[int] | None) -> list[int] | None:
+        return normalize_quick_amounts(v)
+
     first_topup_filter: str | None = Field(default=None, pattern='^(any|yes|no)$')
     promo_group_filter_mode: str | None = Field(default=None, pattern='^(all|selected)$')
     allowed_promo_group_ids: list[int] | None = None
+    open_url_direct: bool | None = None
+    description: str | None = Field(default=None, description='Null to reset to default')
     # Allow explicitly resetting display_name to null
     reset_display_name: bool = False
+    reset_description: bool = False
     reset_min_amount: bool = False
     reset_max_amount: bool = False
 
@@ -102,9 +132,11 @@ def _enrich_config(config, defaults: dict) -> PaymentMethodConfigResponse:
         sort_order=config.sort_order,
         is_enabled=config.is_enabled,
         display_name=config.display_name,
+        description=config.description,
         default_display_name=method_def.get('default_display_name', config.method_id),
         sub_options=config.sub_options,
         available_sub_options=available_sub_options,
+        quick_amounts=getattr(config, 'quick_amounts', None),
         min_amount_kopeks=config.min_amount_kopeks,
         max_amount_kopeks=config.max_amount_kopeks,
         default_min_amount_kopeks=method_def.get('default_min', 1000),
@@ -113,6 +145,7 @@ def _enrich_config(config, defaults: dict) -> PaymentMethodConfigResponse:
         first_topup_filter=config.first_topup_filter,
         promo_group_filter_mode=config.promo_group_filter_mode,
         allowed_promo_group_ids=[pg.id for pg in config.allowed_promo_groups],
+        open_url_direct=bool(getattr(config, 'open_url_direct', False)),
         is_provider_configured=method_def.get('is_configured', False),
         created_at=config.created_at,
         updated_at=config.updated_at,
@@ -191,8 +224,18 @@ async def update_payment_method(
     elif request.display_name is not None:
         data['display_name'] = request.display_name.strip() or None
 
+    if request.reset_description:
+        data['description'] = None
+    elif request.description is not None:
+        data['description'] = request.description.strip() or None
+
     if request.sub_options is not None:
         data['sub_options'] = request.sub_options
+
+    if request.reset_quick_amounts:
+        data['quick_amounts'] = None
+    elif request.quick_amounts is not None:
+        data['quick_amounts'] = request.quick_amounts
 
     if request.reset_min_amount:
         data['min_amount_kopeks'] = None
@@ -213,9 +256,15 @@ async def update_payment_method(
     if request.promo_group_filter_mode is not None:
         data['promo_group_filter_mode'] = request.promo_group_filter_mode
 
+    if request.open_url_direct is not None:
+        data['open_url_direct'] = request.open_url_direct
+
     promo_group_ids = request.allowed_promo_group_ids
 
-    config = await update_config(db, method_id, data, promo_group_ids)
+    try:
+        config = await update_config(db, method_id, data, promo_group_ids)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error))
     if not config:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

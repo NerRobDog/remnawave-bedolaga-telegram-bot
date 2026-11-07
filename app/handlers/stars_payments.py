@@ -1,3 +1,4 @@
+import html
 from decimal import ROUND_HALF_UP, Decimal
 
 import structlog
@@ -9,7 +10,7 @@ from app.config import settings
 from app.database.crud.user import get_user_by_telegram_id
 from app.external.telegram_stars import TelegramStarsService
 from app.localization.loader import DEFAULT_LANGUAGE
-from app.localization.texts import get_texts
+from app.localization.texts import Texts, get_texts
 from app.services.payment_service import PaymentService
 
 
@@ -23,12 +24,28 @@ async def _handle_wheel_spin_payment(
     stars_amount: int,
     payload: str,
     texts,
+    charge_id: str | None = None,
 ):
     """Обработка Stars платежа для колеса удачи."""
-    from app.database.crud.wheel import get_or_create_wheel_config, get_wheel_prizes
+    from app.database.crud.wheel import (
+        get_or_create_wheel_config,
+        get_user_spins_today,
+        get_wheel_prizes,
+        get_wheel_spin_by_charge_id,
+    )
     from app.services.wheel_service import wheel_service
 
     try:
+        # Идемпотентность: Telegram доставляет successful_payment «как минимум один раз».
+        # Если спин по этому charge_id уже есть — платёж уже обработан, второй приз не выдаём.
+        if charge_id and await get_wheel_spin_by_charge_id(db, charge_id):
+            logger.info(
+                '🎰 Stars wheel spin already processed (idempotent skip)',
+                user_id=user.id,
+                charge_id=charge_id,
+            )
+            return True
+
         config = await get_or_create_wheel_config(db)
 
         if not config.is_enabled:
@@ -40,7 +57,16 @@ async def _handle_wheel_spin_payment(
         # Проверяем наличие активной подписки
         from app.database.crud.subscription import get_subscription_by_user_id
 
-        subscription = await get_subscription_by_user_id(db, user.id)
+        if settings.is_multi_tariff_enabled():
+            from app.database.crud.subscription import get_active_subscriptions_by_user_id
+
+            active_subs = await get_active_subscriptions_by_user_id(db, user.id)
+            # Wheel eligibility: any active non-daily subscription qualifies
+            non_daily = [s for s in active_subs if not getattr(s, 'is_daily_tariff', False)]
+            eligible = non_daily or active_subs
+            subscription = max(eligible, key=lambda s: s.days_left) if eligible else None
+        else:
+            subscription = await get_subscription_by_user_id(db, user.id)
         if not subscription or not subscription.is_active:
             # Конвертируем Stars в баланс как компенсацию
             rubles_fallback = TelegramStarsService.calculate_rubles_from_stars(stars_amount)
@@ -77,6 +103,36 @@ async def _handle_wheel_spin_payment(
             )
             return False
 
+        # Дневной лимит — авторитетная проверка в момент начисления. Проверка на этапе
+        # создания инвойса в кабинете совещательная и гоночная. Stars уже оплачены —
+        # при достигнутом лимите возвращаем их на баланс, а не глотаем.
+        if config.daily_spin_limit > 0:
+            spins_today = await get_user_spins_today(db, user.id)
+            if spins_today >= config.daily_spin_limit:
+                rubles_fallback = TelegramStarsService.calculate_rubles_from_stars(stars_amount)
+                kopeks_fallback = int((rubles_fallback * Decimal(100)).to_integral_value(rounding=ROUND_HALF_UP))
+                from app.database.crud.user import add_user_balance
+                from app.database.models import TransactionType
+
+                await add_user_balance(
+                    db,
+                    user,
+                    kopeks_fallback,
+                    f'Возврат за спин колеса (достигнут дневной лимит, {stars_amount} Stars)',
+                    transaction_type=TransactionType.REFUND,
+                )
+                await db.commit()
+                await message.answer(
+                    '❌ Достигнут дневной лимит спинов.\n'
+                    f'💰 {stars_amount} Stars возвращены на баланс в виде {kopeks_fallback / 100:.0f} ₽.',
+                )
+                logger.warning(
+                    'Wheel spin over daily limit, refunded to balance',
+                    user_id=user.id,
+                    stars_amount=stars_amount,
+                )
+                return False
+
         # Рассчитываем стоимость в копейках для статистики
         rubles_amount = TelegramStarsService.calculate_rubles_from_stars(stars_amount)
         payment_value_kopeks = int((rubles_amount * Decimal(100)).to_integral_value(rounding=ROUND_HALF_UP))
@@ -89,6 +145,8 @@ async def _handle_wheel_spin_payment(
         generated_promocode = await wheel_service._apply_prize(db, user, selected_prize, config)
 
         # Создаем запись спина
+        from sqlalchemy.exc import IntegrityError
+
         from app.database.crud.wheel import create_wheel_spin
         from app.database.models import WheelSpinPaymentType
 
@@ -104,31 +162,45 @@ async def _handle_wheel_spin_payment(
                 promocode_id = row[0]
 
         logger.info(
-            '🎰 Creating wheel spin: user.id=, user.telegram_id=, prize',
+            '🎰 Creating wheel spin',
             user_id=user.id,
             telegram_id=user.telegram_id,
             display_name=selected_prize.display_name,
         )
 
-        spin = await create_wheel_spin(
-            db=db,
-            user_id=user.id,
-            prize_id=selected_prize.id,
-            payment_type=WheelSpinPaymentType.TELEGRAM_STARS.value,
-            payment_amount=stars_amount,
-            payment_value_kopeks=payment_value_kopeks,
-            prize_type=selected_prize.prize_type,
-            prize_value=selected_prize.prize_value,
-            prize_display_name=selected_prize.display_name,
-            prize_value_kopeks=selected_prize.prize_value_kopeks,
-            generated_promocode_id=promocode_id,
-            is_applied=True,
-        )
+        try:
+            spin = await create_wheel_spin(
+                db=db,
+                user_id=user.id,
+                prize_id=selected_prize.id,
+                payment_type=WheelSpinPaymentType.TELEGRAM_STARS.value,
+                payment_amount=stars_amount,
+                payment_value_kopeks=payment_value_kopeks,
+                prize_type=selected_prize.prize_type,
+                prize_value=selected_prize.prize_value,
+                prize_display_name=selected_prize.display_name,
+                prize_value_kopeks=selected_prize.prize_value_kopeks,
+                generated_promocode_id=promocode_id,
+                is_applied=True,
+                telegram_charge_id=charge_id,
+            )
+        except IntegrityError:
+            # A concurrent redelivery raced us to the unique charge_id. Because the
+            # prize grant above runs with commit=False, the whole spin is one
+            # transaction — rolling back here undoes our duplicate grant entirely.
+            await db.rollback()
+            logger.info(
+                '🎰 Stars wheel spin duplicate charge id (idempotent skip)',
+                user_id=user.id,
+                charge_id=charge_id,
+            )
+            return True
 
-        logger.info('🎰 Wheel spin created: spin.id=, spin.user_id', spin_id=spin.id, user_id=spin.user_id)
+        logger.info('🎰 Wheel spin created', spin_id=spin.id, user_id=spin.user_id)
 
         # Ensure all changes are committed (subscription days, traffic GB, etc.)
         await db.commit()
+        await wheel_service._sync_subscription_after_spin(user, selected_prize)
 
         # Отправляем результат
         prize_message = wheel_service._get_prize_message(selected_prize, generated_promocode)
@@ -136,14 +208,14 @@ async def _handle_wheel_spin_payment(
         emoji = selected_prize.emoji or '🎁'
         await message.answer(
             f'🎰 <b>Колесо удачи!</b>\n\n'
-            f'{emoji} <b>{selected_prize.display_name}</b>\n\n'
+            f'{emoji} <b>{html.escape(selected_prize.display_name)}</b>\n\n'
             f'{prize_message}\n\n'
             f'⭐ Потрачено: {stars_amount} Stars',
             parse_mode='HTML',
         )
 
         logger.info(
-            '🎰 Wheel spin via Stars: user=, prize=, stars',
+            '🎰 Wheel spin via Stars',
             user_id=user.id,
             display_name=selected_prize.display_name,
             stars_amount=stars_amount,
@@ -243,6 +315,14 @@ async def _handle_trial_payment(
         except Exception as rw_error:
             logger.error('Ошибка создания пользователя RemnaWave для триала', rw_error=rw_error)
             # Не откатываем подписку, просто логируем - RemnaWave может быть временно недоступен
+            from app.services.remnawave_retry_queue import remnawave_retry_queue
+
+            if hasattr(subscription, 'id') and hasattr(subscription, 'user_id'):
+                remnawave_retry_queue.enqueue(
+                    subscription_id=subscription.id,
+                    user_id=subscription.user_id,
+                    action='create',
+                )
 
         await db.commit()
         await db.refresh(user)
@@ -264,13 +344,13 @@ async def _handle_trial_payment(
             f'🎉 <b>Пробная подписка активирована!</b>\n\n'
             f'⭐ Потрачено: {stars_amount} Stars\n'
             f'📅 Период: {settings.TRIAL_DURATION_DAYS} дней\n'
-            f'📱 Устройств: {subscription.device_limit}\n\n'
+            f'📱 Устройств: {Texts.format_device_limit(subscription.device_limit)}\n\n'
             f'Используйте меню для подключения к VPN.',
             parse_mode='HTML',
         )
 
         logger.info(
-            '✅ Платный триал активирован через Stars: user=, subscription=, stars',
+            '✅ Платный триал активирован через Stars',
             user_id=user.id,
             subscription_id=subscription.id,
             stars_amount=stars_amount,
@@ -285,18 +365,98 @@ async def _handle_trial_payment(
         return False
 
 
+_PURCHASE_TOKEN_RE = __import__('re').compile(r'^[A-Za-z0-9_\-]{10,100}$')
+
+
+async def _handle_guest_purchase_payment(
+    message: types.Message,
+    db: AsyncSession,
+    user,
+    stars_amount: int,
+    payload: str,
+    telegram_payment_charge_id: str,
+):
+    """Обработка Stars платежа для гостевой покупки (подарочная подписка из кабинета)."""
+    from app.database.crud.landing import get_purchase_by_token
+    from app.services.payment.common import try_fulfill_guest_purchase
+
+    try:
+        purchase_token = payload[len('guest_purchase_') :]
+        if not purchase_token or not _PURCHASE_TOKEN_RE.match(purchase_token):
+            logger.error('Invalid purchase_token format in guest_purchase payload', payload=payload)
+            await message.answer('❌ Ошибка: неверный формат платежа.')
+            return
+
+        # Verify Stars amount matches expected price (±5% tolerance for conversion rounding)
+        existing = await get_purchase_by_token(db, purchase_token)
+        if existing and existing.amount_kopeks:
+            expected_stars = max(1, settings.rubles_to_stars(existing.amount_kopeks / 100))
+            tolerance = max(1, round(expected_stars * 0.05))
+            if abs(stars_amount - expected_stars) > tolerance:
+                logger.error(
+                    'Stars amount mismatch for guest purchase',
+                    paid_stars=stars_amount,
+                    expected_stars=expected_stars,
+                    purchase_id=existing.id,
+                )
+                await message.answer('❌ Сумма оплаты не совпадает с ожидаемой.')
+                return
+
+        # Calculate kopeks from stars
+        rubles_amount = TelegramStarsService.calculate_rubles_from_stars(stars_amount)
+        amount_kopeks = int((rubles_amount * Decimal(100)).to_integral_value(rounding=ROUND_HALF_UP))
+
+        # Build metadata matching what other providers use
+        metadata = {
+            'purpose': 'guest_purchase',
+            'purchase_token': purchase_token,
+        }
+
+        result = await try_fulfill_guest_purchase(
+            db,
+            metadata=metadata,
+            payment_amount_kopeks=amount_kopeks,
+            provider_payment_id=telegram_payment_charge_id,
+            provider_name='telegram_stars',
+            skip_amount_check=True,
+        )
+
+        if result is True:
+            await message.answer(
+                '🎁 <b>Подарочная подписка успешно оплачена!</b>\n\n'
+                f'⭐ Потрачено: {stars_amount} Stars\n\n'
+                'Подарок будет доставлен получателю.',
+                parse_mode='HTML',
+            )
+            logger.info(
+                '✅ Guest purchase fulfilled via Stars',
+                user_id=user.id,
+                stars_amount=stars_amount,
+                purchase_id=existing.id if existing else None,
+            )
+        else:
+            logger.error('try_fulfill_guest_purchase returned None for Stars gift', payload=payload)
+            await message.answer('❌ Ошибка обработки платежа. Обратитесь в поддержку.')
+
+    except Exception as e:
+        logger.error('Error handling guest purchase Stars payment', error=e, exc_info=True)
+        await message.answer(
+            '❌ Произошла ошибка при обработке подарочной подписки. Обратитесь в поддержку.',
+        )
+
+
 async def handle_pre_checkout_query(query: types.PreCheckoutQuery):
     texts = get_texts(DEFAULT_LANGUAGE)
 
     try:
         logger.info(
-            '📋 Pre-checkout query от XTR, payload',
+            '📋 Pre-checkout query',
             from_user_id=query.from_user.id,
             total_amount=query.total_amount,
             invoice_payload=query.invoice_payload,
         )
 
-        allowed_prefixes = ('balance_', 'admin_stars_test_', 'simple_sub_', 'wheel_spin_', 'trial_')
+        allowed_prefixes = ('balance_', 'admin_stars_test_', 'simple_sub_', 'wheel_spin_', 'trial_', 'guest_purchase_')
 
         if not query.invoice_payload or not query.invoice_payload.startswith(allowed_prefixes):
             logger.warning('Невалидный payload', invoice_payload=query.invoice_payload)
@@ -358,7 +518,7 @@ async def handle_successful_payment(message: types.Message, db: AsyncSession, st
         user_id = message.from_user.id
 
         logger.info(
-            '💳 Успешный Stars платеж от XTR, payload: charge_id',
+            '💳 Успешный Stars платеж',
             user_id=user_id,
             total_amount=payment.total_amount,
             invoice_payload=payment.invoice_payload,
@@ -387,6 +547,7 @@ async def handle_successful_payment(message: types.Message, db: AsyncSession, st
                 stars_amount=payment.total_amount,
                 payload=payment.invoice_payload,
                 texts=texts,
+                charge_id=payment.telegram_payment_charge_id,
             )
             return
 
@@ -399,6 +560,18 @@ async def handle_successful_payment(message: types.Message, db: AsyncSession, st
                 stars_amount=payment.total_amount,
                 payload=payment.invoice_payload,
                 texts=texts,
+            )
+            return
+
+        # Обработка оплаты гостевой покупки (подарочная подписка из кабинета)
+        if payment.invoice_payload and payment.invoice_payload.startswith('guest_purchase_'):
+            await _handle_guest_purchase_payment(
+                message=message,
+                db=db,
+                user=user,
+                stars_amount=payment.total_amount,
+                payload=payment.invoice_payload,
+                telegram_payment_charge_id=payment.telegram_payment_charge_id,
             )
             return
 
@@ -464,7 +637,7 @@ async def handle_successful_payment(message: types.Message, db: AsyncSession, st
             )
 
             logger.info(
-                '✅ Stars платеж успешно обработан: пользователь , звезд →',
+                '✅ Stars платеж успешно обработан',
                 user_id=user.id,
                 total_amount=payment.total_amount,
                 format_price=settings.format_price(amount_kopeks),

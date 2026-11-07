@@ -163,6 +163,18 @@ class ReportingService:
 
         topic_id = settings.get_reports_topic_id()
 
+        # Rich-вид (Bot API 10.1): заголовок, разделители, footer с tg-time.
+        # При недоступности — классический HTML ниже.
+        try:
+            from app.utils.rich_admin import classic_admin_html_to_rich, try_send_rich_admin_message
+
+            rich_html = classic_admin_html_to_rich(report_text, footer_label='Отчёт')
+            if await try_send_rich_admin_message(self.bot, chat_id, rich_html, thread_id=topic_id):
+                logger.info('Rich-отчёт отправлен в чат', chat_id=chat_id)
+                return
+        except Exception as rich_error:
+            logger.warning('Сбой rich-рендера отчёта', error=str(rich_error))
+
         try:
             await self.bot.send_message(
                 chat_id=chat_id,
@@ -476,7 +488,7 @@ class ReportingService:
         """
         return select(
             func.count(Transaction.id),
-            func.coalesce(func.sum(Transaction.amount_kopeks), 0),
+            func.coalesce(func.sum(func.abs(Transaction.amount_kopeks)), 0),
         ).where(
             Transaction.type == TransactionType.DEPOSIT.value,
             Transaction.is_completed == true(),

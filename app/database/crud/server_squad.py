@@ -33,7 +33,15 @@ logger = structlog.get_logger(__name__)
 
 async def _get_default_promo_group_id(db: AsyncSession) -> int | None:
     result = await db.execute(select(PromoGroup.id).where(PromoGroup.is_default.is_(True)).limit(1))
-    return result.scalar_one_or_none()
+    default_id = result.scalar_one_or_none()
+    if default_id is not None:
+        return default_id
+
+    # На пустой БД дефолтной промогруппы нет — создаём автоматически
+    from app.database.crud.user import _get_or_create_default_promo_group
+
+    default_group = await _get_or_create_default_promo_group(db)
+    return default_group.id
 
 
 async def create_server_squad(
@@ -84,7 +92,7 @@ async def create_server_squad(
     await db.commit()
     await db.refresh(server_squad)
 
-    logger.info('✅ Создан сервер (UUID: )', display_name=display_name, squad_uuid=squad_uuid)
+    logger.info('✅ Создан сервер', display_name=display_name, squad_uuid=squad_uuid)
     return server_squad
 
 
@@ -141,14 +149,32 @@ async def get_available_server_squads(
         .order_by(ServerSquad.sort_order, ServerSquad.display_name)
     )
 
-    if exclude_trial_only:
-        query = query.where(ServerSquad.is_trial_eligible.is_(False))
+    # НЕ фильтруем по is_trial_eligible — это поле означает "доступен для триала",
+    # а НЕ "только для триала". Сквад может быть одновременно триальным и платным.
+    # Фильтр exclude_trial_only убирал единственный доступный сквад, из-за чего
+    # пользователи без триала получали пустой connected_squads при покупке.
+    # Параметр exclude_trial_only сохранён для обратной совместимости, но не используется.
+    # TODO: если нужна логика "только для триала", добавить отдельное поле is_trial_only
 
     if promo_group_id is not None:
         query = query.join(ServerSquad.allowed_promo_groups).where(PromoGroup.id == promo_group_id)
 
     result = await db.execute(query)
     return result.scalars().unique().all()
+
+
+async def get_effective_tariff_squad_uuids(
+    db: AsyncSession,
+    allowed_squads: Sequence[str] | None,
+) -> list[str]:
+    """Resolve tariff squads, treating an empty list as "all available squads"."""
+
+    normalized = [str(squad_uuid) for squad_uuid in (allowed_squads or []) if squad_uuid]
+    if normalized:
+        return list(dict.fromkeys(normalized))
+
+    available = await get_available_server_squads(db)
+    return [squad.squad_uuid for squad in available if squad.squad_uuid]
 
 
 async def get_active_server_squads(db: AsyncSession) -> list[ServerSquad]:
@@ -277,7 +303,7 @@ async def delete_server_squad(db: AsyncSession, server_id: int) -> bool:
     await db.execute(delete(ServerSquad).where(ServerSquad.id == server_id))
     await db.commit()
 
-    logger.info('🗑️ Удален сервер (ID: )', server_id=server_id)
+    logger.info('🗑️ Удален сервер', server_id=server_id)
     return True
 
 
@@ -306,15 +332,24 @@ async def sync_with_remnawave(db: AsyncSession, remnawave_squads: list[dict]) ->
             await create_server_squad(
                 db=db,
                 squad_uuid=squad_uuid,
-                display_name=_generate_display_name(original_name),
+                display_name=original_name,
                 original_name=original_name,
-                country_code=_extract_country_code(original_name),
                 price_kopeks=1000,
                 is_available=False,
             )
             created += 1
 
-    removed_servers = [server for uuid, server in existing_servers.items() if uuid not in remnawave_uuids]
+    # Protect external squads referenced by tariffs from being removed during sync
+    tariff_ext_uuids_result = await db.execute(
+        select(Tariff.external_squad_uuid).where(Tariff.external_squad_uuid.isnot(None))
+    )
+    protected_uuids = {row[0] for row in tariff_ext_uuids_result.fetchall()}
+
+    removed_servers = [
+        server
+        for uuid, server in existing_servers.items()
+        if uuid not in remnawave_uuids and uuid not in protected_uuids
+    ]
 
     if removed_servers:
         removed_ids = [server.id for server in removed_servers]
@@ -326,7 +361,7 @@ async def sync_with_remnawave(db: AsyncSession, remnawave_squads: list[dict]) ->
         subscription_ids = {row[0] for row in subscription_ids_result.fetchall()}
 
         for server in removed_servers:
-            logger.info('🗑️ Удаляется сервер (UUID:)', display_name=server.display_name, squad_uuid=server.squad_uuid)
+            logger.info('🗑️ Удаляется сервер', display_name=server.display_name, squad_uuid=server.squad_uuid)
 
         await db.execute(delete(SubscriptionServer).where(SubscriptionServer.server_squad_id.in_(removed_ids)))
 
@@ -372,14 +407,21 @@ async def sync_with_remnawave(db: AsyncSession, remnawave_squads: list[dict]) ->
                 continue
             filtered = [u for u in current if u not in removed_uuids]
             if len(filtered) != len(current):
-                tariff.allowed_squads = filtered
+                if filtered:
+                    tariff.allowed_squads = filtered
+                else:
+                    # [] means "all available servers", not "no servers".
+                    # Keep the explicit (now invalid) selection for the operator
+                    # and stop selling it instead of granting unrelated access.
+                    tariff.is_active = False
+                    logger.warning('Tariff disabled after all assigned squads were deleted', tariff_id=tariff.id)
                 tariff.updated_at = datetime.now(UTC)
                 cleaned_tariffs += 1
                 logger.info(
-                    '🧹 Тариф "%s" (ID: %s): удалены несуществующие сквады %s',
-                    tariff.name,
-                    tariff.id,
-                    [u for u in current if u in removed_uuids],
+                    'Tariff reconciled after assigned squads were deleted',
+                    tariff_id=tariff.id,
+                    removed_squads=[u for u in current if u in removed_uuids],
+                    selection_retained=not filtered,
                 )
 
         await db.execute(delete(ServerSquad).where(ServerSquad.id.in_(removed_ids)))
@@ -417,7 +459,7 @@ async def get_server_connected_users(db: AsyncSession, server_id: int) -> list[U
             ),
         )
         .where(or_(*connection_filters))
-        .options(selectinload(User.subscription))
+        .options(selectinload(User.subscriptions).selectinload(Subscription.tariff))
         .order_by(User.id)
     )
 
@@ -478,219 +520,6 @@ async def get_random_trial_squad_uuid(
 
     if squad:
         return squad.squad_uuid
-
-    return None
-
-
-def _generate_display_name(original_name: str) -> str:
-    """Генерирует отображаемое название сервера на основе оригинального имени."""
-
-    country_names = {
-        # Европа
-        'NL': '🇳🇱 Нидерланды',
-        'DE': '🇩🇪 Германия',
-        'FR': '🇫🇷 Франция',
-        'GB': '🇬🇧 Великобритания',
-        'UK': '🇬🇧 Великобритания',
-        'IT': '🇮🇹 Италия',
-        'ES': '🇪🇸 Испания',
-        'PT': '🇵🇹 Португалия',
-        'PL': '🇵🇱 Польша',
-        'CZ': '🇨🇿 Чехия',
-        'AT': '🇦🇹 Австрия',
-        'CH': '🇨🇭 Швейцария',
-        'SE': '🇸🇪 Швеция',
-        'NO': '🇳🇴 Норвегия',
-        'FI': '🇫🇮 Финляндия',
-        'DK': '🇩🇰 Дания',
-        'BE': '🇧🇪 Бельгия',
-        'IE': '🇮🇪 Ирландия',
-        'RO': '🇷🇴 Румыния',
-        'BG': '🇧🇬 Болгария',
-        'HU': '🇭🇺 Венгрия',
-        'GR': '🇬🇷 Греция',
-        'LV': '🇱🇻 Латвия',
-        'LT': '🇱🇹 Литва',
-        'EE': '🇪🇪 Эстония',
-        'SK': '🇸🇰 Словакия',
-        'SI': '🇸🇮 Словения',
-        'HR': '🇭🇷 Хорватия',
-        'RS': '🇷🇸 Сербия',
-        'UA': '🇺🇦 Украина',
-        'MD': '🇲🇩 Молдова',
-        'BY': '🇧🇾 Беларусь',
-        'LU': '🇱🇺 Люксембург',
-        # СНГ и Азия
-        'RU': '🇷🇺 Россия',
-        'KZ': '🇰🇿 Казахстан',
-        'UZ': '🇺🇿 Узбекистан',
-        'GE': '🇬🇪 Грузия',
-        'AM': '🇦🇲 Армения',
-        'AZ': '🇦🇿 Азербайджан',
-        # Америка
-        'US': '🇺🇸 США',
-        'CA': '🇨🇦 Канада',
-        'MX': '🇲🇽 Мексика',
-        'BR': '🇧🇷 Бразилия',
-        'AR': '🇦🇷 Аргентина',
-        'CL': '🇨🇱 Чили',
-        'CO': '🇨🇴 Колумбия',
-        # Азия
-        'JP': '🇯🇵 Япония',
-        'KR': '🇰🇷 Южная Корея',
-        'CN': '🇨🇳 Китай',
-        'HK': '🇭🇰 Гонконг',
-        'TW': '🇹🇼 Тайвань',
-        'SG': '🇸🇬 Сингапур',
-        'TH': '🇹🇭 Таиланд',
-        'VN': '🇻🇳 Вьетнам',
-        'MY': '🇲🇾 Малайзия',
-        'ID': '🇮🇩 Индонезия',
-        'PH': '🇵🇭 Филиппины',
-        'IN': '🇮🇳 Индия',
-        'PK': '🇵🇰 Пакистан',
-        # Ближний Восток
-        'IL': '🇮🇱 Израиль',
-        'TR': '🇹🇷 Турция',
-        'AE': '🇦🇪 ОАЭ',
-        'SA': '🇸🇦 Саудовская Аравия',
-        'QA': '🇶🇦 Катар',
-        'BH': '🇧🇭 Бахрейн',
-        'KW': '🇰🇼 Кувейт',
-        # Океания
-        'AU': '🇦🇺 Австралия',
-        'NZ': '🇳🇿 Новая Зеландия',
-        # Африка
-        'ZA': '🇿🇦 ЮАР',
-        'EG': '🇪🇬 Египет',
-        'NG': '🇳🇬 Нигерия',
-        'KE': '🇰🇪 Кения',
-    }
-
-    name_upper = original_name.upper()
-
-    # Сначала ищем код как отдельный элемент (через - или _)
-    for code, display_name in country_names.items():
-        if f'-{code}' in name_upper or f'_{code}' in name_upper:
-            return display_name
-        if name_upper.startswith(code + '-') or name_upper.startswith(code + '_'):
-            return display_name
-        if name_upper.endswith('-' + code) or name_upper.endswith('_' + code):
-            return display_name
-        if name_upper == code:
-            return display_name
-
-    # Потом ищем просто вхождение кода
-    for code, display_name in country_names.items():
-        if code in name_upper:
-            return display_name
-
-    return f'🌍 {original_name}'
-
-
-def _extract_country_code(original_name: str) -> str | None:
-    """Извлекает код страны из оригинального названия."""
-
-    # Полный список кодов стран
-    codes = [
-        # Европа
-        'NL',
-        'DE',
-        'FR',
-        'GB',
-        'UK',
-        'IT',
-        'ES',
-        'PT',
-        'PL',
-        'CZ',
-        'AT',
-        'CH',
-        'SE',
-        'NO',
-        'FI',
-        'DK',
-        'BE',
-        'IE',
-        'RO',
-        'BG',
-        'HU',
-        'GR',
-        'LV',
-        'LT',
-        'EE',
-        'SK',
-        'SI',
-        'HR',
-        'RS',
-        'UA',
-        'MD',
-        'BY',
-        'LU',
-        # СНГ
-        'RU',
-        'KZ',
-        'UZ',
-        'GE',
-        'AM',
-        'AZ',
-        # Америка
-        'US',
-        'CA',
-        'MX',
-        'BR',
-        'AR',
-        'CL',
-        'CO',
-        # Азия
-        'JP',
-        'KR',
-        'CN',
-        'HK',
-        'TW',
-        'SG',
-        'TH',
-        'VN',
-        'MY',
-        'ID',
-        'PH',
-        'IN',
-        'PK',
-        # Ближний Восток
-        'IL',
-        'TR',
-        'AE',
-        'SA',
-        'QA',
-        'BH',
-        'KW',
-        # Океания
-        'AU',
-        'NZ',
-        # Африка
-        'ZA',
-        'EG',
-        'NG',
-        'KE',
-    ]
-
-    name_upper = original_name.upper()
-
-    # Сначала ищем код как отдельный элемент
-    for code in codes:
-        if f'-{code}' in name_upper or f'_{code}' in name_upper:
-            return code
-        if name_upper.startswith(code + '-') or name_upper.startswith(code + '_'):
-            return code
-        if name_upper.endswith('-' + code) or name_upper.endswith('_' + code):
-            return code
-        if name_upper == code:
-            return code
-
-    # Потом просто ищем вхождение
-    for code in codes:
-        if code in name_upper:
-            return code
 
     return None
 

@@ -1,30 +1,38 @@
+import html
+import re
 from datetime import UTC, datetime
+
+from app.utils.subscription_time import local_days_until
+from app.utils.timezone import format_local_datetime
+
+
+# Формат Telegram-логина: 5-32 символа, первый — буква. Тот же шаблон используется
+# в app/services/guest_purchase_service.py при приёме логина от пользователя.
+_TELEGRAM_USERNAME_RE = re.compile(r'^[a-zA-Z][a-zA-Z0-9_]{4,31}$')
+
+
+def _coerce_datetime(dt: datetime | str) -> datetime:
+    if isinstance(dt, str):
+        if dt == 'now' or dt == '':
+            return datetime.now(UTC)
+        try:
+            return datetime.fromisoformat(dt.replace('Z', '+00:00'))
+        except (ValueError, AttributeError):
+            return datetime.now(UTC)
+    return dt
 
 
 def format_datetime(dt: datetime | str, format_str: str = '%d.%m.%Y %H:%M') -> str:
-    if isinstance(dt, str):
-        if dt == 'now' or dt == '':
-            dt = datetime.now(UTC)
-        else:
-            try:
-                dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
-            except (ValueError, AttributeError):
-                dt = datetime.now(UTC)
+    """Момент в часовом поясе оператора (settings.TIMEZONE); без зоны — считается UTC.
 
-    return dt.strftime(format_str)
+    Раньше здесь был голый strftime по UTC: админка показывала окончание
+    подписки 11:17, когда панель и «Моя подписка» — 14:17 по Москве.
+    """
+    return format_local_datetime(_coerce_datetime(dt), format_str)
 
 
 def format_date(dt: datetime | str, format_str: str = '%d.%m.%Y') -> str:
-    if isinstance(dt, str):
-        if dt == 'now' or dt == '':
-            dt = datetime.now(UTC)
-        else:
-            try:
-                dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
-            except (ValueError, AttributeError):
-                dt = datetime.now(UTC)
-
-    return dt.strftime(format_str)
+    return format_local_datetime(_coerce_datetime(dt), format_str)
 
 
 def format_time_ago(dt: datetime | str, language: str = 'ru') -> str:
@@ -96,6 +104,32 @@ def format_days_declension(days: int, language: str = 'ru') -> str:
     if days % 10 in [2, 3, 4] and days % 100 not in [12, 13, 14]:
         return f'{days} дня'
     return f'{days} дней'
+
+
+_PERSIAN_DIGITS = str.maketrans('0123456789', '۰۱۲۳۴۵۶۷۸۹')
+
+
+def format_minutes_declension(minutes: int, language: str | None = 'ru') -> str:
+    """«30 минут» / «1 минуту» / «30 minutes»: число минут с единицей на языке пользователя."""
+    minutes = max(int(minutes), 1)
+    language_code = (language or 'ru').split('-')[0].lower()
+
+    if language_code in {'ru', 'ua', 'uk'}:
+        if 11 <= minutes % 100 <= 14:
+            form = 2
+        elif minutes % 10 == 1:
+            form = 0
+        elif 2 <= minutes % 10 <= 4:
+            form = 1
+        else:
+            form = 2
+        words = ('минуту', 'минуты', 'минут') if language_code == 'ru' else ('хвилину', 'хвилини', 'хвилин')
+        return f'{minutes} {words[form]}'
+    if language_code == 'zh':
+        return f'{minutes} 分钟'
+    if language_code == 'fa':
+        return f'{minutes} دقیقه'.translate(_PERSIAN_DIGITS)
+    return f'{minutes} minute{"s" if minutes != 1 else ""}'
 
 
 def format_duration(seconds: int) -> str:
@@ -174,6 +208,32 @@ def format_username(username: str | None, user_id: int, full_name: str | None = 
     return f'ID{user_id}'
 
 
+def format_username_link(username: str | None, fallback: str = '') -> str:
+    """Telegram-логин явной ссылкой — для rich-сообщений.
+
+    Rich-сообщения уходят со skip_entity_detection=True (app/utils/rich_admin.py,
+    app/utils/rich_menu.py), поэтому голый @username в них не подсвечивается:
+    ссылку приходится ставить руками.
+
+    Ссылка ставится только на то, что выглядит настоящим Telegram-логином.
+    Колонка users.username хранит не только их: OAuth-регистрация в кабинете кладёт
+    туда логин Discord/Яндекса (app/cabinet/auth/oauth_providers.py), а это чужое
+    пространство имён — t.me/<логин> оттуда ведёт либо в никуда, либо на
+    постороннего человека с таким же ником. Остальное отдаём текстом, как было.
+    """
+    if not username:
+        return fallback
+
+    normalized_username = username.lstrip('@')
+    if not normalized_username:
+        return fallback
+
+    safe_username = html.escape(normalized_username, quote=True)
+    if not _TELEGRAM_USERNAME_RE.match(normalized_username):
+        return f'@{safe_username}'
+    return f'<a href="https://t.me/{safe_username}">@{safe_username}</a>'
+
+
 def format_subscription_status(is_active: bool, is_trial: bool, end_date: datetime | str, language: str = 'ru') -> str:
     if isinstance(end_date, str):
         try:
@@ -194,7 +254,7 @@ def format_subscription_status(is_active: bool, is_trial: bool, end_date: dateti
 
     now = datetime.now(UTC)
     if end_date > now:
-        days_left = (end_date - now).days
+        days_left = local_days_until(end_date, now)
         if days_left > 0:
             status += f' ({days_left} дн.)' if use_russian_fallback else f' ({days_left} days)'
         else:

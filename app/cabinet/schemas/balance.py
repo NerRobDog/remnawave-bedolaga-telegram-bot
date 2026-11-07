@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class BalanceResponse(BaseModel):
@@ -26,8 +26,7 @@ class TransactionResponse(BaseModel):
     created_at: datetime
     completed_at: datetime | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TransactionListResponse(BaseModel):
@@ -48,6 +47,17 @@ class PaymentOptionResponse(BaseModel):
     description: str | None = None
 
 
+class QuickAmountHint(BaseModel):
+    """Пояснение к кнопке быстрой суммы: на какой период продления она рассчитана."""
+
+    period_days: int
+    discount_percent: int = 0
+    # Из суммы вычтен баланс пользователя
+    balance_deducted: bool = False
+    # Сумма опущена до максимума способа оплаты — период не соответствует точно
+    clamped: bool = False
+
+
 class PaymentMethodResponse(BaseModel):
     """Available payment method."""
 
@@ -58,12 +68,20 @@ class PaymentMethodResponse(BaseModel):
     max_amount_kopeks: int
     is_available: bool = True
     options: list[dict[str, Any]] | None = None
+    quick_amounts: list[int] = Field(default_factory=list)
+    # Пояснения по индексам quick_amounts; None для статических сумм
+    quick_amount_hints: list[QuickAmountHint] | None = None
+    # Если True — кабинет, получив payment_url от провайдера, делает window.location.href
+    # сразу (seamless flow внутри MiniApp WebView). Если False — показывает панель
+    # "Открыть страницу оплаты" с кнопкой.
+    open_url_direct: bool = False
 
 
 class TopUpRequest(BaseModel):
     """Request to create payment for balance top-up."""
 
-    amount_kopeks: int = Field(..., ge=1000, le=2_000_000_000, description='Amount in kopeks (min 10 rubles)')
+    # The selected provider supplies its effective minimum (including DB overrides).
+    amount_kopeks: int = Field(..., ge=1, le=2_000_000_000, description='Amount in kopeks')
     payment_method: str = Field(..., description='Payment method ID')
     payment_option: str | None = Field(None, description='Payment option (e.g. Platega method code)')
 
@@ -77,6 +95,9 @@ class TopUpResponse(BaseModel):
     amount_rubles: float
     status: str
     expires_at: datetime | None = None
+    # Свой экран оплаты (Cashera H2H): строка QR СБП или платёжная ссылка — кабинет
+    # рисует QR рядом с кнопкой оплаты. None — обычный переход по payment_url.
+    qr_payload: str | None = None
 
 
 class StarsInvoiceRequest(BaseModel):
@@ -114,8 +135,7 @@ class PendingPaymentResponse(BaseModel):
     user_telegram_id: int | None = None
     user_username: str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PendingPaymentListResponse(BaseModel):
@@ -137,3 +157,23 @@ class ManualCheckResponse(BaseModel):
     status_changed: bool = False
     old_status: str | None = None
     new_status: str | None = None
+
+
+class SavedCardResponse(BaseModel):
+    """Saved payment method (card) for recurrent payments."""
+
+    id: int
+    method_type: str
+    card_last4: str | None = None
+    card_type: str | None = None
+    title: str | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SavedCardsListResponse(BaseModel):
+    """List of saved payment methods."""
+
+    cards: list[SavedCardResponse]
+    recurrent_enabled: bool = False

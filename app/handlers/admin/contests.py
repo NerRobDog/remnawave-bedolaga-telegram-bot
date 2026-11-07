@@ -1,3 +1,4 @@
+import html
 import math
 from datetime import UTC, datetime, time
 from zoneinfo import ZoneInfo
@@ -33,6 +34,7 @@ from app.keyboards.admin import (
 from app.localization.texts import get_texts
 from app.states import AdminStates
 from app.utils.decorators import admin_required, error_handler
+from app.utils.timezone import format_local_datetime
 
 
 logger = structlog.get_logger(__name__)
@@ -44,7 +46,7 @@ def _ensure_timezone(tz_name: str) -> ZoneInfo:
     try:
         return ZoneInfo(tz_name)
     except Exception:
-        logger.warning('Не удалось загрузить TZ , используем UTC', tz_name=tz_name)
+        logger.warning('Не удалось загрузить часовой пояс — используем UTC', tz_name=tz_name)
         return ZoneInfo('UTC')
 
 
@@ -70,7 +72,7 @@ def _format_contest_summary(contest, texts, tz: ZoneInfo) -> str:
         f'Дневная сводка: <b>{summary_times}</b>',
     ]
     if contest.prize_text:
-        parts.append(texts.t('ADMIN_CONTEST_PRIZE', 'Приз: {prize}').format(prize=contest.prize_text))
+        parts.append(texts.t('ADMIN_CONTEST_PRIZE', 'Приз: {prize}').format(prize=html.escape(contest.prize_text)))
     if contest.last_daily_summary_date:
         parts.append(
             texts.t('ADMIN_CONTEST_LAST_DAILY', 'Последняя сводка: {date}').format(
@@ -188,7 +190,7 @@ async def list_contests(
         lines.append(texts.t('ADMIN_CONTESTS_EMPTY', 'Пока нет созданных конкурсов.'))
     else:
         for contest in contests:
-            lines.append(f'• <b>{contest.title}</b> (#{contest.id})')
+            lines.append(f'• <b>{html.escape(contest.title)}</b> (#{contest.id})')
             contest_tz = _ensure_timezone(contest.timezone or settings.TIMEZONE)
             lines.append(_format_contest_summary(contest, texts, contest_tz))
             lines.append('')
@@ -250,21 +252,21 @@ async def show_contest_details(
     total_events = await get_contest_events_count(db, contest.id) + virtual_count
 
     lines = [
-        f'🏆 <b>{contest.title}</b>',
+        f'🏆 <b>{html.escape(contest.title)}</b>',
         _format_contest_summary(contest, texts, tz),
         texts.t('ADMIN_CONTEST_TOTAL_EVENTS', 'Зачётов: <b>{count}</b>').format(count=total_events),
     ]
 
     if contest.description:
         lines.append('')
-        lines.append(contest.description)
+        lines.append(html.escape(contest.description))
 
     if leaderboard:
         lines.append('')
         lines.append(texts.t('ADMIN_CONTEST_LEADERBOARD_TITLE', '📊 Топ участников:'))
         for idx, (name, score, _, is_virtual) in enumerate(leaderboard, start=1):
             virt_mark = ' 👻' if is_virtual else ''
-            lines.append(f'{idx}. {name}{virt_mark} — {score}')
+            lines.append(f'{idx}. {html.escape(name)}{virt_mark} — {score}')
 
     await callback.message.edit_text(
         '\n'.join(lines),
@@ -444,7 +446,7 @@ async def show_leaderboard(
     ]
     for idx, (name, score, _, is_virtual) in enumerate(leaderboard, start=1):
         virt_mark = ' 👻' if is_virtual else ''
-        lines.append(f'{idx}. {name}{virt_mark} — {score}')
+        lines.append(f'{idx}. {html.escape(name)}{virt_mark} — {score}')
 
     await callback.message.edit_text(
         '\n'.join(lines),
@@ -690,7 +692,7 @@ async def show_detailed_stats(
     # Общее сообщение с основной статистикой
     general_lines = [
         '📈 <b>Статистика конкурса</b>',
-        f'🏆 {contest.title}',
+        f'🏆 {html.escape(contest.title)}',
         '',
         f'👥 Участников (рефереров): <b>{stats["total_participants"]}</b>',
         f'📨 Приглашено рефералов: <b>{stats["total_invited"]}</b>',
@@ -751,7 +753,7 @@ async def show_detailed_stats_page(
     for p in page_participants:
         lines.extend(
             [
-                f'• <b>{p["full_name"]}</b>',
+                f'• <b>{html.escape(p["full_name"] or "")}</b>',
                 f'  📨 Приглашено: {p["total_referrals"]}',
                 f'  💰 Оплатили: {p["paid_referrals"]}',
                 f'  ❌ Не оплатили: {p["unpaid_referrals"]}',
@@ -828,8 +830,8 @@ async def sync_contest(
     lines = [
         '✅ <b>Синхронизация завершена!</b>',
         '',
-        f'📊 <b>Конкурс:</b> {contest.title}',
-        f'📅 <b>Период:</b> {contest.start_at.strftime("%d.%m.%Y")} - {contest.end_at.strftime("%d.%m.%Y")}',
+        f'📊 <b>Конкурс:</b> {html.escape(contest.title)}',
+        f'📅 <b>Период:</b> {format_local_datetime(contest.start_at, "%d.%m.%Y")} - {format_local_datetime(contest.end_at, "%d.%m.%Y")}',
         '🔍 <b>Фильтр транзакций:</b>',
         f'   <code>{start_str}</code>',
         f'   <code>{end_str}</code>',
@@ -870,8 +872,8 @@ async def sync_contest(
     # Обновляем основное сообщение с новой статистикой
     detailed_stats = await referral_contest_service.get_detailed_contest_stats(db, contest_id)
     general_lines = [
-        f'🏆 <b>{contest.title}</b>',
-        f'📅 Период: {contest.start_at.strftime("%d.%m.%Y")} - {contest.end_at.strftime("%d.%m.%Y")}',
+        f'🏆 <b>{html.escape(contest.title)}</b>',
+        f'📅 Период: {format_local_datetime(contest.start_at, "%d.%m.%Y")} - {format_local_datetime(contest.end_at, "%d.%m.%Y")}',
         '',
         f'👥 Участников (рефереров): <b>{detailed_stats["total_participants"]}</b>',
         f'📨 Приглашено рефералов: <b>{detailed_stats["total_invited"]}</b>',
@@ -927,7 +929,7 @@ async def debug_contest_transactions(
     lines = [
         '🔍 <b>Отладка транзакций конкурса</b>',
         '',
-        f'📊 <b>Конкурс:</b> {contest.title}',
+        f'📊 <b>Конкурс:</b> {html.escape(contest.title)}',
         '📅 <b>Период фильтрации:</b>',
         f'   Начало: <code>{debug_data.get("contest_start")}</code>',
         f'   Конец: <code>{debug_data.get("contest_end")}</code>',
@@ -1002,10 +1004,10 @@ async def show_virtual_participants(
 
     vps = await list_virtual_participants(db, contest_id)
 
-    lines = [f'👻 <b>Виртуальные участники</b> — {contest.title}', '']
+    lines = [f'👻 <b>Виртуальные участники</b> — {html.escape(contest.title)}', '']
     if vps:
         for vp in vps:
-            lines.append(f'• {vp.display_name} — {vp.referral_count} реф.')
+            lines.append(f'• {html.escape(vp.display_name)} — {vp.referral_count} реф.')
     else:
         lines.append('Пока нет виртуальных участников.')
 
@@ -1156,10 +1158,10 @@ async def delete_virtual_participant_handler(
     vps = await list_virtual_participants(db, contest_id)
     contest = await get_referral_contest(db, contest_id)
 
-    lines = [f'👻 <b>Виртуальные участники</b> — {contest.title}', '']
+    lines = [f'👻 <b>Виртуальные участники</b> — {html.escape(contest.title)}', '']
     if vps:
         for v in vps:
-            lines.append(f'• {v.display_name} — {v.referral_count} реф.')
+            lines.append(f'• {html.escape(v.display_name)} — {v.referral_count} реф.')
     else:
         lines.append('Пока нет виртуальных участников.')
 
@@ -1242,7 +1244,7 @@ async def process_mass_virtual_count(
                 '❌ Введите число от 1 до 50:',
                 reply_markup=types.InlineKeyboardMarkup(
                     inline_keyboard=[
-                        [types.InlineKeyboardButton(text='❌ Отмена', callback_data='admin_contests_ref')],
+                        [types.InlineKeyboardButton(text='❌ Отмена', callback_data='admin_contests_referral')],
                     ]
                 ),
             )
@@ -1252,7 +1254,7 @@ async def process_mass_virtual_count(
             '❌ Введите корректное число от 1 до 50:',
             reply_markup=types.InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [types.InlineKeyboardButton(text='❌ Отмена', callback_data='admin_contests_ref')],
+                    [types.InlineKeyboardButton(text='❌ Отмена', callback_data='admin_contests_referral')],
                 ]
             ),
         )
@@ -1427,13 +1429,15 @@ def register_handlers(dp: Dispatcher):
     dp.callback_query.register(prompt_edit_summary_times, F.data.startswith('admin_contest_edit_times_'))
     dp.callback_query.register(delete_contest, F.data.startswith('admin_contest_delete_'))
     dp.callback_query.register(show_leaderboard, F.data.startswith('admin_contest_leaderboard_'))
-    dp.callback_query.register(show_detailed_stats, F.data.startswith('admin_contest_detailed_stats_'))
     dp.callback_query.register(show_detailed_stats_page, F.data.startswith('admin_contest_detailed_stats_page_'))
+    dp.callback_query.register(show_detailed_stats, F.data.startswith('admin_contest_detailed_stats_'))
     dp.callback_query.register(sync_contest, F.data.startswith('admin_contest_sync_'))
     dp.callback_query.register(debug_contest_transactions, F.data.startswith('admin_contest_debug_'))
     dp.callback_query.register(start_contest_creation, F.data == 'admin_contests_create')
     dp.callback_query.register(
-        select_contest_mode, F.data.in_(['admin_contest_mode_paid', 'admin_contest_mode_registered'])
+        select_contest_mode,
+        F.data.in_(['admin_contest_mode_paid', 'admin_contest_mode_registered']),
+        AdminStates.creating_referral_contest_mode,
     )
 
     dp.message.register(process_title, AdminStates.creating_referral_contest_title)

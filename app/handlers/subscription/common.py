@@ -1,9 +1,10 @@
 import asyncio
 import base64
 import html as html_mod
+import math
 import re
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote
 
@@ -13,9 +14,9 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from app.config import get_traffic_prices, settings
 from app.database.models import Subscription, User
 from app.localization.texts import get_texts
+from app.utils.incy_crypt1 import wrap_incy_deep_link
 from app.utils.pricing_utils import (
     apply_percentage_discount,
-    get_remaining_months,
 )
 from app.utils.promo_offer import (
     get_user_active_promo_discount_percent,
@@ -25,6 +26,76 @@ from app.utils.promo_offer import (
 logger = structlog.get_logger(__name__)
 
 TRAFFIC_PRICES = get_traffic_prices()
+
+
+async def resolve_subscription_from_context(
+    callback,
+    db_user: User,
+    db,
+    state=None,
+) -> tuple[Subscription | None, int | None]:
+    """Resolve subscription for multi-tariff bot handlers.
+
+    Priority:
+    1. callback_data 'prefix:sub_id' (colon-separated, last part is int)
+    2. FSM state 'active_subscription_id' (set by my_subscriptions delegation)
+    3. Single active subscription (auto-select)
+    4. Legacy: db_user.subscription (single-tariff mode)
+
+    ⚠️ FOOTGUN (issue #3012): priority #1 trusts the LAST colon-segment as a
+    subscription_id. A handler reached by a callback shaped ``prefix:<int>`` where
+    that trailing int is NOT a subscription_id (a period, GB amount, device count,
+    days, tariff_id, page…) will resolve the WRONG subscription whenever that number
+    equals one of the user's OTHER subscription ids — and may renew/switch/charge it.
+    INVARIANT for callers: do NOT route a ``prefix:<non-sub-id-int>`` callback through
+    this resolver. Either put the real subscription_id as the trailing segment, use a
+    non-colon separator (``foo_5`` bypasses priority #1 → FSM), or parse the sub_id
+    explicitly and load via ``get_subscription_by_id_for_user``. The tariff
+    extend/switch flows were fixed this way; the rest of the codebase currently holds
+    this invariant (audited).
+    """
+    from app.database.crud.subscription import (
+        get_active_subscriptions_by_user_id,
+        get_subscription_by_id_for_user,
+        get_subscription_by_user_id,
+    )
+
+    if not settings.is_multi_tariff_enabled():
+        sub = await get_subscription_by_user_id(db, db_user.id)
+        return sub, getattr(sub, 'id', None) if sub else None
+
+    # 1. Try callback_data 'prefix:sub_id'
+    parts = (callback.data or '').split(':')
+    if len(parts) >= 2:
+        try:
+            sub_id = int(parts[-1])
+            sub = await get_subscription_by_id_for_user(db, sub_id, db_user.id)
+            if sub:
+                return sub, sub_id
+        except (ValueError, TypeError):
+            pass
+
+    # 2. Try FSM state
+    if state:
+        try:
+            data = await state.get_data()
+            fsm_sub_id = data.get('active_subscription_id')
+            if fsm_sub_id:
+                sub = await get_subscription_by_id_for_user(db, fsm_sub_id, db_user.id)
+                if sub:
+                    return sub, fsm_sub_id
+        except Exception:
+            pass
+
+    # 3. Auto-select if only one active subscription
+    active_subs = await get_active_subscriptions_by_user_id(db, db_user.id)
+    if len(active_subs) == 1:
+        return active_subs[0], active_subs[0].id
+
+    # 4. Cannot determine
+    await callback.answer('Выберите подписку', show_alert=True)
+    return None, None
+
 
 # ── App config cache ──
 _app_config_cache: dict[str, Any] = {}
@@ -57,43 +128,6 @@ def _format_text_with_placeholders(template: str, values: dict[str, Any]) -> str
         return template
 
 
-def _get_addon_discount_percent_for_user(
-    user: User | None,
-    category: str,
-    period_days_hint: int | None = None,
-) -> int:
-    if user is None:
-        return 0
-
-    promo_group = user.get_primary_promo_group()
-    if promo_group is None:
-        return 0
-
-    if not getattr(promo_group, 'apply_discounts_to_addons', True):
-        return 0
-
-    try:
-        return user.get_promo_discount(category, period_days_hint)
-    except AttributeError:
-        return 0
-
-
-def _apply_addon_discount(
-    user: User | None,
-    category: str,
-    amount: int,
-    period_days_hint: int | None = None,
-) -> dict[str, int]:
-    percent = _get_addon_discount_percent_for_user(user, category, period_days_hint)
-    discounted_amount, discount_value = apply_percentage_discount(amount, percent)
-
-    return {
-        'discounted': discounted_amount,
-        'discount': discount_value,
-        'percent': percent,
-    }
-
-
 def _get_promo_offer_discount_percent(user: User | None) -> int:
     return get_user_active_promo_discount_percent(user)
 
@@ -109,14 +143,15 @@ def _apply_promo_offer_discount(user: User | None, amount: int) -> dict[str, int
 
 
 def _get_period_hint_from_subscription(subscription: Subscription | None) -> int | None:
-    if not subscription:
+    if not subscription or not subscription.end_date:
         return None
 
-    months_remaining = get_remaining_months(subscription.end_date)
-    if months_remaining <= 0:
+    now = datetime.now(UTC)
+    days_remaining = (subscription.end_date - now).days
+    if days_remaining <= 0:
         return None
 
-    return months_remaining * 30
+    return days_remaining
 
 
 def _apply_discount_to_monthly_component(
@@ -384,11 +419,37 @@ async def get_apps_for_platform_async(device_type: str, language: str = 'ru') ->
 
 def normalize_app(app: dict[str, Any]) -> dict[str, Any]:
     """Normalize Remnawave app dict to a unified format with blocks."""
+
+    # Extract urlScheme from blocks if not present at root level
+    url_scheme = app.get('urlScheme', '')
+
+    if not url_scheme:
+        # Try to extract from subscriptionLink button in blocks
+        blocks = app.get('blocks', [])
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            buttons = block.get('buttons', [])
+            for btn in buttons:
+                if not isinstance(btn, dict):
+                    continue
+                if btn.get('type') == 'subscriptionLink':
+                    link = btn.get('link', '') or btn.get('url', '')
+                    if '{{SUBSCRIPTION_LINK}}' in link:
+                        url_scheme = link.split('{{SUBSCRIPTION_LINK}}')[0]
+                        break
+            if url_scheme:
+                break
+
+    # Validate extracted scheme contains ://
+    if url_scheme and '://' not in url_scheme:
+        url_scheme = ''
+
     return {
         'id': app.get('id', app.get('name', 'unknown')),
         'name': app.get('name', ''),
         'isFeatured': app.get('featured', app.get('isFeatured', False)),
-        'urlScheme': app.get('urlScheme', ''),
+        'urlScheme': url_scheme,
         'isNeedBase64Encoding': app.get('isNeedBase64Encoding', False),
         'blocks': app.get('blocks', []),
         '_raw': app,
@@ -462,9 +523,14 @@ def resolve_button_url(
     if subscription_url:
         result = result.replace('{{SUBSCRIPTION_LINK}}', subscription_url)
     if crypto_link:
+        # {{HAPP_CRYPT*_LINK}} — это ПОЛНАЯ ссылка happ://crypt.../; если шаблон задан
+        # с префиксом (happ://crypt4/{{HAPP_CRYPT4_LINK}}), схлопываем его, чтобы не
+        # получить happ://crypt4/happ://crypt5/...
+        if crypto_link.lower().startswith('happ://'):
+            result = re.sub(r'happ://crypt\d+/(?=\{\{HAPP_CRYPT[34]_LINK\}\})', '', result, flags=re.IGNORECASE)
         result = result.replace('{{HAPP_CRYPT3_LINK}}', crypto_link)
         result = result.replace('{{HAPP_CRYPT4_LINK}}', crypto_link)
-    return result
+    return wrap_incy_deep_link(result, subscription_url)
 
 
 def create_deep_link(app: dict[str, Any], subscription_url: str) -> str | None:
@@ -477,16 +543,25 @@ def create_deep_link(app: dict[str, Any], subscription_url: str) -> str | None:
     scheme = str(app.get('urlScheme', '')).strip()
     payload = subscription_url
 
-    if app.get('isNeedBase64Encoding'):
-        try:
-            payload = base64.b64encode(subscription_url.encode('utf-8')).decode('utf-8')
-        except Exception as exc:
-            logger.warning(
-                'Не удалось закодировать ссылку подписки в base64 для приложения', app=app.get('id'), exc=exc
-            )
-            payload = subscription_url
+    # В режиме happ_cryptolink сюда приходит уже полный happ://crypt.../ deep link
+    # (get_display_subscription_link отдаёт сохранённую crypt-ссылку). Приклеивать его
+    # к другой happ://-схеме нельзя — получится happ://crypt4/happ://crypt5/...;
+    # https-обёртки (редиректы) ниже по коду по-прежнему применяются.
+    if payload.lower().startswith('happ://') and scheme.lower().startswith('happ://'):
+        scheme_link = payload
+    else:
+        if app.get('isNeedBase64Encoding'):
+            try:
+                payload = base64.b64encode(subscription_url.encode('utf-8')).decode('utf-8')
+            except Exception as exc:
+                logger.warning(
+                    'Не удалось закодировать ссылку подписки в base64 для приложения', app=app.get('id'), exc=exc
+                )
+                payload = subscription_url
 
-    scheme_link = f'{scheme}{payload}' if scheme else None
+        scheme_link = f'{scheme}{payload}' if scheme else None
+
+    scheme_link = wrap_incy_deep_link(scheme_link, subscription_url)
 
     template = settings.get_happ_cryptolink_redirect_template()
     redirect_link = build_redirect_link(scheme_link, template) if scheme_link and template else None
@@ -494,12 +569,14 @@ def create_deep_link(app: dict[str, Any], subscription_url: str) -> str | None:
     return redirect_link or scheme_link or subscription_url
 
 
-def get_reset_devices_confirm_keyboard(language: str = 'ru') -> InlineKeyboardMarkup:
+def get_reset_devices_confirm_keyboard(
+    language: str = 'ru', back_callback: str = 'menu_subscription'
+) -> InlineKeyboardMarkup:
     get_texts(language)
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text='✅ Да, сбросить все устройства', callback_data='confirm_reset_devices')],
-            [InlineKeyboardButton(text='❌ Отмена', callback_data='menu_subscription')],
+            [InlineKeyboardButton(text='❌ Отмена', callback_data=back_callback)],
         ]
     )
 
@@ -510,6 +587,7 @@ def get_traffic_switch_keyboard(
     subscription_end_date: datetime = None,
     discount_percent: int = 0,
     base_traffic_gb: int = None,
+    back_callback: str = 'subscription_settings',
 ) -> InlineKeyboardMarkup:
     from app.config import settings
 
@@ -518,12 +596,15 @@ def get_traffic_switch_keyboard(
     if base_traffic_gb is None:
         base_traffic_gb = current_traffic_gb
 
-    months_multiplier = 1
-    period_text = ''
+    # Считаем по дням (как в кабинете и подтверждении)
     if subscription_end_date:
-        months_multiplier = get_remaining_months(subscription_end_date)
-        if months_multiplier > 1:
-            period_text = f' (за {months_multiplier} мес)'
+        now = datetime.now(UTC)
+        days_left = max(1, math.ceil((subscription_end_date - now).total_seconds() / 86400))
+        price_multiplier = days_left / 30
+        period_text = f' (за {days_left} дн.)' if days_left > 1 else ' (за 1 день)'
+    else:
+        price_multiplier = 1
+        period_text = ''
 
     packages = settings.get_traffic_packages()
     enabled_packages = [pkg for pkg in packages if pkg['enabled']]
@@ -546,7 +627,7 @@ def get_traffic_switch_keyboard(
         )
 
         price_diff_per_month = discounted_price_per_month - discounted_current_per_month
-        total_price_diff = price_diff_per_month * months_multiplier
+        total_price_diff = int(price_diff_per_month * price_multiplier)
 
         # Сравниваем с базовым трафиком (без докупленного)
         if gb == base_traffic_gb:
@@ -558,7 +639,7 @@ def get_traffic_switch_keyboard(
             action_text = ''
             price_text = f' (+{total_price_diff // 100}₽{period_text})'
             if discount_percent > 0:
-                discount_total = (price_per_month - current_price_per_month) * months_multiplier - total_price_diff
+                discount_total = int((price_per_month - current_price_per_month) * price_multiplier) - total_price_diff
                 if discount_total > 0:
                     price_text += f' (скидка {discount_percent}%: -{discount_total // 100}₽)'
         elif total_price_diff < 0:
@@ -584,7 +665,7 @@ def get_traffic_switch_keyboard(
         [
             InlineKeyboardButton(
                 text='⬅️ Назад' if language_code in {'ru', 'fa'} else '⬅️ Back',
-                callback_data='subscription_settings',
+                callback_data=back_callback,
             )
         ]
     )
@@ -593,7 +674,7 @@ def get_traffic_switch_keyboard(
 
 
 def get_confirm_switch_traffic_keyboard(
-    new_traffic_gb: int, price_difference: int, language: str = 'ru'
+    new_traffic_gb: int, price_difference: int, language: str = 'ru', back_callback: str = 'subscription_settings'
 ) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -603,6 +684,6 @@ def get_confirm_switch_traffic_keyboard(
                     callback_data=f'confirm_switch_traffic_{new_traffic_gb}_{price_difference}',
                 )
             ],
-            [InlineKeyboardButton(text='❌ Отмена', callback_data='subscription_settings')],
+            [InlineKeyboardButton(text='❌ Отмена', callback_data=back_callback)],
         ]
     )

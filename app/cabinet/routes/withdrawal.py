@@ -70,18 +70,18 @@ async def create_withdrawal(
 
     # Уведомляем админов о запросе на вывод
     try:
-        from aiogram import Bot
-
+        from app.bot_factory import create_bot
         from app.services.admin_notification_service import AdminNotificationService
 
         if getattr(settings, 'ADMIN_NOTIFICATIONS_ENABLED', False) and settings.BOT_TOKEN:
-            bot = Bot(token=settings.BOT_TOKEN)
+            bot = create_bot()
             try:
                 notification_service = AdminNotificationService(bot)
                 await notification_service.send_withdrawal_request_notification(
                     user=user,
                     amount_kopeks=request.amount_kopeks,
                     payment_details=request.payment_details,
+                    request_id=withdrawal.id,
                 )
             finally:
                 await bot.session.close()

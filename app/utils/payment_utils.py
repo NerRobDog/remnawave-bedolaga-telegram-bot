@@ -2,6 +2,15 @@ from app.config import settings
 from app.localization.texts import get_texts
 
 
+def verify_payment_amount(
+    received_kopeks: int,
+    expected_kopeks: int,
+    tolerance_kopeks: int = 1,
+) -> bool:
+    """Check that the received amount matches the expected amount within tolerance."""
+    return abs(received_kopeks - expected_kopeks) <= tolerance_kopeks
+
+
 def get_available_payment_methods() -> list[dict[str, str]]:
     """
     Возвращает список доступных способов оплаты с их настройками
@@ -104,15 +113,28 @@ def get_available_payment_methods() -> list[dict[str, str]]:
 
     if settings.is_platega_enabled() and settings.get_platega_active_methods():
         platega_name = settings.get_platega_display_name()
-        methods.append(
-            {
-                'id': 'platega',
-                'name': 'Банковская карта',
-                'icon': '💳',
-                'description': f'через {platega_name} (карты + СБП)',
-                'callback': 'topup_platega',
-            }
-        )
+        if settings.PLATEGA_INLINE_METHODS:
+            for method_code in settings.get_platega_active_methods():
+                info = settings.get_platega_method_definitions().get(method_code, {})
+                methods.append(
+                    {
+                        'id': f'platega_m{method_code}',
+                        'name': info.get('name', f'Метод {method_code}'),
+                        'icon': info.get('title', '💳').split(' ', 1)[0] if info.get('title') else '💳',
+                        'description': f'через {platega_name}',
+                        'callback': f'topup_platega_m{method_code}',
+                    }
+                )
+        else:
+            methods.append(
+                {
+                    'id': 'platega',
+                    'name': 'Банковская карта',
+                    'icon': '💳',
+                    'description': f'через {platega_name} (карты + СБП)',
+                    'callback': 'topup_platega',
+                }
+            )
 
     if settings.is_cloudpayments_enabled():
         cloudpayments_name = settings.get_cloudpayments_display_name()
@@ -147,6 +169,401 @@ def get_available_payment_methods() -> list[dict[str, str]]:
                 'icon': '💳',
                 'description': f'через {kassa_ai_name}',
                 'callback': 'topup_kassa_ai',
+            }
+        )
+
+    if settings.is_riopay_enabled():
+        riopay_name = settings.get_riopay_display_name()
+        methods.append(
+            {
+                'id': 'riopay',
+                'name': f'Банковская карта ({riopay_name})',
+                'icon': '💳',
+                'description': f'через {riopay_name}',
+                'callback': 'topup_riopay',
+            }
+        )
+
+    if settings.is_severpay_enabled():
+        severpay_name = settings.get_severpay_display_name()
+        methods.append(
+            {
+                'id': 'severpay',
+                'name': f'Банковская карта ({severpay_name})',
+                'icon': '💳',
+                'description': f'через {severpay_name}',
+                'callback': 'topup_severpay',
+            }
+        )
+
+    if settings.is_rollypay_enabled():
+        rollypay_name = settings.get_rollypay_display_name()
+        methods.append(
+            {
+                'id': 'rollypay',
+                'name': rollypay_name,
+                'icon': '💳',
+                'description': f'через {rollypay_name}',
+                'callback': 'topup_rollypay',
+            }
+        )
+
+    if settings.is_overpay_enabled():
+        overpay_name = settings.get_overpay_display_name()
+        methods.append(
+            {
+                'id': 'overpay',
+                'name': overpay_name,
+                'icon': '💳',
+                'description': f'через {overpay_name}',
+                'callback': 'topup_overpay',
+            }
+        )
+
+    if settings.is_aurapay_sbp_enabled():
+        sbp_name = settings.get_aurapay_sbp_display_name()
+        methods.append(
+            {
+                'id': 'aurapay_sbp',
+                'name': sbp_name,
+                'icon': '📱',
+                'description': f'через {sbp_name}',
+                'callback': 'topup_aurapay_sbp',
+            }
+        )
+
+    if settings.is_aurapay_card_enabled():
+        card_name = settings.get_aurapay_card_display_name()
+        methods.append(
+            {
+                'id': 'aurapay_card',
+                'name': card_name,
+                'icon': '💳',
+                'description': f'через {card_name}',
+                'callback': 'topup_aurapay_card',
+            }
+        )
+
+    if (
+        settings.is_aurapay_enabled()
+        and not settings.is_aurapay_sbp_enabled()
+        and not settings.is_aurapay_card_enabled()
+    ):
+        aurapay_name = settings.get_aurapay_display_name()
+        methods.append(
+            {
+                'id': 'aurapay',
+                'name': aurapay_name,
+                'icon': '💳',
+                'description': f'через {aurapay_name}',
+                'callback': 'topup_aurapay',
+            }
+        )
+
+    # Левая часть — имя метода (LAVA_SBP/CARD_DISPLAY_NAME), правая «через …» —
+    # имя провайдера (LAVA_DISPLAY_NAME): одна переменная в обеих частях давала
+    # дубль вида «СБП (QR) - через СБП (QR)».
+    if settings.is_lava_sbp_enabled():
+        sbp_name = settings.get_lava_sbp_display_name()
+        lava_name = settings.get_lava_display_name()
+        methods.append(
+            {
+                'id': 'lava_sbp',
+                'name': sbp_name,
+                'icon': '📱',
+                'description': f'через {lava_name}',
+                'callback': 'topup_lava_sbp',
+            }
+        )
+
+    if settings.is_lava_card_enabled():
+        card_name = settings.get_lava_card_display_name()
+        lava_name = settings.get_lava_display_name()
+        methods.append(
+            {
+                'id': 'lava_card',
+                'name': card_name,
+                'icon': '💳',
+                'description': f'через {lava_name}',
+                'callback': 'topup_lava_card',
+            }
+        )
+
+    if settings.is_lava_enabled() and not settings.is_lava_sbp_enabled() and not settings.is_lava_card_enabled():
+        lava_name = settings.get_lava_display_name()
+        methods.append(
+            {
+                'id': 'lava',
+                'name': lava_name,
+                'icon': '💳',
+                'description': f'через {lava_name}',
+                'callback': 'topup_lava',
+            }
+        )
+
+    if settings.is_cispay_crypto_enabled():
+        name = settings.get_cispay_crypto_display_name()
+        methods.append(
+            {
+                'id': 'cispay_crypto',
+                'name': name,
+                'icon': '🪙',
+                'description': f'через {name}',
+                'callback': 'topup_cispay_crypto',
+            }
+        )
+
+    if settings.is_cispay_sbp_enabled():
+        sbp_name = settings.get_cispay_sbp_display_name()
+        methods.append(
+            {
+                'id': 'cispay_sbp',
+                'name': sbp_name,
+                'icon': '📱',
+                'description': f'через {sbp_name}',
+                'callback': 'topup_cispay_sbp',
+            }
+        )
+
+    if settings.is_cispay_card_enabled():
+        card_name = settings.get_cispay_card_display_name()
+        methods.append(
+            {
+                'id': 'cispay_card',
+                'name': card_name,
+                'icon': '💳',
+                'description': f'через {card_name}',
+                'callback': 'topup_cispay_card',
+            }
+        )
+
+    if settings.is_cispay_enabled() and not settings.is_cispay_sbp_enabled() and not settings.is_cispay_card_enabled():
+        cispay_name = settings.get_cispay_display_name()
+        methods.append(
+            {
+                'id': 'cispay',
+                'name': cispay_name,
+                'icon': '💳',
+                'description': f'через {cispay_name}',
+                'callback': 'topup_cispay',
+            }
+        )
+
+    if settings.is_cashera_enabled():
+        cashera_name = settings.get_cashera_display_name()
+        if settings.CASHERA_INLINE_METHODS:
+            for method_code in settings.get_cashera_active_methods():
+                info = settings.get_cashera_method_definitions().get(method_code, {})
+                methods.append(
+                    {
+                        'id': f'cashera_m_{method_code}',
+                        'name': info.get('name', method_code),
+                        'icon': info.get('title', '💳').split(' ', 1)[0] if info.get('title') else '💳',
+                        'description': f'через {cashera_name}',
+                        'callback': f'topup_cashera_m_{method_code}',
+                    }
+                )
+        else:
+            methods.append(
+                {
+                    'id': 'cashera',
+                    'name': cashera_name,
+                    'icon': '💳',
+                    'description': f'через {cashera_name}',
+                    'callback': 'topup_cashera',
+                }
+            )
+
+    if settings.is_anore_enabled():
+        for method in settings.get_anore_methods():
+            name = f'{settings.get_anore_display_name()} — { {"sbp": "СБП", "card": "Карта", "yoomoney": "ЮMoney", "crypto": "Криптовалюта"}[method] }'
+            methods.append(
+                {
+                    'id': f'anore_{method}',
+                    'name': name,
+                    'icon': '💳',
+                    'description': f'через {name}',
+                    'callback': f'topup_anore_{method}',
+                }
+            )
+
+    if settings.is_antarctic_enabled():
+        methods.append(
+            {
+                'id': 'antarctic',
+                'name': settings.get_antarctic_display_name(),
+                'icon': '🐧',
+                'description': settings.ANTARCTIC_DESCRIPTION,
+                'callback': 'topup_antarctic',
+            }
+        )
+
+    if settings.is_tabpay_sbp_enabled():
+        sbp_name = settings.get_tabpay_sbp_display_name()
+        methods.append(
+            {
+                'id': 'tabpay_sbp',
+                'name': sbp_name,
+                'icon': '📱',
+                'description': f'через {sbp_name}',
+                'callback': 'topup_tabpay_sbp',
+            }
+        )
+
+    if settings.is_tabpay_card_enabled():
+        card_name = settings.get_tabpay_card_display_name()
+        methods.append(
+            {
+                'id': 'tabpay_card',
+                'name': card_name,
+                'icon': '💳',
+                'description': f'через {card_name}',
+                'callback': 'topup_tabpay_card',
+            }
+        )
+
+    if settings.is_tabpay_enabled() and not settings.is_tabpay_sbp_enabled() and not settings.is_tabpay_card_enabled():
+        tabpay_name = settings.get_tabpay_display_name()
+        methods.append(
+            {
+                'id': 'tabpay',
+                'name': tabpay_name,
+                'icon': '💳',
+                'description': f'через {tabpay_name}',
+                'callback': 'topup_tabpay',
+            }
+        )
+
+    if settings.is_paritypay_sbp_enabled():
+        sbp_name = settings.get_paritypay_sbp_display_name()
+        methods.append(
+            {
+                'id': 'paritypay_sbp',
+                'name': sbp_name,
+                'icon': '📱',
+                'description': f'через {sbp_name}',
+                'callback': 'topup_paritypay_sbp',
+            }
+        )
+
+    if settings.is_paritypay_card_enabled():
+        card_name = settings.get_paritypay_card_display_name()
+        methods.append(
+            {
+                'id': 'paritypay_card',
+                'name': card_name,
+                'icon': '💳',
+                'description': f'через {card_name}',
+                'callback': 'topup_paritypay_card',
+            }
+        )
+
+    if (
+        settings.is_paritypay_enabled()
+        and not settings.is_paritypay_sbp_enabled()
+        and not settings.is_paritypay_card_enabled()
+    ):
+        paritypay_name = settings.get_paritypay_display_name()
+        methods.append(
+            {
+                'id': 'paritypay',
+                'name': paritypay_name,
+                'icon': '💳',
+                'description': f'через {paritypay_name}',
+                'callback': 'topup_paritypay',
+            }
+        )
+
+    if settings.is_etoplatezhi_sbp_enabled():
+        sbp_name = settings.get_etoplatezhi_sbp_display_name()
+        methods.append(
+            {
+                'id': 'etoplatezhi_sbp',
+                'name': sbp_name,
+                'icon': '📱',
+                'description': f'через {sbp_name}',
+                'callback': 'topup_etoplatezhi_sbp',
+            }
+        )
+
+    if settings.is_etoplatezhi_card_enabled():
+        card_name = settings.get_etoplatezhi_card_display_name()
+        methods.append(
+            {
+                'id': 'etoplatezhi_card',
+                'name': card_name,
+                'icon': '💳',
+                'description': f'через {card_name}',
+                'callback': 'topup_etoplatezhi_card',
+            }
+        )
+
+    if (
+        settings.is_etoplatezhi_enabled()
+        and not settings.is_etoplatezhi_sbp_enabled()
+        and not settings.is_etoplatezhi_card_enabled()
+    ):
+        etoplatezhi_name = settings.get_etoplatezhi_display_name()
+        methods.append(
+            {
+                'id': 'etoplatezhi',
+                'name': etoplatezhi_name,
+                'icon': '💳',
+                'description': f'через {etoplatezhi_name}',
+                'callback': 'topup_etoplatezhi',
+            }
+        )
+
+    if settings.is_antilopay_sbp_enabled():
+        sbp_name = settings.get_antilopay_sbp_display_name()
+        methods.append(
+            {
+                'id': 'antilopay_sbp',
+                'name': sbp_name,
+                'icon': '📱',
+                'description': f'через {sbp_name}',
+                'callback': 'topup_antilopay_sbp',
+            }
+        )
+
+    if settings.is_antilopay_card_enabled():
+        card_name = settings.get_antilopay_card_display_name()
+        methods.append(
+            {
+                'id': 'antilopay_card',
+                'name': card_name,
+                'icon': '💳',
+                'description': f'через {card_name}',
+                'callback': 'topup_antilopay_card',
+            }
+        )
+
+    if settings.is_antilopay_sberpay_enabled():
+        sberpay_name = settings.get_antilopay_sberpay_display_name()
+        methods.append(
+            {
+                'id': 'antilopay_sberpay',
+                'name': sberpay_name,
+                'icon': '💳',
+                'description': f'через {sberpay_name}',
+                'callback': 'topup_antilopay_sberpay',
+            }
+        )
+
+    if (
+        settings.is_antilopay_enabled()
+        and not settings.is_antilopay_sbp_enabled()
+        and not settings.is_antilopay_card_enabled()
+        and not settings.is_antilopay_sberpay_enabled()
+    ):
+        antilopay_name = settings.get_antilopay_display_name()
+        methods.append(
+            {
+                'id': 'antilopay',
+                'name': antilopay_name,
+                'icon': '💳',
+                'description': f'через {antilopay_name}',
+                'callback': 'topup_antilopay',
             }
         )
 
@@ -261,12 +678,86 @@ def is_payment_method_available(method_id: str) -> bool:
         return settings.is_heleket_enabled()
     if method_id == 'platega':
         return settings.is_platega_enabled() and bool(settings.get_platega_active_methods())
+    if method_id.startswith('platega_m'):
+        if not settings.is_platega_enabled():
+            return False
+        try:
+            code = int(method_id[len('platega_m') :])
+        except ValueError:
+            return False
+        return code in settings.get_platega_active_methods()
     if method_id == 'cloudpayments':
         return settings.is_cloudpayments_enabled()
     if method_id == 'freekassa':
         return settings.is_freekassa_enabled()
     if method_id == 'kassa_ai':
         return settings.is_kassa_ai_enabled()
+    if method_id == 'riopay':
+        return settings.is_riopay_enabled()
+    if method_id == 'severpay':
+        return settings.is_severpay_enabled()
+    if method_id == 'rollypay':
+        return settings.is_rollypay_enabled()
+    if method_id == 'overpay':
+        return settings.is_overpay_enabled()
+    if method_id == 'aurapay':
+        return settings.is_aurapay_enabled()
+    if method_id == 'aurapay_sbp':
+        return settings.is_aurapay_sbp_enabled()
+    if method_id == 'aurapay_card':
+        return settings.is_aurapay_card_enabled()
+    if method_id == 'lava':
+        return settings.is_lava_enabled()
+    if method_id == 'lava_sbp':
+        return settings.is_lava_sbp_enabled()
+    if method_id == 'lava_card':
+        return settings.is_lava_card_enabled()
+    if method_id == 'cispay':
+        return settings.is_cispay_enabled()
+    if method_id == 'antarctic':
+        return settings.is_antarctic_enabled()
+    if method_id == 'cashera':
+        return settings.is_cashera_enabled()
+    if method_id.startswith('cashera_m_'):
+        return settings.is_cashera_enabled() and method_id.removeprefix('cashera_m_') in (
+            settings.get_cashera_active_methods()
+        )
+    if method_id == 'cispay_sbp':
+        return settings.is_cispay_sbp_enabled()
+    if method_id == 'cispay_crypto':
+        return settings.is_cispay_crypto_enabled()
+    if method_id == 'cispay_card':
+        return settings.is_cispay_card_enabled()
+    if method_id == 'anore':
+        return settings.is_anore_enabled()
+    if method_id.startswith('anore_'):
+        return settings.is_anore_enabled() and method_id[6:] in settings.get_anore_methods()
+    if method_id == 'tabpay':
+        return settings.is_tabpay_enabled()
+    if method_id == 'tabpay_sbp':
+        return settings.is_tabpay_sbp_enabled()
+    if method_id == 'tabpay_card':
+        return settings.is_tabpay_card_enabled()
+    if method_id == 'paritypay':
+        return settings.is_paritypay_enabled()
+    if method_id == 'paritypay_sbp':
+        return settings.is_paritypay_sbp_enabled()
+    if method_id == 'paritypay_card':
+        return settings.is_paritypay_card_enabled()
+    if method_id == 'etoplatezhi':
+        return settings.is_etoplatezhi_enabled()
+    if method_id == 'etoplatezhi_sbp':
+        return settings.is_etoplatezhi_sbp_enabled()
+    if method_id == 'etoplatezhi_card':
+        return settings.is_etoplatezhi_card_enabled()
+    if method_id == 'antilopay':
+        return settings.is_antilopay_enabled()
+    if method_id == 'antilopay_sbp':
+        return settings.is_antilopay_sbp_enabled()
+    if method_id == 'antilopay_card':
+        return settings.is_antilopay_card_enabled()
+    if method_id == 'antilopay_sberpay':
+        return settings.is_antilopay_sberpay_enabled()
     if method_id == 'support':
         return settings.is_support_topup_enabled()
     return False
@@ -289,6 +780,23 @@ def get_payment_method_status() -> dict[str, bool]:
         'cloudpayments': settings.is_cloudpayments_enabled(),
         'freekassa': settings.is_freekassa_enabled(),
         'kassa_ai': settings.is_kassa_ai_enabled(),
+        'riopay': settings.is_riopay_enabled(),
+        'severpay': settings.is_severpay_enabled(),
+        'rollypay': settings.is_rollypay_enabled(),
+        'overpay': settings.is_overpay_enabled(),
+        'aurapay': settings.is_aurapay_enabled(),
+        'aurapay_sbp': settings.is_aurapay_sbp_enabled(),
+        'aurapay_card': settings.is_aurapay_card_enabled(),
+        'lava': settings.is_lava_enabled(),
+        'lava_sbp': settings.is_lava_sbp_enabled(),
+        'lava_card': settings.is_lava_card_enabled(),
+        'etoplatezhi': settings.is_etoplatezhi_enabled(),
+        'etoplatezhi_sbp': settings.is_etoplatezhi_sbp_enabled(),
+        'etoplatezhi_card': settings.is_etoplatezhi_card_enabled(),
+        'antilopay': settings.is_antilopay_enabled(),
+        'antilopay_sbp': settings.is_antilopay_sbp_enabled(),
+        'antilopay_card': settings.is_antilopay_card_enabled(),
+        'antilopay_sberpay': settings.is_antilopay_sberpay_enabled(),
         'support': settings.is_support_topup_enabled(),
     }
 
@@ -321,5 +829,21 @@ def get_enabled_payment_methods_count() -> int:
     if settings.is_freekassa_enabled():
         count += 1
     if settings.is_kassa_ai_enabled():
+        count += 1
+    if settings.is_riopay_enabled():
+        count += 1
+    if settings.is_severpay_enabled():
+        count += 1
+    if settings.is_rollypay_enabled():
+        count += 1
+    if settings.is_overpay_enabled():
+        count += 1
+    if settings.is_aurapay_enabled():
+        count += 1
+    if settings.is_lava_enabled():
+        count += 1
+    if settings.is_etoplatezhi_enabled():
+        count += 1
+    if settings.is_antilopay_enabled():
         count += 1
     return count

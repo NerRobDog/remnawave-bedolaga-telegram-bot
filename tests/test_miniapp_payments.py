@@ -20,6 +20,7 @@ os.environ.setdefault('BOT_TOKEN', 'test-token')
 from app.config import settings
 from app.database.models import PaymentMethod
 from app.services.payment.cryptobot import CryptoBotPaymentMixin
+from app.services.pricing_engine import PricingEngine, RenewalPricing, pricing_engine
 from app.services.subscription_renewal_service import (
     SubscriptionRenewalPricing,
     SubscriptionRenewalResult,
@@ -35,6 +36,21 @@ from app.webapi.schemas.miniapp import (
     MiniAppPaymentStatusQuery,
     MiniAppSubscriptionRenewalRequest,
 )
+
+
+@pytest.fixture(autouse=True)
+def _clear_pricing_engine_instance_leak():
+    """Защита от перекрёстного загрязнения синглтона pricing_engine между тестами.
+
+    Другие тест-модули (например, авто-продление) патчат
+    ``pricing_engine.calculate_renewal_price`` на ЭКЗЕМПЛЯРЕ-синглтоне. pytest
+    monkeypatch при откате восстанавливает унаследованный метод через setattr,
+    а НЕ delattr — и на синглтоне остаётся «висящий» атрибут экземпляра, который
+    перекрывает патч на УРОВНЕ КЛАССА, на который опираются тесты продления здесь.
+    Снимаем его перед каждым тестом, чтобы эндпоинт продления вызвал мок класса.
+    """
+    pricing_engine.__dict__.pop('calculate_renewal_price', None)
+    yield
 
 
 @pytest.fixture
@@ -97,40 +113,44 @@ async def test_submit_subscription_renewal_uses_balance_when_sufficient(monkeypa
     monkeypatch.setattr(settings, 'DEFAULT_LANGUAGE', 'ru', raising=False)
     monkeypatch.setattr(settings, 'CRYPTOBOT_ENABLED', False, raising=False)
     monkeypatch.setattr(settings, 'CRYPTOBOT_API_TOKEN', None, raising=False)
+    monkeypatch.setattr(settings, 'SALES_MODE', 'classic', raising=False)
     monkeypatch.setattr(type(settings), 'get_available_renewal_periods', lambda self: [30], raising=False)
 
-    user = types.SimpleNamespace(id=10, balance_kopeks=10000, language='ru')
+    user = types.SimpleNamespace(id=10, telegram_id=10, balance_kopeks=10000, language='ru', tariff_id=None)
     subscription = types.SimpleNamespace(
         id=77,
         connected_squads=[],
         traffic_limit_gb=100,
         device_limit=5,
         end_date=datetime.now(UTC),
+        tariff_id=None,
+        tariff=None,
     )
 
-    pricing_model = SubscriptionRenewalPricing(
-        period_days=30,
-        period_id='days:30',
-        months=1,
-        base_original_total=10000,
-        discounted_total=10000,
+    pricing_model = RenewalPricing(
+        base_price=10000,
+        servers_price=0,
+        traffic_price=0,
+        devices_price=0,
+        promo_group_discount=0,
+        promo_offer_discount=0,
         final_total=10000,
-        promo_discount_value=0,
-        promo_discount_percent=0,
-        overall_discount_percent=0,
-        per_month=10000,
-        server_ids=[],
-        details={},
+        period_days=30,
+        is_tariff_mode=False,
+        breakdown={},
     )
 
     async def fake_authorize(init_data, db):
         return user
 
-    def fake_ensure(subscription_user, allowed_statuses=None):
+    def fake_ensure(subscription_user, allowed_statuses=None, subscription_id=None):
         return subscription
 
-    async def fake_calculate(db, u, sub, period):
+    async def fake_calculate(self, db, subscription, period_days, *, user=None):
         return pricing_model
+
+    async def fake_lock(db, uid):
+        return user
 
     captured: dict[str, Any] = {}
 
@@ -149,7 +169,8 @@ async def test_submit_subscription_renewal_uses_balance_when_sufficient(monkeypa
     monkeypatch.setattr(miniapp, '_authorize_miniapp_user', fake_authorize)
     monkeypatch.setattr(miniapp, '_ensure_paid_subscription', fake_ensure)
     monkeypatch.setattr(miniapp, '_validate_subscription_id', lambda *args, **kwargs: None)
-    monkeypatch.setattr(miniapp, '_calculate_subscription_renewal_pricing', fake_calculate)
+    monkeypatch.setattr(PricingEngine, 'calculate_renewal_price', fake_calculate)
+    monkeypatch.setattr('app.database.crud.user.lock_user_for_pricing', fake_lock)
     monkeypatch.setattr(miniapp.renewal_service, 'finalize', fake_finalize)
 
     payload = MiniAppSubscriptionRenewalRequest(
@@ -177,40 +198,44 @@ async def test_submit_subscription_renewal_returns_cryptobot_invoice(monkeypatch
     monkeypatch.setattr(settings, 'CRYPTOBOT_ENABLED', True, raising=False)
     monkeypatch.setattr(settings, 'CRYPTOBOT_API_TOKEN', 'token', raising=False)
     monkeypatch.setattr(settings, 'CRYPTOBOT_DEFAULT_ASSET', 'USDT', raising=False)
+    monkeypatch.setattr(settings, 'SALES_MODE', 'classic', raising=False)
     monkeypatch.setattr(type(settings), 'get_available_renewal_periods', lambda self: [30], raising=False)
 
-    user = types.SimpleNamespace(id=15, balance_kopeks=5000, language='ru')
+    user = types.SimpleNamespace(id=15, telegram_id=15, balance_kopeks=5000, language='ru', tariff_id=None)
     subscription = types.SimpleNamespace(
         id=88,
         connected_squads=[],
         traffic_limit_gb=100,
         device_limit=5,
         end_date=datetime.now(UTC),
+        tariff_id=None,
+        tariff=None,
     )
 
-    pricing_model = SubscriptionRenewalPricing(
-        period_days=30,
-        period_id='days:30',
-        months=1,
-        base_original_total=20000,
-        discounted_total=20000,
+    pricing_model = RenewalPricing(
+        base_price=20000,
+        servers_price=0,
+        traffic_price=0,
+        devices_price=0,
+        promo_group_discount=0,
+        promo_offer_discount=0,
         final_total=20000,
-        promo_discount_value=0,
-        promo_discount_percent=0,
-        overall_discount_percent=0,
-        per_month=20000,
-        server_ids=[],
-        details={},
+        period_days=30,
+        is_tariff_mode=False,
+        breakdown={},
     )
 
     async def fake_authorize(init_data, db):
         return user
 
-    def fake_ensure(subscription_user, allowed_statuses=None):
+    def fake_ensure(subscription_user, allowed_statuses=None, subscription_id=None):
         return subscription
 
-    async def fake_calculate(db, u, sub, period):
+    async def fake_calculate(self, db, subscription, period_days, *, user=None):
         return pricing_model
+
+    async def fake_lock(db, uid):
+        return user
 
     created_calls: dict[str, Any] = {}
 
@@ -234,7 +259,8 @@ async def test_submit_subscription_renewal_returns_cryptobot_invoice(monkeypatch
     monkeypatch.setattr(miniapp, '_authorize_miniapp_user', fake_authorize)
     monkeypatch.setattr(miniapp, '_ensure_paid_subscription', fake_ensure)
     monkeypatch.setattr(miniapp, '_validate_subscription_id', lambda *args, **kwargs: None)
-    monkeypatch.setattr(miniapp, '_calculate_subscription_renewal_pricing', fake_calculate)
+    monkeypatch.setattr(PricingEngine, 'calculate_renewal_price', fake_calculate)
+    monkeypatch.setattr('app.database.crud.user.lock_user_for_pricing', fake_lock)
     monkeypatch.setattr(miniapp, 'PaymentService', lambda *args, **kwargs: DummyPaymentService())
     monkeypatch.setattr(miniapp, '_get_usd_to_rub_rate', fake_rate)
 
@@ -268,40 +294,44 @@ async def test_submit_subscription_renewal_rounds_up_cryptobot_amount(monkeypatc
     monkeypatch.setattr(settings, 'CRYPTOBOT_ENABLED', True, raising=False)
     monkeypatch.setattr(settings, 'CRYPTOBOT_API_TOKEN', 'token', raising=False)
     monkeypatch.setattr(settings, 'CRYPTOBOT_DEFAULT_ASSET', 'USDT', raising=False)
+    monkeypatch.setattr(settings, 'SALES_MODE', 'classic', raising=False)
     monkeypatch.setattr(type(settings), 'get_available_renewal_periods', lambda self: [30], raising=False)
 
-    user = types.SimpleNamespace(id=42, balance_kopeks=0, language='ru')
+    user = types.SimpleNamespace(id=42, telegram_id=42, balance_kopeks=0, language='ru', tariff_id=None)
     subscription = types.SimpleNamespace(
         id=99,
         connected_squads=[],
         traffic_limit_gb=100,
         device_limit=5,
         end_date=datetime.now(UTC),
+        tariff_id=None,
+        tariff=None,
     )
 
-    pricing_model = SubscriptionRenewalPricing(
-        period_days=30,
-        period_id='days:30',
-        months=1,
-        base_original_total=9512,
-        discounted_total=9512,
+    pricing_model = RenewalPricing(
+        base_price=9512,
+        servers_price=0,
+        traffic_price=0,
+        devices_price=0,
+        promo_group_discount=0,
+        promo_offer_discount=0,
         final_total=9512,
-        promo_discount_value=0,
-        promo_discount_percent=0,
-        overall_discount_percent=0,
-        per_month=9512,
-        server_ids=[],
-        details={},
+        period_days=30,
+        is_tariff_mode=False,
+        breakdown={},
     )
 
     async def fake_authorize(init_data, db):
         return user
 
-    def fake_ensure(subscription_user, allowed_statuses=None):
+    def fake_ensure(subscription_user, allowed_statuses=None, subscription_id=None):
         return subscription
 
-    async def fake_calculate(db, u, sub, period):
+    async def fake_calculate(self, db, subscription, period_days, *, user=None):
         return pricing_model
+
+    async def fake_lock(db, uid):
+        return user
 
     captured: dict[str, Any] = {}
 
@@ -325,7 +355,8 @@ async def test_submit_subscription_renewal_rounds_up_cryptobot_amount(monkeypatc
     monkeypatch.setattr(miniapp, '_authorize_miniapp_user', fake_authorize)
     monkeypatch.setattr(miniapp, '_ensure_paid_subscription', fake_ensure)
     monkeypatch.setattr(miniapp, '_validate_subscription_id', lambda *args, **kwargs: None)
-    monkeypatch.setattr(miniapp, '_calculate_subscription_renewal_pricing', fake_calculate)
+    monkeypatch.setattr(PricingEngine, 'calculate_renewal_price', fake_calculate)
+    monkeypatch.setattr('app.database.crud.user.lock_user_for_pricing', fake_lock)
     monkeypatch.setattr(miniapp, 'PaymentService', lambda *args, **kwargs: DummyPaymentService())
     monkeypatch.setattr(miniapp, '_get_usd_to_rub_rate', fake_rate)
 
@@ -348,7 +379,9 @@ async def test_cryptobot_renewal_uses_pricing_snapshot(monkeypatch):
     module = sys.modules['app.services.payment.cryptobot']
     mixin = CryptoBotPaymentMixin()
 
-    subscription = types.SimpleNamespace(id=77, connected_squads=[], traffic_limit_gb=100, device_limit=5)
+    subscription = types.SimpleNamespace(
+        id=77, connected_squads=[], traffic_limit_gb=100, device_limit=5, tariff=None, tariff_id=None
+    )
     user = types.SimpleNamespace(id=5, balance_kopeks=7000, subscription=subscription)
 
     pricing_model = SubscriptionRenewalPricing(
@@ -385,9 +418,9 @@ async def test_cryptobot_renewal_uses_pricing_snapshot(monkeypatch):
     )
 
     async def fail_calculate(*args, **kwargs):
-        raise AssertionError('calculate_pricing should not be called when snapshot is present')
+        raise AssertionError('PricingEngine.calculate_renewal_price should not be called when snapshot is present')
 
-    monkeypatch.setattr(module.renewal_service, 'calculate_pricing', fail_calculate)
+    monkeypatch.setattr(PricingEngine, 'calculate_renewal_price', fail_calculate)
 
     captured: dict[str, Any] = {}
 
@@ -411,6 +444,14 @@ async def test_cryptobot_renewal_uses_pricing_snapshot(monkeypatch):
 
     cryptobot_crud = types.SimpleNamespace(link_cryptobot_payment_to_transaction=fake_link)
 
+    async def fake_get_subscription_by_id_for_user(db, subscription_id, user_id):
+        return subscription if subscription_id == 77 and user_id == 5 else None
+
+    monkeypatch.setattr(
+        'app.database.crud.subscription.get_subscription_by_id_for_user',
+        fake_get_subscription_by_id_for_user,
+    )
+
     result = await mixin._process_subscription_renewal_payment(
         db=types.SimpleNamespace(),
         payment=payment,
@@ -431,7 +472,9 @@ async def test_cryptobot_renewal_accepts_changed_pricing_without_snapshot(monkey
     module = sys.modules['app.services.payment.cryptobot']
     mixin = CryptoBotPaymentMixin()
 
-    subscription = types.SimpleNamespace(id=55, connected_squads=[], traffic_limit_gb=50, device_limit=3)
+    subscription = types.SimpleNamespace(
+        id=55, connected_squads=[], traffic_limit_gb=50, device_limit=3, tariff=None, tariff_id=None
+    )
     user = types.SimpleNamespace(id=8, balance_kopeks=4000, subscription=subscription)
 
     descriptor = build_payment_descriptor(
@@ -451,25 +494,26 @@ async def test_cryptobot_renewal_accepts_changed_pricing_without_snapshot(monkey
         sys.modules, 'app.services.payment_service', types.SimpleNamespace(get_user_by_id=fake_get_user_by_id)
     )
 
+    # Recalculated price is LOWER than descriptor — user benefits, should proceed
     recalculated_pricing = SubscriptionRenewalPricing(
         period_days=30,
         period_id='days:30',
         months=1,
-        base_original_total=5200,
-        discounted_total=5200,
-        final_total=5200,
+        base_original_total=4800,
+        discounted_total=4800,
+        final_total=4800,
         promo_discount_value=0,
         promo_discount_percent=0,
         overall_discount_percent=0,
-        per_month=5200,
+        per_month=4800,
         server_ids=[],
         details={},
     )
 
-    async def fake_calculate(db, u, sub, period):
+    async def fake_calculate(self, db, sub, period_days, *, user=None):
         return recalculated_pricing
 
-    monkeypatch.setattr(module.renewal_service, 'calculate_pricing', fake_calculate)
+    monkeypatch.setattr(PricingEngine, 'calculate_renewal_price', fake_calculate)
 
     captured: dict[str, Any] = {}
 
@@ -491,6 +535,14 @@ async def test_cryptobot_renewal_accepts_changed_pricing_without_snapshot(monkey
 
     cryptobot_crud = types.SimpleNamespace(link_cryptobot_payment_to_transaction=noop_link)
 
+    async def fake_get_subscription_by_id_for_user(db, subscription_id, user_id):
+        return subscription if subscription_id == 55 and user_id == 8 else None
+
+    monkeypatch.setattr(
+        'app.database.crud.subscription.get_subscription_by_id_for_user',
+        fake_get_subscription_by_id_for_user,
+    )
+
     result = await mixin._process_subscription_renewal_payment(
         db=types.SimpleNamespace(),
         payment=payment,
@@ -499,8 +551,10 @@ async def test_cryptobot_renewal_accepts_changed_pricing_without_snapshot(monkey
     )
 
     assert result is True
-    assert captured['pricing'].final_total == 5000
-    assert captured['charge'] == 4000
+    # With C-4 fix: recalculated price (4800) < descriptor (5000) → use recalculated
+    assert captured['pricing'].final_total == 4800
+    # M-5 fix: required_balance = max(0, final_total - missing) = max(0, 4800 - 1000) = 3800
+    assert captured['charge'] == 3800
 
 
 @pytest.mark.anyio('asyncio')
@@ -508,7 +562,9 @@ async def test_cryptobot_webhook_uses_inline_payload_when_db_missing(monkeypatch
     module = sys.modules['app.services.payment.cryptobot']
     mixin = CryptoBotPaymentMixin()
 
-    subscription = types.SimpleNamespace(id=91, connected_squads=[], traffic_limit_gb=80, device_limit=4)
+    subscription = types.SimpleNamespace(
+        id=91, connected_squads=[], traffic_limit_gb=80, device_limit=4, tariff=None, tariff_id=None
+    )
     user = types.SimpleNamespace(id=21, balance_kopeks=6000, subscription=subscription)
 
     pricing_model = SubscriptionRenewalPricing(
@@ -560,9 +616,9 @@ async def test_cryptobot_webhook_uses_inline_payload_when_db_missing(monkeypatch
     )
 
     async def fail_calculate(*args, **kwargs):
-        raise AssertionError('calculate_pricing should not be called')
+        raise AssertionError('PricingEngine.calculate_renewal_price should not be called')
 
-    monkeypatch.setattr(module.renewal_service, 'calculate_pricing', fail_calculate)
+    monkeypatch.setattr(PricingEngine, 'calculate_renewal_price', fail_calculate)
 
     captured: dict[str, Any] = {}
 
@@ -601,10 +657,26 @@ async def test_cryptobot_webhook_uses_inline_payload_when_db_missing(monkeypatch
         'app.database.crud.cryptobot',
         types.SimpleNamespace(
             get_cryptobot_payment_by_invoice_id=fake_get,
+            get_cryptobot_payment_by_invoice_id_for_update=fake_get,
             update_cryptobot_payment_status=fake_update,
             link_cryptobot_payment_to_transaction=fake_link,
         ),
     )
+
+    async def fake_get_subscription_by_id_for_user(db, subscription_id, user_id):
+        return subscription if subscription_id == 91 and user_id == 21 else None
+
+    monkeypatch.setattr(
+        'app.database.crud.subscription.get_subscription_by_id_for_user',
+        fake_get_subscription_by_id_for_user,
+    )
+
+    class DummyDb:
+        async def flush(self):
+            return None
+
+        async def commit(self):
+            return None
 
     webhook_payload = {
         'update_type': 'invoice_paid',
@@ -615,7 +687,7 @@ async def test_cryptobot_webhook_uses_inline_payload_when_db_missing(monkeypatch
         },
     }
 
-    result = await mixin.process_cryptobot_webhook(types.SimpleNamespace(), webhook_payload)
+    result = await mixin.process_cryptobot_webhook(DummyDb(), webhook_payload)
 
     assert result is True
     assert captured['pricing'].final_total == 9000
@@ -651,7 +723,7 @@ async def test_create_payment_link_pal24_uses_selected_option(monkeypatch):
             }
 
     async def fake_resolve_user(db, init_data):
-        return types.SimpleNamespace(id=123, language='ru'), {}
+        return types.SimpleNamespace(id=123, telegram_id=123, language='ru'), {}
 
     monkeypatch.setattr(miniapp, 'PaymentService', lambda *args, **kwargs: DummyPaymentService())
     monkeypatch.setattr(miniapp, '_resolve_user_from_init_data', fake_resolve_user)
@@ -696,7 +768,7 @@ async def test_create_payment_link_wata_returns_payload(monkeypatch):
             }
 
     async def fake_resolve_user(db, init_data):
-        return types.SimpleNamespace(id=555, language='ru'), {}
+        return types.SimpleNamespace(id=555, telegram_id=555, language='ru'), {}
 
     monkeypatch.setattr(miniapp, 'PaymentService', lambda *args, **kwargs: DummyPaymentService())
     monkeypatch.setattr(miniapp, '_resolve_user_from_init_data', fake_resolve_user)
@@ -1030,10 +1102,10 @@ async def test_create_payment_link_stars_normalizes_amount(monkeypatch):
             self.session = DummySession()
 
     async def fake_resolve_user(db, init_data):
-        return types.SimpleNamespace(id=7, language='ru'), {}
+        return types.SimpleNamespace(id=7, telegram_id=7, language='ru'), {}
 
-    monkeypatch.setattr(miniapp, 'PaymentService', lambda bot: DummyPaymentService(bot))
-    monkeypatch.setattr(miniapp, 'Bot', DummyBot)
+    monkeypatch.setattr(miniapp, 'PaymentService', DummyPaymentService)
+    monkeypatch.setattr(miniapp, 'create_bot', lambda token=None, **kwargs: DummyBot(token or settings.BOT_TOKEN))
     monkeypatch.setattr(miniapp, '_resolve_user_from_init_data', fake_resolve_user)
 
     payload = MiniAppPaymentCreateRequest(

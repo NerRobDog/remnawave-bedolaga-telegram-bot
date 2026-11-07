@@ -1,4 +1,5 @@
 import asyncio
+import html
 from collections.abc import Iterable
 from types import SimpleNamespace
 
@@ -28,9 +29,9 @@ logger = structlog.get_logger(__name__)
 def _build_poll_invitation_text(poll: Poll, language: str) -> str:
     texts = get_texts(language)
 
-    lines: list[str] = [f'🗳️ <b>{poll.title}</b>']
+    lines: list[str] = [f'🗳️ <b>{html.escape(poll.title)}</b>']
     if poll.description:
-        lines.append(poll.description)
+        lines.append(html.escape(poll.description))
 
     if poll.reward_enabled and poll.reward_amount_kopeks > 0:
         reward_line = texts.t(
@@ -70,6 +71,10 @@ async def send_poll_to_users(
     users: Iterable[User],
 ) -> dict:
     from app.database.database import AsyncSessionLocal
+
+    if not settings.is_notifications_enabled():
+        skipped = len(list(users))
+        return {'sent': 0, 'failed': 0, 'skipped': skipped, 'total': skipped}
 
     sent = 0
     failed = 0
@@ -158,7 +163,7 @@ async def send_poll_to_users(
                     # Проверяем, является ли ошибка связанной с лимитом подключений
                     if 'too many clients' in str(error).lower():
                         logger.warning(
-                            '⚠️ Ограничение на количество подключений к БД: пользователю',
+                            '⚠️ Ограничение на количество подключений к БД при обработке пользователя',
                             poll_id=poll_id,
                             telegram_id=user_snapshot.telegram_id,
                         )

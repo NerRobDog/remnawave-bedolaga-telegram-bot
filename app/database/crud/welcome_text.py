@@ -1,3 +1,4 @@
+import html
 from datetime import UTC, datetime
 
 import structlog
@@ -154,7 +155,7 @@ async def create_welcome_text(
     await db.refresh(welcome_text)
 
     logger.info(
-        '✅ Создан приветственный текст ID (активный включен=)',
+        '✅ Создан приветственный текст',
         welcome_text_id=welcome_text.id,
         is_active=welcome_text.is_active,
         is_enabled=welcome_text.is_enabled,
@@ -188,7 +189,7 @@ async def update_welcome_text(
     await db.refresh(welcome_text)
 
     logger.info(
-        '📝 Обновлен приветственный текст ID (активный включен=)',
+        '📝 Обновлен приветственный текст',
         welcome_text_id=welcome_text.id,
         is_active=welcome_text.is_active,
         is_enabled=welcome_text.is_enabled,
@@ -221,10 +222,10 @@ def replace_placeholders(text: str, user) -> str:
     first_name = first_name.strip() if first_name else None
     username = username.strip() if username else None
 
-    user_name = first_name or username or 'друг'
-    display_first_name = first_name or 'друг'
-    display_username = f'@{username}' if username else (first_name or 'друг')
-    clean_username = username or first_name or 'друг'
+    user_name = html.escape(first_name or username or 'друг')
+    display_first_name = html.escape(first_name or 'друг')
+    display_username = f'@{html.escape(username)}' if username else html.escape(first_name or 'друг')
+    clean_username = html.escape(username or first_name or 'друг')
 
     replacements = {
         '{user_name}': user_name,

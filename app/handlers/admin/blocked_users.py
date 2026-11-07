@@ -5,6 +5,7 @@
 и выполнять очистку БД и панели Remnawave.
 """
 
+import html
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
@@ -378,7 +379,11 @@ async def start_scan(
                 'telegram_id': u.telegram_id,
                 'username': u.username,
                 'full_name': u.full_name,
-                'remnawave_uuid': u.remnawave_uuid,
+                # Панельная идентичность: числовой id пользователя и полный список
+                # id по подпискам (multi-tariff) — без него очистка панели пропустит
+                # все подписки, кроме одной.
+                'remnawave_id': u.remnawave_id,
+                'remnawave_ids': list(u.remnawave_ids or []),
             }
             for u in result.blocked_users
         ],
@@ -437,7 +442,7 @@ async def show_blocked_list(
         name = user_data.get('full_name') or user_data.get('username') or 'Без имени'
         telegram_id = user_data.get('telegram_id', '?')
         text += BlockedUsersText.BLOCKED_USER_ROW.value.format(
-            name=name,
+            name=html.escape(name),
             telegram_id=telegram_id,
         )
 
@@ -581,7 +586,10 @@ async def handle_confirm_action(
 
     await state.set_state(BlockedUsersStates.processing_cleanup)
 
-    # Преобразуем обратно в BlockCheckResult
+    # Преобразуем обратно в BlockCheckResult.
+    # remnawave_ids восстанавливаем обязательно: cleanup_blocked_users удаляет из
+    # панели именно по этому списку, и без него в multi-tariff переживут очистку
+    # все панельные юзеры, кроме одного.
     blocked_results = [
         BlockCheckResult(
             user_id=u['user_id'],
@@ -589,7 +597,8 @@ async def handle_confirm_action(
             username=u['username'],
             full_name=u['full_name'],
             status=None,  # type: ignore
-            remnawave_uuid=u['remnawave_uuid'],
+            remnawave_id=u.get('remnawave_id'),
+            remnawave_ids=list(u.get('remnawave_ids') or []),
         )
         for u in blocked_list
     ]
@@ -644,7 +653,7 @@ async def handle_confirm_action(
     )
 
     logger.info(
-        'Очистка заблокированных пользователей завершена: DB=, RW=, marked=, errors',
+        'Очистка заблокированных пользователей завершена',
         deleted_from_db=result.deleted_from_db,
         deleted_from_remnawave=result.deleted_from_remnawave,
         marked_as_blocked=result.marked_as_blocked,

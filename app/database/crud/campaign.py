@@ -2,9 +2,11 @@ from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy import and_, delete, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.database.crud.transaction import REAL_PAYMENT_METHODS
 from app.database.models import (
     AdvertisingCampaign,
     AdvertisingCampaignRegistration,
@@ -59,7 +61,7 @@ async def create_campaign(
     await db.refresh(campaign)
 
     logger.info(
-        '📣 Создана рекламная кампания (start bonus=)',
+        '📣 Создана рекламная кампания',
         campaign_name=campaign.name,
         start_parameter=campaign.start_parameter,
         bonus_type=campaign.bonus_type,
@@ -208,34 +210,72 @@ async def record_campaign_registration(
     subscription_duration_days: int | None = None,
     tariff_id: int | None = None,
     tariff_duration_days: int | None = None,
-) -> AdvertisingCampaignRegistration:
-    existing = await db.execute(
-        select(AdvertisingCampaignRegistration).where(
-            and_(
-                AdvertisingCampaignRegistration.campaign_id == campaign_id,
-                AdvertisingCampaignRegistration.user_id == user_id,
+) -> tuple[AdvertisingCampaignRegistration, bool]:
+    """Создаёт или возвращает запись регистрации в рекламной кампании.
+
+    Returns:
+        (registration, created): второе поле True если запись была создана прямо сейчас,
+        False — если уже существовала (или другая параллельная транзакция её только что
+        создала). Caller использует флаг чтобы понять, нужно ли отправить уведомление
+        в админ-чат (один раз на первую успешную регистрацию).
+
+    Race-safe: если между select() и commit() параллельная транзакция вставила
+    запись с тем же (campaign_id, user_id), мы поймаем IntegrityError на UNIQUE
+    constraint, откатим savepoint и вернём существующую запись с created=False.
+    Это критично для паритета «1 message в чате == 1 row в БД» и для того, чтобы
+    балансный бонус не начислился дважды при concurrent /start от одного юзера.
+    """
+    # Используем savepoint, чтобы IntegrityError не убил внешнюю транзакцию
+    # caller'а, а только нашу попытку INSERT.
+    async with db.begin_nested() as nested:
+        existing = await db.execute(
+            select(AdvertisingCampaignRegistration).where(
+                and_(
+                    AdvertisingCampaignRegistration.campaign_id == campaign_id,
+                    AdvertisingCampaignRegistration.user_id == user_id,
+                )
             )
         )
-    )
-    registration = existing.scalar_one_or_none()
-    if registration:
-        return registration
+        registration = existing.scalar_one_or_none()
+        if registration:
+            return registration, False
 
-    registration = AdvertisingCampaignRegistration(
-        campaign_id=campaign_id,
-        user_id=user_id,
-        bonus_type=bonus_type,
-        balance_bonus_kopeks=balance_bonus_kopeks or 0,
-        subscription_duration_days=subscription_duration_days,
-        tariff_id=tariff_id,
-        tariff_duration_days=tariff_duration_days,
-    )
-    db.add(registration)
+        registration = AdvertisingCampaignRegistration(
+            campaign_id=campaign_id,
+            user_id=user_id,
+            bonus_type=bonus_type,
+            balance_bonus_kopeks=balance_bonus_kopeks or 0,
+            subscription_duration_days=subscription_duration_days,
+            tariff_id=tariff_id,
+            tariff_duration_days=tariff_duration_days,
+        )
+        db.add(registration)
+        try:
+            await db.flush()
+        except IntegrityError:
+            # Параллельный INSERT успел раньше — откатываем savepoint и читаем
+            # существующую запись.
+            await nested.rollback()
+            existing = await db.execute(
+                select(AdvertisingCampaignRegistration).where(
+                    and_(
+                        AdvertisingCampaignRegistration.campaign_id == campaign_id,
+                        AdvertisingCampaignRegistration.user_id == user_id,
+                    )
+                )
+            )
+            registration = existing.scalar_one_or_none()
+            if registration is None:
+                # Не должно случиться при UNIQUE constraint, но если констрейнта
+                # физически нет (legacy таблица без uq_campaign_user) — re-raise.
+                raise
+            return registration, False
+
     await db.commit()
     await db.refresh(registration)
 
     logger.info('📈 Регистрируем пользователя в кампании', user_id=user_id, campaign_id=campaign_id)
-    return registration
+    return registration, True
 
 
 async def get_campaign_statistics(
@@ -268,11 +308,13 @@ async def get_campaign_statistics(
     )
     subscription_bonuses_issued = subscription_count_result.scalar() or 0
 
+    # Only count real deposits (exclude promo bonuses, wheel prizes, admin top-ups)
     deposits_result = await db.execute(
         select(func.coalesce(func.sum(Transaction.amount_kopeks), 0)).where(
             Transaction.user_id.in_(select(registrations_subquery.c.user_id)),
             Transaction.type == TransactionType.DEPOSIT.value,
             Transaction.is_completed.is_(True),
+            Transaction.payment_method.in_(REAL_PAYMENT_METHODS),
         )
     )
     deposits_total = deposits_result.scalar() or 0
@@ -363,7 +405,8 @@ async def get_campaign_statistics(
                 first_payment_amount_by_user[user_id] = amount_value
                 first_payment_time_by_user[user_id] = created_at
 
-    total_revenue = deposits_total + subscription_payments_total
+    # Revenue = only real deposits (exclude bonus-funded subscription spending)
+    total_revenue = deposits_total
 
     paid_user_ids = set(paid_users_from_transactions)
     paid_user_ids.update(conversion_user_ids)

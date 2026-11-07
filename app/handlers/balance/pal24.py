@@ -13,10 +13,13 @@ from app.config import settings
 from app.database.database import AsyncSessionLocal
 from app.database.models import User
 from app.keyboards.inline import get_back_keyboard
+from app.keyboards.topup_amounts import get_topup_amount_keyboard
 from app.localization.texts import get_texts
 from app.services.payment_service import PaymentService
 from app.states import BalanceStates
 from app.utils.decorators import error_handler
+from app.utils.timezone import format_local_datetime
+from app.utils.topup_retry import format_topup_amount_retry
 
 
 logger = structlog.get_logger(__name__)
@@ -234,7 +237,7 @@ async def _send_pal24_payment_message(
         await state.clear()
 
         logger.info(
-            'Создан PayPalych счет для пользователя : ₽, ID метод',
+            'Создан PayPalych счет',
             telegram_id=db_user.telegram_id,
             amount_kopeks=amount_kopeks / 100,
             bill_id=bill_id,
@@ -262,7 +265,7 @@ async def start_pal24_payment(
 
     # Проверка ограничения на пополнение
     if getattr(db_user, 'restriction_topup', False):
-        reason = getattr(db_user, 'restriction_reason', None) or 'Действие ограничено администратором'
+        reason = html.escape(getattr(db_user, 'restriction_reason', None) or 'Действие ограничено администратором')
         support_url = settings.get_support_contact_url()
         keyboard = []
         if support_url:
@@ -301,14 +304,7 @@ async def start_pal24_payment(
         ),
     )
 
-    keyboard = get_back_keyboard(db_user.language)
-
-    if settings.is_quick_amount_buttons_enabled():
-        from .main import get_quick_amount_buttons
-
-        quick_amount_buttons = await get_quick_amount_buttons(db_user.language, db_user)
-        if quick_amount_buttons:
-            keyboard.inline_keyboard = quick_amount_buttons + keyboard.inline_keyboard
+    keyboard = await get_topup_amount_keyboard('pal24', db_user.language, back_callback='back_to_menu')
 
     await callback.message.edit_text(
         message_text,
@@ -337,7 +333,7 @@ async def process_pal24_payment_amount(
 
     # Проверка ограничения на пополнение
     if getattr(db_user, 'restriction_topup', False):
-        reason = getattr(db_user, 'restriction_reason', None) or 'Действие ограничено администратором'
+        reason = html.escape(getattr(db_user, 'restriction_reason', None) or 'Действие ограничено администратором')
         support_url = settings.get_support_contact_url()
         keyboard = []
         if support_url:
@@ -358,13 +354,21 @@ async def process_pal24_payment_amount(
         return
 
     if amount_kopeks < settings.PAL24_MIN_AMOUNT_KOPEKS:
-        min_rubles = settings.PAL24_MIN_AMOUNT_KOPEKS / 100
-        await message.answer(f'❌ Минимальная сумма для оплаты через PayPalych: {min_rubles:.0f} ₽')
+        await message.answer(
+            format_topup_amount_retry(
+                db_user.language, settings.PAL24_MIN_AMOUNT_KOPEKS, settings.PAL24_MAX_AMOUNT_KOPEKS, too_low=True
+            ),
+            reply_markup=get_back_keyboard(db_user.language, callback_data='balance_topup'),
+        )
         return
 
     if amount_kopeks > settings.PAL24_MAX_AMOUNT_KOPEKS:
-        max_rubles = settings.PAL24_MAX_AMOUNT_KOPEKS / 100
-        await message.answer(f'❌ Максимальная сумма для оплаты через PayPalych: {max_rubles:,.0f} ₽'.replace(',', ' '))
+        await message.answer(
+            format_topup_amount_retry(
+                db_user.language, settings.PAL24_MIN_AMOUNT_KOPEKS, settings.PAL24_MAX_AMOUNT_KOPEKS, too_low=False
+            ),
+            reply_markup=get_back_keyboard(db_user.language, callback_data='balance_topup'),
+        )
         return
 
     available_methods = _get_available_pal24_methods()
@@ -568,7 +572,7 @@ async def check_pal24_payment_status(
             f'🆔 ID счета: {payment.bill_id}',
             f'💰 Сумма: {settings.format_price(payment.amount_kopeks)}',
             f'📊 Статус: {emoji} {status_text}',
-            f'📅 Создан: {payment.created_at.strftime("%d.%m.%Y %H:%M")}',
+            f'📅 Создан: {format_local_datetime(payment.created_at, "%d.%m.%Y %H:%M")}',
         ]
 
         if payment.is_paid:

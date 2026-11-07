@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from urllib.parse import urlparse
 
@@ -278,12 +278,26 @@ class MiniAppPromoCode(BaseModel):
 class MiniAppPromoCodeActivationRequest(BaseModel):
     init_data: str = Field(..., alias='initData')
     code: str
+    # Multi-tariff SUBSCRIPTION_DAYS promos may require choosing which subscription
+    # to extend; the client re-submits with the chosen subscription_id.
+    subscription_id: int | None = None
+
+
+class MiniAppEligibleSubscription(BaseModel):
+    id: int
+    tariff_name: str | None = None
+    days_left: int = 0
 
 
 class MiniAppPromoCodeActivationResponse(BaseModel):
     success: bool = True
     description: str | None = None
     promocode: MiniAppPromoCode | None = None
+    # Set when a multi-tariff days-promo needs the user to pick a subscription:
+    # error == 'select_subscription' + the eligible list to choose from.
+    error: str | None = None
+    eligible_subscriptions: list[MiniAppEligibleSubscription] | None = None
+    code: str | None = None
 
 
 class MiniAppFaqItem(BaseModel):
@@ -325,6 +339,19 @@ class MiniAppReferralTerms(BaseModel):
     inviter_bonus_kopeks: int = 0
     inviter_bonus_label: str | None = None
     commission_percent: float = 0.0
+    # Под схемой 'levels' поля выше ничем не управляют: начисления идут по таблице
+    # уровней. Клиент обязан показывать level_descriptions, иначе миниапп рекламирует
+    # проценты и бонусы, которых программа не платит.
+    scheme: str = 'legacy'
+    level_descriptions: list[str] = []
+    referee_bonus_description: str | None = None
+    # 'chain' — номер уровня это глубина цепочки, 'tiers' — ранг за число
+    # рефералов. В рангах платят только прямому пригласившему, и строки уровней
+    # описывают лестницу самого пользователя, а не выплаты тем, кто выше.
+    levels_mode: str = 'chain'
+    tier_current_level: int | None = None
+    tier_next_level: int | None = None
+    tier_next_remaining: int = 0
 
 
 class MiniAppReferralStats(BaseModel):
@@ -333,14 +360,20 @@ class MiniAppReferralStats(BaseModel):
     active_referrals_count: int = 0
     total_earned_kopeks: int = 0
     total_earned_label: str | None = None
+    total_earned_days: int = 0
     month_earned_kopeks: int = 0
     month_earned_label: str | None = None
+    month_earned_days: int = 0
     conversion_rate: float = 0.0
 
 
 class MiniAppReferralRecentEarning(BaseModel):
     amount_kopeks: int = 0
     amount_label: str | None = None
+    # Награда днями имеет amount_kopeks == 0: без этих полей она рисуется как «0 ₽».
+    days_granted: int = 0
+    reward_type: str = 'money'
+    level: int = 1
     reason: str | None = None
     referral_name: str | None = None
     created_at: datetime | None = None
@@ -376,6 +409,7 @@ class MiniAppReferralList(BaseModel):
 class MiniAppReferralInfo(BaseModel):
     referral_code: str | None = None
     referral_link: str | None = None
+    bot_referral_link: str | None = None
     terms: MiniAppReferralTerms | None = None
     stats: MiniAppReferralStats | None = None
     recent_earnings: list[MiniAppReferralRecentEarning] = Field(default_factory=list)
@@ -386,7 +420,7 @@ class MiniAppPaymentMethodsRequest(BaseModel):
     init_data: str = Field(..., alias='initData')
 
 
-class MiniAppPaymentIntegrationType(str, Enum):
+class MiniAppPaymentIntegrationType(StrEnum):
     IFRAME = 'iframe'
     REDIRECT = 'redirect'
 
@@ -640,6 +674,7 @@ class MiniAppTariffSwitchRequest(BaseModel):
 
     init_data: str = Field(...)
     tariff_id: int = Field(...)
+    subscription_id: int | None = Field(default=None, alias='subscriptionId')
 
 
 class MiniAppTariffSwitchPreviewResponse(BaseModel):
@@ -678,6 +713,7 @@ class MiniAppDailySubscriptionToggleRequest(BaseModel):
     """Запрос на паузу/возобновление суточной подписки."""
 
     init_data: str = Field(...)
+    subscription_id: int | None = Field(default=None, alias='subscriptionId')
 
 
 class MiniAppDailySubscriptionToggleResponse(BaseModel):
