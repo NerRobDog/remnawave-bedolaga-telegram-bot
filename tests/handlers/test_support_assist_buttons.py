@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import inspect
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -194,6 +195,18 @@ def _text_message(text: str | None, user_id: int, *, reply_to: int | None = None
     return msg
 
 
+def _waiting(**over) -> dict:
+    """Данные личного FSM «ждём текст правки» для карточки №5; запрос правки открыт только что."""
+    data = {
+        'sa_card_id': 5,
+        'sa_chat_id': GROUP_CHAT,
+        'sa_message_id': CARD_MESSAGE,
+        'edit_started_at': time.time(),
+    }
+    data.update(over)
+    return data
+
+
 def _alert(cb: MagicMock) -> tuple[str | None, bool]:
     """Текст и признак всплывающего окна единственного ответа на нажатие."""
     cb.answer.assert_awaited_once()
@@ -373,12 +386,74 @@ async def test_send_marks_the_card_in_the_group_and_removes_the_buttons(monkeypa
 
 @pytest.mark.asyncio
 async def test_a_huge_card_still_fits_the_limit_with_the_decision_line(monkeypatch, bot, notify):
+    """Огромная карточка: отправить можно только свой текст через «Править», строка решения в лимит помещается."""
     huge = dict(CARD, draft='я' * 3900, cause='ы' * 2000)
     async with world(monkeypatch, card=huge) as w:
-        await sa.handle_send(_callback('sa:send:5', ADMIN_TG), bot, w.db, w.admin)
+        private = _private_state(w, ADMIN_TG)
+        await private.set_state(SupportAssistStates.waiting_edit)
+        await private.set_data(_waiting())
+
+        await sa.handle_edit_text(_text_message(OWNER_TEXT, ADMIN_TG), private, bot, w.db, w.admin)
 
         text = _card_message_edit(bot)['text']
-        assert len(text) <= 4096 and text.endswith('✅ отправлено')
+        assert len(text) <= 4096 and text.endswith('✅ отправлено (текст изменён)')
+
+
+# --- «Отправить» не шлёт то, чего владелец не видел ------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_send_refuses_a_draft_that_did_not_fit_the_card(monkeypatch, bot, notify):
+    """Черновик в пределах 4000 знаков, но в карточку (4096 с остальным) не влез: владелец видел обрубок."""
+    cut = dict(CARD, draft='я' * 3900, cause='ы' * 2000)
+    async with world(monkeypatch, card=cut) as w:
+        cb = _callback('sa:send:5', ADMIN_TG)
+
+        await sa.handle_send(cb, bot, w.db, w.admin)
+
+        text, is_alert = _alert(cb)
+        assert is_alert and 'Править' in text and 'целиком' in text
+        assert (await _card(w.db)).status == 'shown'
+        assert await _admin_messages(w.db) == []
+        notify.assert_not_awaited()
+        bot.edit_message_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_send_still_works_for_a_draft_that_fit_in_full(monkeypatch, bot, notify):
+    roomy = dict(CARD, draft='Я' * 1500, cause='ы' * 500)
+    async with world(monkeypatch, card=roomy) as w:
+        await sa.handle_send(_callback('sa:send:5', ADMIN_TG), bot, w.db, w.admin)
+
+        (reply,) = await _admin_messages(w.db)
+        assert reply.message_text == 'Я' * 1500
+        notify.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_send_refuses_when_the_card_cannot_be_rebuilt(monkeypatch, bot, notify):
+    """Не удалось собрать карточку заново — не доказать, что владелец видел черновик: не отправляем."""
+    broken = dict(CARD, facts='not a list')
+    async with world(monkeypatch, card=broken) as w:
+        cb = _callback('sa:send:5', ADMIN_TG)
+
+        await sa.handle_send(cb, bot, w.db, w.admin)
+
+        assert _alert(cb)[1] is True
+        assert (await _card(w.db)).status == 'shown'
+        notify.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_edit_stays_available_for_a_draft_that_did_not_fit(monkeypatch, bot, notify):
+    cut = dict(CARD, draft='я' * 3900, cause='ы' * 2000)
+    async with world(monkeypatch, card=cut) as w:
+        cb = _callback('sa:edit:5', ADMIN_TG)
+
+        await sa.handle_edit(cb, _group_state(w, ADMIN_TG), bot, w.db)
+
+        assert await _private_state(w, ADMIN_TG).get_state() == SupportAssistStates.waiting_edit.state
+        bot.send_message.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -521,6 +596,7 @@ async def test_edit_sends_the_owner_text_not_the_draft(monkeypatch, bot, notify,
         chat_type = ChatType.PRIVATE if in_private else ChatType.SUPERGROUP
         pressed_in = _group_state(w, ADMIN_TG, private=in_private)
         cb = _callback('sa:edit:5', ADMIN_TG, chat_type=chat_type)
+        before = time.time()
 
         await sa.handle_edit(cb, pressed_in, bot, w.db)
 
@@ -533,7 +609,10 @@ async def test_edit_sends_the_owner_text_not_the_draft(monkeypatch, bot, notify,
         # ждём текст в ЛИЧНОМ FSM админа, а не в групповом
         private = _private_state(w, ADMIN_TG)
         assert await private.get_state() == SupportAssistStates.waiting_edit.state
-        assert (await private.get_data()) == {
+        data = await private.get_data()
+        started = data.pop('edit_started_at')  # когда открыт запрос: правка живёт ограниченное время
+        assert before <= started <= time.time()
+        assert data == {
             'sa_card_id': 5,
             'sa_chat_id': cb.message.chat.id,
             'sa_message_id': CARD_MESSAGE,
@@ -611,7 +690,7 @@ async def test_edit_text_rejects_empty_and_too_long_and_keeps_waiting(monkeypatc
     async with world(monkeypatch) as w:
         private = _private_state(w, ADMIN_TG)
         await private.set_state(SupportAssistStates.waiting_edit)
-        await private.set_data({'sa_card_id': 5, 'sa_chat_id': GROUP_CHAT, 'sa_message_id': CARD_MESSAGE})
+        await private.set_data(_waiting())
         message = _text_message(bad, ADMIN_TG)
 
         await sa.handle_edit_text(message, private, bot, w.db, w.admin)
@@ -627,7 +706,7 @@ async def test_edit_text_after_someone_else_decided_sends_nothing(monkeypatch, b
     async with world(monkeypatch, card_status='dismissed') as w:
         private = _private_state(w, ADMIN_TG)
         await private.set_state(SupportAssistStates.waiting_edit)
-        await private.set_data({'sa_card_id': 5, 'sa_chat_id': GROUP_CHAT, 'sa_message_id': CARD_MESSAGE})
+        await private.set_data(_waiting())
         message = _text_message(OWNER_TEXT, ADMIN_TG)
 
         await sa.handle_edit_text(message, private, bot, w.db, w.admin)
@@ -643,7 +722,7 @@ async def test_edit_text_failure_keeps_the_dialog_and_the_card_free(monkeypatch,
     async with world(monkeypatch) as w:
         private = _private_state(w, ADMIN_TG)
         await private.set_state(SupportAssistStates.waiting_edit)
-        await private.set_data({'sa_card_id': 5, 'sa_chat_id': GROUP_CHAT, 'sa_message_id': CARD_MESSAGE})
+        await private.set_data(_waiting())
         monkeypatch.setattr(
             admin_tickets.TicketMessageCRUD, 'add_message', AsyncMock(side_effect=RuntimeError('db is gone'))
         )
@@ -662,7 +741,7 @@ async def test_edit_text_from_an_admin_who_lost_access_is_refused(monkeypatch, b
     async with world(monkeypatch) as w:
         private = _private_state(w, STRANGER_TG)
         await private.set_state(SupportAssistStates.waiting_edit)
-        await private.set_data({'sa_card_id': 5, 'sa_chat_id': GROUP_CHAT, 'sa_message_id': CARD_MESSAGE})
+        await private.set_data(_waiting())
         message = _text_message(OWNER_TEXT, STRANGER_TG)
 
         await sa.handle_edit_text(message, private, bot, w.db, SimpleNamespace(id=99))
@@ -678,7 +757,7 @@ async def test_edit_text_with_the_flag_turned_off_meanwhile_is_refused(monkeypat
     async with world(monkeypatch) as w:
         private = _private_state(w, ADMIN_TG)
         await private.set_state(SupportAssistStates.waiting_edit)
-        await private.set_data({'sa_card_id': 5, 'sa_chat_id': GROUP_CHAT, 'sa_message_id': CARD_MESSAGE})
+        await private.set_data(_waiting())
         monkeypatch.setattr(settings, 'SUPPORT_ASSIST_SEND_BUTTONS_ENABLED', False)
         message = _text_message(OWNER_TEXT, ADMIN_TG)
 
@@ -689,12 +768,102 @@ async def test_edit_text_with_the_flag_turned_off_meanwhile_is_refused(monkeypat
         notify.assert_not_awaited()
 
 
+# --- правка живёт ограниченное время; команда не уходит клиенту -------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('age_minutes', [31, 24 * 60])
+async def test_expired_edit_sends_nothing_and_clears_the_state(monkeypatch, bot, notify, age_minutes):
+    async with world(monkeypatch) as w:
+        private = _private_state(w, ADMIN_TG)
+        await private.set_state(SupportAssistStates.waiting_edit)
+        await private.set_data(_waiting(edit_started_at=time.time() - age_minutes * 60))
+        message = _text_message(OWNER_TEXT, ADMIN_TG)
+
+        await sa.handle_edit_text(message, private, bot, w.db, w.admin)
+
+        message.answer.assert_awaited_once()
+        assert 'истек' in message.answer.await_args.args[0].lower()
+        assert await private.get_state() is None
+        assert (await _card(w.db)).status == 'shown'  # карточка свободна: «Править» можно нажать заново
+        assert await _admin_messages(w.db) == []
+        notify.assert_not_awaited()
+        bot.edit_message_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_edit_just_inside_the_window_is_still_sent(monkeypatch, bot, notify):
+    async with world(monkeypatch) as w:
+        private = _private_state(w, ADMIN_TG)
+        await private.set_state(SupportAssistStates.waiting_edit)
+        await private.set_data(_waiting(edit_started_at=time.time() - 29 * 60))
+
+        await sa.handle_edit_text(_text_message(OWNER_TEXT, ADMIN_TG), private, bot, w.db, w.admin)
+
+        notify.assert_awaited_once()
+        assert (await _card(w.db)).status == 'edited'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('stamp', [None, 'yesterday', True])
+async def test_edit_without_a_usable_start_time_counts_as_expired(monkeypatch, bot, notify, stamp):
+    """Не доказать, что запрос свежий, — не отправляем."""
+    async with world(monkeypatch) as w:
+        private = _private_state(w, ADMIN_TG)
+        await private.set_state(SupportAssistStates.waiting_edit)
+        data = _waiting()
+        data.pop('edit_started_at')
+        if stamp is not None:
+            data['edit_started_at'] = stamp
+        await private.set_data(data)
+        message = _text_message(OWNER_TEXT, ADMIN_TG)
+
+        await sa.handle_edit_text(message, private, bot, w.db, w.admin)
+
+        assert 'истек' in message.answer.await_args.args[0].lower()
+        assert await private.get_state() is None
+        notify.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('command', ['/start', '/cancel', '/admin_help', '  /menu', '/'])
+async def test_a_command_is_never_sent_to_the_client(monkeypatch, bot, notify, command):
+    async with world(monkeypatch) as w:
+        private = _private_state(w, ADMIN_TG)
+        await private.set_state(SupportAssistStates.waiting_edit)
+        await private.set_data(_waiting())
+        message = _text_message(command, ADMIN_TG)
+
+        await sa.handle_edit_text(message, private, bot, w.db, w.admin)
+
+        message.answer.assert_awaited_once()
+        assert 'команд' in message.answer.await_args.args[0].lower()
+        assert await private.get_state() == SupportAssistStates.waiting_edit.state  # правка ждёт обычного текста
+        assert (await _card(w.db)).status == 'shown'
+        assert await _admin_messages(w.db) == []
+        notify.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_slash_inside_the_text_is_fine(monkeypatch, bot, notify):
+    async with world(monkeypatch) as w:
+        private = _private_state(w, ADMIN_TG)
+        await private.set_state(SupportAssistStates.waiting_edit)
+        await private.set_data(_waiting())
+        text = 'Откройте Настройки/Устройства и удалите лишнее.'
+
+        await sa.handle_edit_text(_text_message(text, ADMIN_TG), private, bot, w.db, w.admin)
+
+        (reply,) = await _admin_messages(w.db)
+        assert reply.message_text == text
+
+
 @pytest.mark.asyncio
 async def test_cancel_clears_the_waiting_state(monkeypatch, bot, notify):
     async with world(monkeypatch) as w:
         private = _private_state(w, ADMIN_TG)
         await private.set_state(SupportAssistStates.waiting_edit)
-        await private.set_data({'sa_card_id': 5})
+        await private.set_data(_waiting())
         cb = _callback('sa:cancel:5', ADMIN_TG, chat_type=ChatType.PRIVATE)
 
         await sa.handle_cancel(cb, private)
@@ -710,7 +879,7 @@ async def test_stale_cancel_does_not_clear_an_edit_that_is_not_its_own(monkeypat
     async with world(monkeypatch, second_card=True) as w:
         private = _private_state(w, ADMIN_TG)
         await private.set_state(SupportAssistStates.waiting_edit)
-        await private.set_data({'sa_card_id': 6, 'sa_chat_id': GROUP_CHAT, 'sa_message_id': SECOND_CARD_MESSAGE})
+        await private.set_data(_waiting(sa_card_id=6, sa_message_id=SECOND_CARD_MESSAGE))
         cb = _callback('sa:cancel:5', ADMIN_TG, chat_type=ChatType.PRIVATE)
 
         await sa.handle_cancel(cb, private)
@@ -761,7 +930,9 @@ async def test_second_edit_retires_the_first_prompt_and_takes_over_the_dialog(mo
         # диалог теперь про карточку 6, и именно его сообщение править на строку решения
         private = _private_state(w, ADMIN_TG)
         assert await private.get_state() == SupportAssistStates.waiting_edit.state
-        assert await private.get_data() == {
+        data = await private.get_data()
+        assert isinstance(data.pop('edit_started_at'), float)
+        assert data == {
             'sa_card_id': 6,
             'sa_chat_id': GROUP_CHAT,
             'sa_message_id': SECOND_CARD_MESSAGE,
@@ -824,9 +995,7 @@ async def test_edit_text_replying_to_a_foreign_message_is_refused_and_keeps_wait
     async with world(monkeypatch) as w:
         private = _private_state(w, ADMIN_TG)
         await private.set_state(SupportAssistStates.waiting_edit)
-        await private.set_data(
-            {'sa_card_id': 5, 'sa_chat_id': GROUP_CHAT, 'sa_message_id': CARD_MESSAGE, 'sa_prompt_id': 900}
-        )
+        await private.set_data(_waiting(sa_prompt_id=900))
         message = _text_message(OWNER_TEXT, ADMIN_TG, reply_to=123)
 
         await sa.handle_edit_text(message, private, bot, w.db, w.admin)
@@ -842,7 +1011,7 @@ async def test_edit_text_without_a_stored_prompt_id_still_works(monkeypatch, bot
     async with world(monkeypatch) as w:
         private = _private_state(w, ADMIN_TG)
         await private.set_state(SupportAssistStates.waiting_edit)
-        await private.set_data({'sa_card_id': 5, 'sa_chat_id': GROUP_CHAT, 'sa_message_id': CARD_MESSAGE})
+        await private.set_data(_waiting())
 
         await sa.handle_edit_text(_text_message(OWNER_TEXT, ADMIN_TG, reply_to=123), private, bot, w.db, w.admin)
 

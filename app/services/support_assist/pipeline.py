@@ -30,7 +30,7 @@ from app.services.support_assist.card import CardResult, generate_card
 from app.services.support_assist.flags import Flag, compute_flags
 from app.services.support_assist.payload import build_payload
 from app.services.support_assist.questions import is_bare, pick_questions, render_questions
-from app.services.support_assist.render import build_card_keyboard, render_card
+from app.services.support_assist.render import TRUNCATED_DRAFT_NOTICE, build_card_keyboard, render_card_checked
 from app.services.support_assist.snapshot import Snapshot, collect_snapshot
 
 
@@ -45,6 +45,11 @@ SNAPSHOT_TIMEOUT_SECONDS = 45.0
 # Сколько разборов идёт одновременно в этом процессе: при сбое панели или Claude всплеск тикетов
 # иначе превращается в десятки параллельных запросов наружу.
 MAX_CONCURRENT_PIPELINES = 4
+# Потолок на весь вызов Claude сверх таймаута одного HTTP-запроса (SUPPORT_ASSIST_TIMEOUT_SECONDS): таймаут SDK
+# действует на каждую попытку отдельно, и без общего потолка карточка держала бы слот конвейера минутами.
+CARD_TIMEOUT_MARGIN_SECONDS = 10.0
+# Одна повторная попытка на ошибки сети и 429/5xx; по умолчанию SDK повторяет дважды.
+CLAUDE_MAX_RETRIES = 1
 
 # Сильные ссылки на фоновые задачи: без них цикл событий может собрать задачу до конца.
 _background_tasks: set[asyncio.Task[None]] = set()
@@ -118,7 +123,9 @@ async def _run_safe(bot: Bot, ticket_id: int, trigger: Trigger) -> None:
         # Ждём очередь до открытия сессии БД: ожидающий разбор не должен занимать соединение.
         async with _pipeline_slots, AsyncSessionLocal() as db, remnawave_service.get_api_client() as api:
             if settings.ANTHROPIC_API_KEY:
-                async with anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY) as client:
+                async with anthropic.AsyncAnthropic(
+                    api_key=settings.ANTHROPIC_API_KEY, max_retries=CLAUDE_MAX_RETRIES
+                ) as client:
                     await run_assist(db, bot, api, client, ticket_id, trigger, datetime.now(UTC))
             else:
                 await run_assist(db, bot, api, None, ticket_id, trigger, datetime.now(UTC))
@@ -224,17 +231,24 @@ async def _run(
     if client is None:
         result = CardResult(card=None, error='no_api_key')
     else:
-        result = await generate_card(client, payload, view.client_texts)
+        result = await _generate_capped(client, payload, view.client_texts)
     if result.error:
         logger.warning('support_assist.card_without_model', ticket_id=ticket_id, error=result.error)
 
     # 5. Рендер и отправка владельцу отдельным сообщением в топик тикетов.
     show_send = settings.SUPPORT_ASSIST_SEND_BUTTONS_ENABLED and result.card is not None
+    # «Отправить» уходит клиенту черновик как есть: если он не влез в карточку, владелец его целиком не видел.
+    rendered = render_card_checked(
+        result.card,
+        flags,
+        ticket_id,
+        truncation_notice=TRUNCATED_DRAFT_NOTICE if show_send else None,
+    )
     message_id = await _send_card(
         bot,
         chat_id,
-        render_card(result.card, flags, ticket_id),
-        build_card_keyboard(card_id, show_send),
+        rendered.text,
+        build_card_keyboard(card_id, show_send, draft_truncated=rendered.draft_truncated),
     )
 
     # 6. Запись результата: токены и цена сохраняются, даже если отправка не удалась.
@@ -251,6 +265,21 @@ async def _run(
         row.status = 'shown' if result.card is not None else 'fallback'
     await db.commit()
     return row
+
+
+def card_deadline_seconds() -> float:
+    """Сколько всего можно ждать карточку от Claude: таймаут запроса плюс запас на разбор ответа."""
+    return float(settings.SUPPORT_ASSIST_TIMEOUT_SECONDS) + CARD_TIMEOUT_MARGIN_SECONDS
+
+
+async def _generate_capped(client: anthropic.AsyncAnthropic, payload: dict, client_texts: list[str]) -> CardResult:
+    """``generate_card`` под общим потолком; по таймауту — результат без карточки (рисуется карточка без модели)."""
+    try:
+        async with asyncio.timeout(card_deadline_seconds()):
+            return await generate_card(client, payload, client_texts)
+    except TimeoutError:
+        logger.warning('support_assist.card_timeout', deadline_seconds=card_deadline_seconds())
+        return CardResult(card=None, error='timeout')
 
 
 def _client_text(message: Any) -> str:

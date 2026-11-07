@@ -11,7 +11,7 @@ from sqlalchemy.dialects import postgresql
 
 from app.config import settings
 from app.database.models import Ticket, TicketMessage
-from app.services.support_assist import pipeline
+from app.services.support_assist import pipeline, render
 from app.services.support_assist.snapshot import Snapshot
 from tests.services.support_assist.fixtures import AS_OF, healthy, s05
 
@@ -426,6 +426,45 @@ async def test_keyboard_follows_send_buttons_flag(env, monkeypatch):
     assert _callbacks(env) == ['sa:skip:3']
 
 
+def _client_with_draft(draft):
+    client = MagicMock()
+    client.beta.messages.create = AsyncMock(return_value=_response(json.dumps(dict(VALID, draft=draft))))
+    return client
+
+
+@pytest.mark.asyncio
+async def test_truncated_draft_gets_no_send_button_and_a_notice(env, monkeypatch):
+    """Владелец не видел текст целиком — «Отправить» не рисуется, остаётся «Править»."""
+    monkeypatch.setattr(settings, 'SUPPORT_ASSIST_SEND_BUTTONS_ENABLED', True)
+
+    card = await _run(env, client=_client_with_draft('я' * 6000))
+
+    assert card.status == 'shown'
+    assert _callbacks(env) == ['sa:edit:1', 'sa:skip:1']
+    text = _sent_text(env)
+    assert len(text) <= 4096
+    assert render.TRUNCATED_DRAFT_NOTICE in text
+
+
+@pytest.mark.asyncio
+async def test_draft_that_fits_keeps_the_send_button_and_has_no_notice(env, monkeypatch):
+    monkeypatch.setattr(settings, 'SUPPORT_ASSIST_SEND_BUTTONS_ENABLED', True)
+
+    await _run(env, client=_client_with_draft('Короткий ответ.'))
+
+    assert _callbacks(env) == ['sa:send:1', 'sa:edit:1', 'sa:skip:1']
+    assert render.TRUNCATED_DRAFT_NOTICE not in _sent_text(env)
+
+
+@pytest.mark.asyncio
+async def test_truncated_draft_with_send_buttons_off_has_no_misleading_notice(env):
+    """Кнопки «Править» тоже нет, отсылать к ней незачем."""
+    await _run(env, client=_client_with_draft('я' * 6000))
+
+    assert _callbacks(env) == ['sa:skip:1']
+    assert render.TRUNCATED_DRAFT_NOTICE not in _sent_text(env)
+
+
 @pytest.mark.asyncio
 async def test_payload_sent_to_model_has_no_client_identity(env):
     client = _client()
@@ -653,6 +692,82 @@ async def test_snapshot_hang_is_cut_off_and_card_still_sent(env, monkeypatch):
 
 # Откаты сессии (сбой commit после обрыва сбора, проигранный захват автовопроса по уникальному индексу)
 # здесь не проверяются: подменные тикеты не протухают и проходят ложно. Они в test_pipeline_real_db.py.
+
+
+@pytest.mark.asyncio
+async def test_hanging_model_call_is_cut_off_and_fallback_card_is_sent(env, monkeypatch):
+    """Один зависший запрос к Claude не держит слот конвейера минутами: по таймауту идёт карточка без модели."""
+    monkeypatch.setattr(settings, 'SUPPORT_ASSIST_TIMEOUT_SECONDS', 0)
+    monkeypatch.setattr(pipeline, 'CARD_TIMEOUT_MARGIN_SECONDS', 0.05)
+
+    async def hang(**kwargs):
+        await asyncio.sleep(3600)
+
+    client = MagicMock()
+    client.beta.messages.create = AsyncMock(side_effect=hang)
+
+    card = await asyncio.wait_for(_run(env, client=client), 5)
+
+    assert card.status == 'fallback'
+    assert card.card is None
+    assert 'разбор без модели' in _sent_text(env)
+    env.bot.send_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_whole_generate_card_call_is_capped_not_only_the_http_request(env, monkeypatch):
+    """Таймаут SDK действует на одну попытку; потолок стоит над всем вызовом, чем бы он ни занимался."""
+    monkeypatch.setattr(settings, 'SUPPORT_ASSIST_TIMEOUT_SECONDS', 0)
+    monkeypatch.setattr(pipeline, 'CARD_TIMEOUT_MARGIN_SECONDS', 0.05)
+
+    async def slow_generate(client, payload, texts):
+        await asyncio.sleep(3600)
+
+    monkeypatch.setattr(pipeline, 'generate_card', slow_generate)
+
+    card = await asyncio.wait_for(_run(env), 5)
+
+    assert card.status == 'fallback'
+    env.bot.send_message.assert_awaited_once()
+
+
+def test_card_deadline_is_the_request_timeout_plus_a_small_margin(monkeypatch):
+    monkeypatch.setattr(settings, 'SUPPORT_ASSIST_TIMEOUT_SECONDS', 90)
+    assert 90 < pipeline.card_deadline_seconds() <= 120
+
+
+@pytest.mark.asyncio
+async def test_claude_client_is_built_with_a_single_retry(monkeypatch):
+    seen = {}
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+    @contextlib.asynccontextmanager
+    async def fake_ctx(*args, **kwargs):
+        yield MagicMock()
+
+    async def fake_run(db, bot, api, client, ticket_id, trigger, now):
+        seen['client'] = client
+
+    monkeypatch.setattr(settings, 'ANTHROPIC_API_KEY', 'test-key')
+    monkeypatch.setattr(pipeline.anthropic, 'AsyncAnthropic', FakeClient)
+    monkeypatch.setattr(pipeline, 'AsyncSessionLocal', fake_ctx)
+    monkeypatch.setattr('app.services.remnawave_service.remnawave_service.get_api_client', fake_ctx)
+    monkeypatch.setattr(pipeline, 'run_assist', fake_run)
+
+    await pipeline._run_safe(MagicMock(), 1, 'new_ticket')
+
+    assert seen['max_retries'] == 1
+    assert seen['api_key'] == 'test-key'
+    assert isinstance(seen['client'], FakeClient)
 
 
 @pytest.mark.asyncio
