@@ -17,7 +17,14 @@ from typing import Any
 
 from app.services.support_assist.flags import Flag
 from app.services.support_assist.snapshot import RESTRICTION_KINDS, Snapshot
-from app.services.support_assist.ticket_form import FORM_FIELDS, OTHER_OPTION, clean_other_text, other_key
+from app.services.support_assist.ticket_form import (
+    FORM_FIELD_IDS,
+    OTHER_OPTION,
+    clean_other_text,
+    has_other,
+    looks_valid,
+    other_key,
+)
 
 
 FORBIDDEN_KEYS: frozenset[str] = frozenset(
@@ -117,21 +124,22 @@ def _usage(by_day: dict) -> dict[str, int]:
 
 
 def _diagnostics(raw: Any) -> dict[str, str] | None:
-    """Ответы анкеты по белому списку: поля и варианты из ``FORM_FIELDS``, текст «Другое» коротким.
+    """Ответы анкеты по белому списку: поля из ``FORM_FIELD_IDS``, текст «Другое» коротким.
 
-    Это слова клиента из кнопок, а не измеренные факты. Значения вне списка вариантов и лишние
-    ключи (что бы ни лежало в колонке тикета) в нагрузку не идут.
+    Это слова клиента из кнопок, а не измеренные факты. Значения не по форме (id платформы,
+    название приложения до 40 знаков, статичные варианты вроде ``location``) и лишние ключи
+    (что бы ни лежало в колонке тикета) в нагрузку не идут.
     """
     if not isinstance(raw, dict):
         return None
     out: dict[str, str] = {}
-    for field, options in FORM_FIELDS.items():
+    for field in FORM_FIELD_IDS:
         value = raw.get(field)
-        if not isinstance(value, str) or value not in options:
+        if not looks_valid(field, value):
             continue
         out[field] = value
         extra = raw.get(other_key(field))
-        if value == OTHER_OPTION and isinstance(extra, str) and clean_other_text(extra):
+        if value == OTHER_OPTION and has_other(field) and isinstance(extra, str) and clean_other_text(extra):
             out[other_key(field)] = clean_other_text(extra)
     return out or None
 

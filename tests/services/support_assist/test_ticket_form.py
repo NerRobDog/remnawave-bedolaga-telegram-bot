@@ -22,22 +22,40 @@ from app.database.models import Ticket, TicketMessage, User
 from app.handlers import tickets as bot_tickets
 from app.localization.texts import get_texts
 from app.services.event_emitter import event_emitter
+from app.services.support_assist.form_options import build_form_options, fallback_options
 from app.services.support_assist.ticket_form import (
-    FORM_FIELDS,
+    FORM_FIELD_IDS,
     OTHER_MAX_LENGTH,
+    STATIC_OPTIONS,
     render_diagnostics,
-    validate_diagnostics,
+    validate_diagnostics as _validate,
 )
 from tests.fixtures.sqlite_memory import memory_session
 
 
 FULL = {
     'platform': 'ios',
-    'app': 'happ',
+    'app': 'Happ',
+    'location': 'russia',
     'network': 'wifi',
     'symptom': 'nothing',
     'since': 'today',
 }
+
+CONFIG = {
+    'platforms': {
+        'ios': {'displayName': {'ru': 'iOS', 'en': 'iOS'}, 'apps': [{'name': 'Clash Mi'}, {'name': 'RabbitHole'}]},
+        'android': {'displayName': {'ru': 'Андроид', 'en': 'Android'}, 'apps': [{'name': 'FlClashX'}]},
+        'appleTV': {'displayName': {'ru': 'Apple TV', 'en': 'Apple TV'}, 'apps': [{'name': 'Happ'}]},
+    }
+}
+OPTS = build_form_options(CONFIG)  # конфиг доступен
+DOWN = fallback_options()  # конфиг недоступен
+
+
+def validate_diagnostics(raw, options=OPTS):
+    return _validate(raw, options)
+
 
 LOCALE_DIR = Path(__file__).resolve().parents[3] / 'app' / 'localization' / 'locales'
 LANGS = ('ru', 'en', 'ua', 'fa', 'zh')
@@ -47,28 +65,74 @@ LANGS = ('ru', 'en', 'ua', 'fa', 'zh')
 
 
 def test_form_fields_match_the_spec():
-    assert FORM_FIELDS == {
-        'platform': ('ios', 'android', 'windows', 'macos', 'router', 'other'),
-        'app': ('clash_mi', 'happ', 'rabbit_hole', 'flclash_x', 'other'),
+    assert FORM_FIELD_IDS == ('platform', 'app', 'location', 'network', 'symptom', 'since')
+    assert STATIC_OPTIONS == {
+        'location': ('russia', 'abroad'),
         'network': ('mobile', 'wifi', 'both'),
         'symptom': ('nothing', 'specific_site', 'slow', 'no_connect'),
         'since': ('today', 'days', 'always', 'after_update'),
     }
-    assert list(FORM_FIELDS) == ['platform', 'app', 'network', 'symptom', 'since']
+
+
+@pytest.mark.parametrize('location', ['russia', 'abroad'])
+def test_location_is_required_and_whitelisted(location):
+    assert validate_diagnostics({**FULL, 'location': location})['location'] == location
+    with pytest.raises(ValueError, match='location'):
+        validate_diagnostics({k: v for k, v in FULL.items() if k != 'location'})
+    with pytest.raises(ValueError, match='location'):
+        validate_diagnostics({**FULL, 'location': 'mars'}, DOWN)
+
+
+@pytest.mark.parametrize('platform', ['ios', 'android', 'appleTV', 'router'])
+def test_platform_from_the_config_or_extras_is_accepted(platform):
+    assert validate_diagnostics({**FULL, 'platform': platform})['platform'] == platform
+
+
+def test_platform_outside_the_config_is_rejected_while_the_config_is_up():
+    with pytest.raises(ValueError, match='platform'):
+        validate_diagnostics({**FULL, 'platform': 'windows'})
+
+
+@pytest.mark.parametrize('app', ['Clash Mi', 'RabbitHole', 'FlClashX', 'Happ'])
+def test_app_from_any_platform_of_the_config_is_accepted(app):
+    assert validate_diagnostics({**FULL, 'app': app})['app'] == app
+
+
+@pytest.mark.parametrize('app', ['clash_mi', 'Hiddify', 'happ'])
+def test_unknown_app_is_rejected_while_the_config_is_up(app):
+    with pytest.raises(ValueError, match='app'):
+        validate_diagnostics({**FULL, 'app': app})
+
+
+def test_config_down_tolerates_ids_and_names_loaded_earlier():
+    out = validate_diagnostics({**FULL, 'platform': 'androidTV', 'app': 'Koala Clash'}, DOWN)
+    assert out['platform'] == 'androidTV' and out['app'] == 'Koala Clash'
+
+
+@pytest.mark.parametrize('platform', ['1ios', 'i os', 'x' * 33, 'ios;drop', ''])
+def test_config_down_still_rejects_malformed_platform_ids(platform):
+    with pytest.raises(ValueError, match='platform'):
+        validate_diagnostics({**FULL, 'platform': platform}, DOWN)
+
+
+@pytest.mark.parametrize('app', ['A' * 41, 'Line\nBreak', 'Tab\tName', '\x00x', '   '])
+def test_config_down_still_rejects_malformed_app_names(app):
+    with pytest.raises(ValueError, match='app'):
+        validate_diagnostics({**FULL, 'app': app}, DOWN)
 
 
 def test_validate_returns_full_answers_as_is():
     assert validate_diagnostics(dict(FULL)) == FULL
 
 
-@pytest.mark.parametrize('field', list(FORM_FIELDS))
+@pytest.mark.parametrize('field', list(FORM_FIELD_IDS))
 def test_validate_rejects_a_missing_field(field):
     raw = {k: v for k, v in FULL.items() if k != field}
     with pytest.raises(ValueError, match=field):
         validate_diagnostics(raw)
 
 
-@pytest.mark.parametrize('field', list(FORM_FIELDS))
+@pytest.mark.parametrize('field', list(FORM_FIELD_IDS))
 def test_validate_rejects_an_empty_field(field):
     with pytest.raises(ValueError, match=field):
         validate_diagnostics({**FULL, field: ''})
@@ -80,7 +144,7 @@ def test_validate_rejects_a_missing_or_malformed_form(raw):
         validate_diagnostics(raw)
 
 
-@pytest.mark.parametrize('field', list(FORM_FIELDS))
+@pytest.mark.parametrize('field', list(FORM_FIELD_IDS))
 def test_validate_rejects_an_unknown_option(field):
     with pytest.raises(ValueError, match=field):
         validate_diagnostics({**FULL, field: 'no_such_option'})
@@ -142,10 +206,26 @@ def test_validate_does_not_mutate_its_input():
 def test_render_russian_lists_every_answer_with_readable_labels():
     text = render_diagnostics(FULL, 'ru')
     lines = text.splitlines()
-    assert len(lines) == 5
+    assert len(lines) == 6
     assert all(': ' in line for line in lines)
     assert 'Happ' in text
-    assert 'ios' not in text and 'wifi' not in text  # id вариантов наружу не идут
+    assert 'Россия' in text
+    assert 'russia' not in text and 'wifi' not in text  # id вариантов наружу не идут
+
+
+def test_render_uses_the_config_name_of_the_platform_and_the_app_name():
+    text = render_diagnostics({**FULL, 'platform': 'android', 'app': 'FlClashX', 'location': 'abroad'}, 'ru', OPTS)
+    assert 'Андроид' in text and 'FlClashX' in text and 'За рубежом' in text
+
+
+def test_render_translates_router_and_other_platforms():
+    assert 'Роутер' in render_diagnostics({**FULL, 'platform': 'router'}, 'ru', OPTS)
+    other = render_diagnostics({**FULL, 'platform': 'other', 'platform_other': 'Steam Deck'}, 'ru', OPTS)
+    assert 'Другое — Steam Deck' in other
+
+
+def test_render_shows_an_unknown_but_well_formed_platform_as_its_id():
+    assert 'androidTV' in render_diagnostics({**FULL, 'platform': 'androidTV'}, 'ru', OPTS)
 
 
 def test_render_english_differs_from_russian():
@@ -166,7 +246,7 @@ def test_render_is_plain_text_the_caller_escapes():
 def test_render_skips_garbage_and_handles_empty():
     assert render_diagnostics({}, 'ru') == ''
     assert render_diagnostics(None, 'ru') == ''  # type: ignore[arg-type]
-    assert render_diagnostics({'platform': 'nope'}, 'ru') == ''
+    assert render_diagnostics({'platform': 'no pe!', 'app': 'x' * 41, 'location': 'mars'}, 'ru') == ''
 
 
 @pytest.mark.parametrize('lang', LANGS)
@@ -179,15 +259,17 @@ def test_every_form_text_exists_in_every_locale(lang):
         'TICKET_FORM_OTHER_INVALID',
         'TICKET_FORM_RESTART',
     }
-    for field, options in FORM_FIELDS.items():
+    for field in FORM_FIELD_IDS:
         expected |= {f'TICKET_FORM_{field.upper()}_PROMPT', f'TICKET_FORM_{field.upper()}_LABEL'}
+    for field, options in STATIC_OPTIONS.items():
         expected |= {f'TICKET_FORM_{field.upper()}_{option.upper()}' for option in options}
+    expected |= {'TICKET_FORM_PLATFORM_ROUTER', 'TICKET_FORM_PLATFORM_OTHER', 'TICKET_FORM_APP_OTHER'}
     missing = sorted(k for k in expected if not str(values.get(k, '')).strip())
     assert not missing, f'{lang}: {missing}'
 
 
-def test_telegram_callback_data_of_every_option_fits_64_bytes():
-    for field, options in FORM_FIELDS.items():
+def test_telegram_callback_data_of_every_static_option_fits_64_bytes():
+    for field, options in STATIC_OPTIONS.items():
         for option in options:
             assert len(f'tf:{field}:{option}'.encode()) <= 64
 
@@ -206,6 +288,7 @@ def _flag(monkeypatch):
 async def _post(monkeypatch, body: dict):
     """Один POST /cabinet/tickets против настоящей SQLite-сессии; возвращает ответ и сохранённый тикет."""
     monkeypatch.setattr(cabinet_tickets.SupportSettingsService, 'is_tickets_enabled', lambda: True)
+    monkeypatch.setattr(cabinet_tickets, 'get_form_options', AsyncMock(return_value=OPTS))
     monkeypatch.setattr(event_emitter, 'emit', AsyncMock())
     monkeypatch.setattr(cabinet_tickets, 'notify_admins_about_new_ticket', AsyncMock())
     monkeypatch.setattr(
@@ -311,6 +394,24 @@ async def test_cabinet_flag_off_drops_broken_diagnostics_but_still_creates(monke
     assert stored[0].diagnostics is None
 
 
+@pytest.mark.asyncio
+async def test_cabinet_accepts_a_config_app_name_and_location(monkeypatch, _flag):
+    _flag(True)
+    body = {**BASE_BODY, 'diagnostics': {**FULL, 'platform': 'android', 'app': 'FlClashX', 'location': 'abroad'}}
+    response, stored = await _post(monkeypatch, body)
+    assert response.status_code == 200, response.text
+    assert stored[0].diagnostics['app'] == 'FlClashX'
+    assert stored[0].diagnostics['location'] == 'abroad'
+
+
+@pytest.mark.asyncio
+async def test_cabinet_rejects_an_old_static_app_id(monkeypatch, _flag):
+    _flag(True)
+    response, stored = await _post(monkeypatch, {**BASE_BODY, 'diagnostics': {**FULL, 'app': 'clash_mi'}})
+    assert response.status_code == 422
+    assert stored == []
+
+
 def test_flag_defaults_to_off():
     from app.config import Settings
 
@@ -353,7 +454,22 @@ def bot_env(monkeypatch):
     monkeypatch.setattr(bot_tickets.TicketCRUD, 'is_user_globally_blocked', AsyncMock(return_value=None))
     monkeypatch.setattr(bot_tickets.TicketCRUD, 'user_has_active_ticket', AsyncMock(return_value=False))
     monkeypatch.setattr(bot_tickets, '_try_delete_message_later', AsyncMock())
+    monkeypatch.setattr(bot_tickets, 'get_form_options', AsyncMock(return_value=OPTS))
     return user
+
+
+def _labels(callback: SimpleNamespace) -> list[str]:
+    markup = callback.message.edit_text.await_args.kwargs['reply_markup']
+    return [b.text for row in markup.inline_keyboard for b in row]
+
+
+def _data(field: str, value: str, platform: str = 'ios') -> str:
+    """callback_data кнопки ответа: устройство и приложение — номер в списке вариантов."""
+    if field == 'platform':
+        return f'tf:platform:{OPTS.platform_ids().index(value)}'
+    if field == 'app' and value != 'other':
+        return f'tf:app:{OPTS.apps_for(platform).index(value)}'
+    return f'tf:{field}:{value}'
 
 
 async def _start(bot_env, state, flag: bool, monkeypatch) -> SimpleNamespace:
@@ -369,7 +485,9 @@ async def test_bot_flag_on_first_step_asks_for_the_platform(bot_env, monkeypatch
     callback = await _start(bot_env, state, True, monkeypatch)
     assert await state.get_state() == bot_tickets.TicketStates.waiting_for_form
     buttons = _buttons(callback)
-    assert [b for b in buttons if b.startswith('tf:')] == [f'tf:platform:{o}' for o in FORM_FIELDS['platform']]
+    assert [b for b in buttons if b.startswith('tf:')] == [f'tf:platform:{i}' for i in range(5)]
+    labels = _labels(callback)
+    assert labels[:5] == ['iOS', 'Андроид', 'Apple TV', 'Роутер', 'Другое']  # из конфига, затем router/other
     assert 'cancel_ticket_creation' in buttons  # из анкеты можно выйти
     assert get_texts('ru').t('TICKET_FORM_PLATFORM_PROMPT') in _shown_text(callback)
     assert (await state.get_data())['prompt_message_id'] == 77
@@ -385,7 +503,7 @@ async def test_bot_flag_off_keeps_the_old_title_step(bot_env, monkeypatch):
 
 
 async def _answer(state, bot_env, field: str, option: str) -> SimpleNamespace:
-    callback = _callback(f'tf:{field}:{option}')
+    callback = _callback(option if option.startswith('tf:') else _data(field, option))
     await bot_tickets.handle_ticket_form_answer(callback, state, bot_env)
     return callback
 
@@ -408,11 +526,61 @@ async def test_bot_walks_all_five_questions_then_asks_for_the_title(bot_env, mon
 async def test_bot_each_step_asks_the_next_field(bot_env, monkeypatch):
     state = _state()
     await _start(bot_env, state, True, monkeypatch)
-    order = list(FORM_FIELDS)
+    order = list(FORM_FIELD_IDS)
     for index, (field, option) in enumerate(list(FULL.items())[:-1]):
         callback = await _answer(state, bot_env, field, option)
         nxt = order[index + 1]
-        assert f'tf:{nxt}:{FORM_FIELDS[nxt][0]}' in _buttons(callback)
+        first = '0' if nxt == 'app' else STATIC_OPTIONS[nxt][0]
+        assert f'tf:{nxt}:{first}' in _buttons(callback)
+
+
+@pytest.mark.asyncio
+async def test_bot_app_buttons_come_from_the_chosen_platform(bot_env, monkeypatch):
+    state = _state()
+    await _start(bot_env, state, True, monkeypatch)
+    callback = await _answer(state, bot_env, 'platform', 'android')
+    assert [b for b in _buttons(callback) if b.startswith('tf:')] == ['tf:app:0', 'tf:app:1', 'tf:app:other']
+    assert _labels(callback)[:3] == ['FlClashX', 'Happ', 'Другое']
+    await _answer(state, bot_env, 'app', 'tf:app:0')
+    assert (await state.get_data())['diagnostics'] == {'platform': 'android', 'app': 'FlClashX'}
+
+
+@pytest.mark.asyncio
+async def test_bot_router_offers_every_app(bot_env, monkeypatch):
+    state = _state()
+    await _start(bot_env, state, True, monkeypatch)
+    callback = await _answer(state, bot_env, 'platform', 'router')
+    assert _labels(callback)[:5] == ['Clash Mi', 'RabbitHole', 'FlClashX', 'Happ', 'Другое']
+
+
+@pytest.mark.asyncio
+async def test_bot_location_step_has_two_buttons(bot_env, monkeypatch):
+    state = _state()
+    await _start(bot_env, state, True, monkeypatch)
+    await _answer(state, bot_env, 'platform', 'ios')
+    callback = await _answer(state, bot_env, 'app', 'Clash Mi')
+    assert [b for b in _buttons(callback) if b.startswith('tf:')] == ['tf:location:russia', 'tf:location:abroad']
+    assert get_texts('ru').t('TICKET_FORM_LOCATION_PROMPT') in _shown_text(callback)
+    await _answer(state, bot_env, 'location', 'abroad')
+    assert (await state.get_data())['diagnostics']['location'] == 'abroad'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('data', ['tf:platform:99', 'tf:platform:-1', 'tf:platform:ios', 'tf:platform:'])
+async def test_bot_ignores_a_platform_index_out_of_range(bot_env, monkeypatch, data):
+    state = _state()
+    await _start(bot_env, state, True, monkeypatch)
+    await _answer(state, bot_env, 'platform', data)
+    assert (await state.get_data()).get('diagnostics') in (None, {})
+
+
+def test_bot_callback_data_fits_64_bytes_with_long_names():
+    long_config = {'platforms': {f'p{i}': {'apps': [{'name': 'Я' * 40}]} for i in range(30)}}
+    opts = build_form_options(long_config)
+    for i, pid in enumerate(opts.platform_ids()):
+        assert len(f'tf:platform:{i}'.encode()) <= 64
+        for j, _ in enumerate(opts.apps_for(pid)):
+            assert len(f'tf:app:{j}'.encode()) <= 64
 
 
 @pytest.mark.asyncio
@@ -445,7 +613,7 @@ async def test_bot_ignores_a_button_of_the_wrong_step(bot_env, monkeypatch):
 async def test_bot_ignores_an_unknown_option(bot_env, monkeypatch):
     state = _state()
     await _start(bot_env, state, True, monkeypatch)
-    await _answer(state, bot_env, 'platform', 'amiga')
+    await _answer(state, bot_env, 'platform', 'tf:platform:amiga')
     assert (await state.get_data()).get('diagnostics') in (None, {})
 
 
@@ -486,9 +654,7 @@ async def test_bot_other_asks_for_a_short_text_and_stores_it(bot_env, monkeypatc
     assert data['diagnostics'] == {'platform': 'other', 'platform_other': 'Steam Deck'}
     assert await state.get_state() == bot_tickets.TicketStates.waiting_for_form
     shown = message.bot.edit_message_text.await_args.kwargs
-    assert f'tf:app:{FORM_FIELDS["app"][0]}' in [
-        b.callback_data for row in shown['reply_markup'].inline_keyboard for b in row
-    ]
+    assert 'tf:app:0' in [b.callback_data for row in shown['reply_markup'].inline_keyboard for b in row]
 
 
 @pytest.mark.asyncio
@@ -509,7 +675,10 @@ async def test_bot_other_text_that_is_too_long_is_refused(bot_env, monkeypatch):
 
 
 def test_only_platform_and_app_offer_other():
-    assert [f for f, options in FORM_FIELDS.items() if 'other' in options] == ['platform', 'app']
+    from app.services.support_assist.ticket_form import OTHER_FIELDS, has_other
+
+    assert OTHER_FIELDS == ('platform', 'app')
+    assert [f for f in FORM_FIELD_IDS if has_other(f)] == ['platform', 'app']
 
 
 @pytest.mark.asyncio
@@ -625,6 +794,7 @@ async def test_new_ticket_notification_shows_the_answers(monkeypatch):
             return True
 
     monkeypatch.setattr(bot_tickets, 'AdminNotificationService', FakeService)
+    monkeypatch.setattr(bot_tickets, 'get_form_options', AsyncMock(return_value=OPTS))
     monkeypatch.setattr(bot_tickets, '_build_ticket_notification_keyboard', lambda *a, **k: None)
     monkeypatch.setattr(bot_tickets, 'get_user_by_id', AsyncMock(return_value=None))
     monkeypatch.setattr(
@@ -649,6 +819,7 @@ async def test_new_ticket_notification_shows_the_answers(monkeypatch):
 
     text = sent['text']
     assert 'Happ' in text
+    assert 'Россия' in text
     assert 'Steam &lt;b&gt;Deck&lt;/b&gt;' in text  # свободный текст клиента экранирован
     assert '<b>Deck</b>' not in text
 
@@ -666,6 +837,7 @@ async def test_new_ticket_notification_without_answers_is_unchanged(monkeypatch)
             return True
 
     monkeypatch.setattr(bot_tickets, 'AdminNotificationService', FakeService)
+    monkeypatch.setattr(bot_tickets, 'get_form_options', AsyncMock(return_value=OPTS))
     monkeypatch.setattr(bot_tickets, '_build_ticket_notification_keyboard', lambda *a, **k: None)
     monkeypatch.setattr(bot_tickets, 'get_user_by_id', AsyncMock(return_value=None))
     monkeypatch.setattr(

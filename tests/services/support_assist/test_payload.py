@@ -187,7 +187,7 @@ def test_flag_text_built_from_leaky_snapshot_carries_no_marker():
 
 # --- анкета перед тикетом ----------------------------------------------------
 
-FORM_ANSWERS = {'platform': 'ios', 'app': 'happ', 'network': 'wifi', 'symptom': 'nothing', 'since': 'today'}
+FORM_ANSWERS = {'platform': 'ios', 'app': 'Happ', 'network': 'wifi', 'symptom': 'nothing', 'since': 'today'}
 
 
 def test_payload_includes_the_form_answers_and_stays_clean():
@@ -224,6 +224,22 @@ def test_payload_diagnostics_keeps_the_short_other_text_only_when_other_was_chos
     assert out['platform'] == 'other'
     assert out['platform_other'].startswith('Steam Deck')
     assert len(out['platform_other']) == 100
+
+
+def test_payload_diagnostics_carries_location_app_name_and_config_platform():
+    snap = healthy(diagnostics={**FORM_ANSWERS, 'platform': 'appleTV', 'app': 'Koala Clash', 'location': 'abroad'})
+    out = build_payload(snap, [])['diagnostics']
+    assert out['location'] == 'abroad'
+    assert out['app'] == 'Koala Clash'
+    assert out['platform'] == 'appleTV'
+    assert find_forbidden_keys(build_payload(snap, [])) == []
+
+
+def test_payload_diagnostics_drops_malformed_names_and_locations():
+    dirty = {**FORM_ANSWERS, 'app': LEAK * 11 + '\n', 'platform': 'ios; ' + LEAK, 'location': 'mars'}
+    out = build_payload(healthy(diagnostics=dirty), [])['diagnostics']
+    assert 'app' not in out and 'platform' not in out and 'location' not in out
+    assert LEAK not in json.dumps(out, ensure_ascii=False)
 
 
 def test_payload_diagnostics_survives_garbage_in_the_column():

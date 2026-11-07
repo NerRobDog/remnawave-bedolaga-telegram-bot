@@ -126,8 +126,9 @@ class TicketCreateRequest(BaseModel):
     diagnostics: dict[str, Any] | None = Field(
         None,
         description=(
-            'Answers of the pre-ticket form: platform, app, network, symptom, since (option ids; '
-            'platform_other / app_other carry a short text for "other"). '
+            'Answers of the pre-ticket form: platform (id from support-config ticket_form_options), '
+            'app (app name from the options or "other"), location (russia | abroad), network, symptom, '
+            'since (option ids; platform_other / app_other carry a short text for "other"). '
             'Required when SUPPORT_TICKET_FORM_REQUIRED is on.'
         ),
     )

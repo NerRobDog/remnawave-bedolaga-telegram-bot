@@ -91,11 +91,11 @@ def test_render_all_ids_resolve_in_both_languages():
 
 # --- анкета перед тикетом ----------------------------------------------------
 
-FORM_ANSWERS = {'platform': 'ios', 'app': 'happ', 'network': 'wifi', 'symptom': 'nothing', 'since': 'today'}
+FORM_ANSWERS = {'platform': 'ios', 'app': 'Happ', 'network': 'wifi', 'symptom': 'nothing', 'since': 'today'}
 
 
 def test_form_answers_drop_the_questions_they_cover():
-    s = healthy(devices=[], diagnostics={'platform': 'ios', 'app': 'happ', 'network': 'wifi'})
+    s = healthy(devices=[], diagnostics={'platform': 'ios', 'app': 'Happ', 'network': 'wifi'})
     ids = pick_questions('не работает', False, s, [])
     assert 'device' not in ids and 'app' not in ids and 'network' not in ids
     assert 'since_when' in ids and 'sites' in ids  # анкета на них не отвечала
@@ -123,6 +123,12 @@ def test_full_form_leaves_only_scope_and_screenshot():
 def test_other_answer_still_counts_as_answered():
     s = healthy(devices=[], diagnostics={'platform': 'other', 'platform_other': 'Steam Deck'})
     assert 'device' not in pick_questions('не работает', False, s, [])
+
+
+def test_location_answer_does_not_drop_any_question():
+    base = pick_questions('не работает', False, healthy(devices=[]), [])
+    s = healthy(devices=[], diagnostics={'location': 'russia'})
+    assert pick_questions('не работает', False, s, []) == base
 
 
 def test_no_form_changes_nothing():
