@@ -136,6 +136,8 @@ class Settings(BaseSettings):
     # Серверный запасной ход: при отказе классификатора API повторяет запрос на другой модели (цена — по ответившей).
     SUPPORT_ASSIST_FALLBACKS_ENABLED: bool = True
     SUPPORT_ASSIST_RECOMPUTE_MINUTES: int = 10
+    # Прокси для Anthropic API: он не обслуживает российские IP. Пусто -> PROXY_URL.
+    SUPPORT_ASSIST_PROXY_URL: str | None = None
     # Обязательная анкета перед тикетом (бот и кабинет). Включать после утверждения текстов вариантов
     # и после выката кабинета с формой: старый клиент API без анкеты получит 422.
     SUPPORT_TICKET_FORM_REQUIRED: bool = False
@@ -1734,7 +1736,7 @@ class Settings(BaseSettings):
     # Examples: Cloudflare Worker proxy, self-hosted telegram-bot-api (tdlib), nginx reverse proxy
     TELEGRAM_API_URL: str | None = None
 
-    @field_validator('PROXY_URL', 'NALOGO_PROXY_URL', mode='before')
+    @field_validator('PROXY_URL', 'NALOGO_PROXY_URL', 'SUPPORT_ASSIST_PROXY_URL', mode='before')
     @classmethod
     def validate_proxy_url(cls, value: str | None) -> str | None:
         if not value:
@@ -1973,6 +1975,10 @@ class Settings(BaseSettings):
         Uses NALOGO_PROXY_URL if set, otherwise falls back to PROXY_URL.
         """
         return self.NALOGO_PROXY_URL or self.PROXY_URL
+
+    def get_support_assist_proxy_url(self) -> str | None:
+        """Proxy for the Anthropic API: SUPPORT_ASSIST_PROXY_URL, otherwise PROXY_URL."""
+        return self.SUPPORT_ASSIST_PROXY_URL or self.PROXY_URL or None
 
     def is_admin(self, telegram_id: int | None = None, email: str | None = None) -> bool:
         """

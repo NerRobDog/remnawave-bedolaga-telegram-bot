@@ -89,7 +89,7 @@
   Функции: `create_bot` — Create a Bot instance with SOCKS5 proxy and/or custom Telegram API server.
 - `app/cabinet/`
 - `app/config.py` — Python-модуль
-  Классы: `Settings` (429 методов)
+  Классы: `Settings` (430 методов)
   Функции: `transliterate_cyrillic` — Заменяет кириллические буквы латинскими, сохраняя регистр («Шмель» → «Shmel»)., `set_period_prices_from_db` — Устанавливает периоды/цены из БД., `get_db_period_prices` — Возвращает периоды/цены из БД если они загружены., `clear_db_period_prices` — Очищает кеш цен из тарифов (при переключении в classic mode)., `refresh_period_prices` — Rebuild cached period price mapping., `refresh_classic_period_prices` — Rebuild CLASSIC_PERIOD_PRICES from current settings., `get_traffic_prices`, `refresh_traffic_prices`
 - `app/database/`
 - `app/external/`
@@ -5984,6 +5984,9 @@
 - `tests/services/support_assist/fixtures.py` — Python-модуль
   Классы: нет
   Функции: `prev_day`, `healthy` — Здоровый клиент: ничего не должно срабатывать выше info., `s01`, `s02`, `s03`, `s04`, `s05`, `s06`, `s07`, `s08`, `s09`, `s10`, `s11`, `s12`, `s13`, `s14`, `s15`, `leaky_snapshot` — Полностью заполненный клиент: каждый словарь снимка несёт все запрещённые ключи.
+- `tests/services/support_assist/test_anthropic_proxy.py` — Python-модуль
+  Классы: нет
+  Функции: `test_dedicated_proxy_wins`, `test_falls_back_to_bot_proxy`, `test_no_proxy_uses_sdk_default`
 - `tests/services/support_assist/test_card.py` — Python-модуль
   Классы: нет
   Функции: `test_valid_json_gives_card_and_cost`, `test_api_error_gives_no_card`, `test_invalid_json_gives_no_card`, `test_schema_violation_gives_no_card`, `test_refusal_gives_no_card`, `test_card_truncates_facts_to_seven`, `test_request_kwargs`, `test_effort_comes_from_settings`, `test_unknown_effort_falls_back_to_medium`, `test_fallbacks_can_be_switched_off`, `test_cost_is_priced_by_the_model_that_answered` — Ответил запасной Sonnet 5.5 ($2/$10), а не настроенный Opus 5.5: цена по ответившей модели., `test_cost_of_the_configured_model_is_not_an_estimate`, `test_cost_for_an_unpriced_model_is_marked_as_estimate`, `test_unknown_response_model_means_configured_model_pricing_without_estimate_flag`, `test_prompt_marks_diagnostics_as_unverified_client_answers` — Анкета — слова клиента: в промпте она слабее измеренных проверок., `test_schema_is_strict_objects_without_unsupported_keywords`
