@@ -860,7 +860,7 @@ async def test_sla_still_reminds_after_auto_ask(monkeypatch):
 @pytest.mark.parametrize(
     ('module', 'function', 'trigger'),
     [
-        ('app.handlers.tickets', 'handle_ticket_message_input', 'new_ticket'),
+        ('app.handlers.tickets', '_create_ticket_and_confirm', 'new_ticket'),
         ('app.handlers.tickets', 'handle_ticket_reply', 'new_message'),
         ('app.cabinet.routes.tickets', 'create_ticket', 'new_ticket'),
         ('app.cabinet.routes.tickets', 'add_ticket_message', 'new_message'),

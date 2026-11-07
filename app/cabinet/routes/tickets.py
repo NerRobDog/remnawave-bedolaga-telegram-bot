@@ -16,7 +16,6 @@ from app.database.crud.ticket import TicketCRUD
 from app.database.crud.ticket_notification import TicketNotificationCRUD
 from app.database.models import Ticket, TicketMessage, User
 from app.handlers.tickets import notify_admins_about_new_ticket, notify_admins_about_ticket_reply
-from app.services.support_assist.form_options import FormOptions, get_form_options
 from app.services.support_assist.pipeline import notification_bot, schedule_assist
 from app.services.support_assist.ticket_form import validate_diagnostics
 from app.services.support_settings_service import SupportSettingsService
@@ -57,7 +56,7 @@ def _ensure_tickets_enabled() -> None:
         )
 
 
-def _resolve_diagnostics(raw: dict | None, options: FormOptions) -> dict | None:
+def _resolve_diagnostics(raw: dict | None) -> dict | None:
     """Ответы анкеты из запроса в каноническом виде.
 
     При ``SUPPORT_TICKET_FORM_REQUIRED`` анкета обязательна: нет её или она неполна — 422 в том же
@@ -66,7 +65,7 @@ def _resolve_diagnostics(raw: dict | None, options: FormOptions) -> dict | None:
     """
     if settings.SUPPORT_TICKET_FORM_REQUIRED:
         try:
-            return validate_diagnostics(raw, options)
+            return validate_diagnostics(raw)
         except ValueError as exc:
             raise HTTPException(
                 status_code=422,
@@ -75,7 +74,7 @@ def _resolve_diagnostics(raw: dict | None, options: FormOptions) -> dict | None:
     if raw is None:
         return None
     try:
-        return validate_diagnostics(raw, options)
+        return validate_diagnostics(raw)
     except ValueError as exc:
         logger.warning('Ticket diagnostics dropped: invalid form', error=str(exc))
         return None
@@ -201,9 +200,7 @@ async def create_ticket(
     """Create a new support ticket."""
     _ensure_tickets_enabled()
     # Чистая проверка входа, без БД: раньше блокировок и записи.
-    diagnostics = None
-    if settings.SUPPORT_TICKET_FORM_REQUIRED or request.diagnostics is not None:
-        diagnostics = _resolve_diagnostics(request.diagnostics, await get_form_options())
+    diagnostics = _resolve_diagnostics(request.diagnostics)
     await _ensure_not_blocked(db, user)
 
     # Один незакрытый тикет на пользователя — паритет с бот-путём
