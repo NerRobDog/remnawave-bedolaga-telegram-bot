@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -18,6 +19,7 @@ import structlog
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.database.crud.support_assist import end_transaction
 from app.database.models import (
     ButtonClickLog,
     Subscription,
@@ -34,6 +36,13 @@ from app.external.remnawave_errors import coerce_panel_user_id
 logger = structlog.get_logger(__name__)
 
 _ACTION_PREFIXES = ('POST%', 'DELETE%', 'PATCH%')
+
+# Потолок на один запрос к панели вместе с её повторами. Источники идут параллельно, поэтому
+# зависшая панель задерживает снимок на это время один раз, а не по разу на каждый источник.
+PANEL_SOURCE_TIMEOUT_SECONDS = 20.0
+
+# Порядок источников в ``Snapshot.missing``: параллельные запросы завершаются в произвольном порядке.
+_SOURCE_ORDER = ('bot_db', 'panel_user', 'sub_requests', 'devices', 'usage', 'squad_nodes', 'nodes')
 
 
 @dataclass
@@ -67,10 +76,13 @@ def _dt(value: Any) -> datetime | None:
         return None
 
 
-async def _guard[T](name: str, missing: list[str], fn: Callable[[], Awaitable[T]]) -> T | None:
-    """Выполнить источник; при любой ошибке записать его имя в ``missing``."""
+async def _guard[T](
+    name: str, missing: list[str], fn: Callable[[], Awaitable[T]], timeout: float | None = None
+) -> T | None:
+    """Выполнить источник; при любой ошибке или превышении ``timeout`` записать его имя в ``missing``."""
     try:
-        return await fn()
+        async with asyncio.timeout(timeout):
+            return await fn()
     except Exception as exc:
         logger.warning('support_assist: источник снимка недоступен', source=name, error=repr(exc))
         missing.append(name)
@@ -255,6 +267,9 @@ async def collect_snapshot(db: AsyncSession, api: RemnaWaveAPI, ticket: Ticket, 
         for key, value in bot.items():
             setattr(snap, key, value)
 
+    # Чтение БД закончено: транзакция не должна висеть, пока мы ждём панель.
+    await end_transaction(db)
+
     remnawave_id = (snap.account or {}).get('remnawave_id')
     if remnawave_id is None:
         return snap
@@ -263,12 +278,16 @@ async def collect_snapshot(db: AsyncSession, api: RemnaWaveAPI, ticket: Ticket, 
     except Exception:
         return snap
 
-    user = await _guard('panel_user', missing, lambda: _fetch_panel_user(api, panel_id))
-    history = await _guard('sub_requests', missing, lambda: _fetch_history(api, panel_id))
-    devices = await _guard('devices', missing, lambda: _fetch_devices(api, panel_id))
-    usage = await _guard('usage', missing, lambda: _fetch_usage(api, panel_id, now))
-    accessible = await _guard('squad_nodes', missing, lambda: _fetch_accessible(api, panel_id))
-    all_nodes = await _guard('nodes', missing, api.get_all_nodes)
+    timeout = PANEL_SOURCE_TIMEOUT_SECONDS
+    user, history, devices, usage, accessible, all_nodes = await asyncio.gather(
+        _guard('panel_user', missing, lambda: _fetch_panel_user(api, panel_id), timeout),
+        _guard('sub_requests', missing, lambda: _fetch_history(api, panel_id), timeout),
+        _guard('devices', missing, lambda: _fetch_devices(api, panel_id), timeout),
+        _guard('usage', missing, lambda: _fetch_usage(api, panel_id, now), timeout),
+        _guard('squad_nodes', missing, lambda: _fetch_accessible(api, panel_id), timeout),
+        _guard('nodes', missing, api.get_all_nodes, timeout),
+    )
+    missing.sort(key=lambda name: _SOURCE_ORDER.index(name) if name in _SOURCE_ORDER else len(_SOURCE_ORDER))
 
     if history is not None:
         snap.sub_requests_total, snap.sub_requests = history

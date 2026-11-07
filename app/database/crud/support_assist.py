@@ -22,6 +22,23 @@ async def create_card(db: AsyncSession, **fields: Any) -> SupportAssistCard:
     return card
 
 
+async def end_transaction(db: AsyncSession) -> None:
+    """Закрыть открытую транзакцию и вернуть соединение в пул. Не бросает исключений.
+
+    Вызывается перед долгим сетевым вызовом (панель, Claude, Telegram): иначе соединение
+    простаивает «в транзакции» и PostgreSQL рвёт его по idle_in_transaction_session_timeout.
+    Если commit не прошёл (сессия в сбойном состоянии), откатываем.
+    """
+    try:
+        await db.commit()
+    except Exception:
+        logger.warning('support_assist.end_transaction_failed', exc_info=True)
+        try:
+            await db.rollback()
+        except Exception:
+            logger.warning('support_assist.rollback_failed', exc_info=True)
+
+
 async def last_card_for_ticket(db: AsyncSession, ticket_id: int) -> SupportAssistCard | None:
     result = await db.execute(
         select(SupportAssistCard)
