@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database.models import PromoCode, PromoCodeType, PromoCodeUse, User
+from app.utils.timezone import local_day_start
 
 
 logger = structlog.get_logger(__name__)
@@ -57,6 +58,7 @@ async def create_promocode(
     type: PromoCodeType,
     balance_bonus_kopeks: int = 0,
     subscription_days: int = 0,
+    traffic_gb: int = 0,
     max_uses: int = 1,
     valid_until: datetime | None = None,
     created_by: int | None = None,
@@ -67,6 +69,7 @@ async def create_promocode(
         type=type.value,
         balance_bonus_kopeks=balance_bonus_kopeks,
         subscription_days=subscription_days,
+        traffic_gb=traffic_gb,
         max_uses=max_uses,
         valid_until=valid_until,
         created_by=created_by,
@@ -84,28 +87,6 @@ async def create_promocode(
     return promocode
 
 
-async def use_promocode(db: AsyncSession, promocode_id: int, user_id: int) -> bool:
-    try:
-        promocode = await get_promocode_by_id(db, promocode_id)
-        if not promocode:
-            return False
-
-        usage = PromoCodeUse(promocode_id=promocode_id, user_id=user_id)
-        db.add(usage)
-
-        promocode.current_uses += 1
-
-        await db.commit()
-
-        logger.info('✅ Промокод использован пользователем', code=promocode.code, user_id=user_id)
-        return True
-
-    except Exception as e:
-        logger.error('Ошибка использования промокода', error=e)
-        await db.rollback()
-        return False
-
-
 async def check_user_promocode_usage(db: AsyncSession, user_id: int, promocode_id: int) -> bool:
     result = await db.execute(
         select(PromoCodeUse).where(and_(PromoCodeUse.user_id == user_id, PromoCodeUse.promocode_id == promocode_id))
@@ -113,12 +94,22 @@ async def check_user_promocode_usage(db: AsyncSession, user_id: int, promocode_i
     return result.scalar_one_or_none() is not None
 
 
-async def create_promocode_use(db: AsyncSession, promocode_id: int, user_id: int) -> PromoCodeUse:
+async def create_promocode_use(db: AsyncSession, promocode_id: int, user_id: int) -> PromoCodeUse | None:
+    from sqlalchemy.exc import IntegrityError
+
     promocode_use = PromoCodeUse(promocode_id=promocode_id, user_id=user_id, used_at=datetime.now(UTC))
 
-    db.add(promocode_use)
-    await db.commit()
-    await db.refresh(promocode_use)
+    try:
+        async with db.begin_nested():
+            db.add(promocode_use)
+            await db.flush()
+    except IntegrityError:
+        logger.warning(
+            '⚠️ Дублирующая запись использования промокода (race condition)',
+            promocode_id=promocode_id,
+            user_id=user_id,
+        )
+        return None
 
     logger.info('📝 Записано использование промокода пользователем', promocode_id=promocode_id, user_id=user_id)
     return promocode_use
@@ -237,7 +228,7 @@ async def get_promocode_statistics(db: AsyncSession, promocode_id: int) -> dict:
     )
     total_uses = total_uses_result.scalar()
 
-    today = datetime.now(UTC).date()
+    today = local_day_start()
     today_uses_result = await db.execute(
         select(func.count(PromoCodeUse.id)).where(
             and_(PromoCodeUse.promocode_id == promocode_id, PromoCodeUse.used_at >= today)

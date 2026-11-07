@@ -4,9 +4,6 @@ import mimetypes
 from typing import Any
 
 import structlog
-from aiogram import Bot
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
 from aiogram.types import BufferedInputFile
 from fastapi import (
     APIRouter,
@@ -20,7 +17,9 @@ from fastapi import (
     status,
 )
 
+from app.bot_factory import create_bot
 from app.config import settings
+from app.utils.public_url import public_url
 
 from ..dependencies import require_api_token
 from ..schemas.media import MediaUploadResponse
@@ -50,7 +49,7 @@ def _resolve_target_chat_id() -> int:
 
 
 def _build_media_url(request: Request, file_id: str) -> str:
-    return str(request.url_for('download_media', file_id=file_id))
+    return public_url(request, request.url_for('download_media', file_id=file_id))
 
 
 @router.post('/upload', response_model=MediaUploadResponse, tags=['media'], status_code=status.HTTP_201_CREATED)
@@ -72,10 +71,7 @@ async def upload_media(
     target_chat_id = _resolve_target_chat_id()
     upload = BufferedInputFile(file_bytes, filename=file.filename or 'upload')
 
-    bot = Bot(
-        token=settings.BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
+    bot = create_bot()
 
     try:
         if media_type_normalized == 'photo':
@@ -121,10 +117,7 @@ async def download_media(
     file_id: str,
     _: Any = Security(require_api_token),
 ) -> Response:
-    bot = Bot(
-        token=settings.BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
+    bot = create_bot()
 
     try:
         file = await bot.get_file(file_id)

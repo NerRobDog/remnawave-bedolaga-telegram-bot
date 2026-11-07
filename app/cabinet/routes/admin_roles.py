@@ -7,9 +7,10 @@ from datetime import datetime
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.crud.rbac import AdminRoleCRUD, UserRoleCRUD
+from app.database.crud.rbac import SUPERADMIN_LEVEL, AdminRoleCRUD, UserRoleCRUD
 from app.database.models import User
 from app.services.permission_service import PERMISSION_REGISTRY, get_all_permissions
 
@@ -129,21 +130,26 @@ async def _role_to_response(db: AsyncSession, role) -> RoleResponse:
 
 
 async def _get_admin_level(db: AsyncSession, admin: User) -> int:
-    """Get the maximum role level of the current admin.
+    """Get the effective management level of the current admin.
 
-    Legacy config-based admins (ADMIN_IDS) get superadmin level (999+1=1000)
-    so they can manage all roles including level 999.
+    Superadmin-tier users (DB level 999 or legacy ADMIN_IDS) are promoted to
+    level 1000 so they can manage peer Superadmins.  Without this, the ``>=``
+    hierarchy guard would block 999-vs-999 operations.
     """
     from app.config import settings
 
     _perms, _names, max_level = await UserRoleCRUD.get_user_permissions(db, admin.id)
+
+    # DB-assigned Superadmins can manage peers
+    if max_level >= SUPERADMIN_LEVEL:
+        max_level = SUPERADMIN_LEVEL + 1
 
     # Legacy config-based admins always get the highest level
     if settings.is_admin(
         telegram_id=admin.telegram_id,
         email=admin.email if admin.email_verified else None,
     ):
-        max_level = max(max_level, 1000)
+        max_level = max(max_level, SUPERADMIN_LEVEL + 1)
 
     return max_level
 
@@ -164,6 +170,35 @@ def _validate_permissions(permissions: list[str]) -> None:
         )
 
 
+def _permission_covered(perm: str, held: set[str]) -> bool:
+    """True when a held permission set grants `perm` (supports *:* and section:* wildcards)."""
+    if '*:*' in held or perm in held:
+        return True
+    section = perm.split(':', 1)[0] if ':' in perm else perm
+    return f'{section}:*' in held
+
+
+async def _ensure_can_grant(db: AsyncSession, admin: User, admin_level: int, permissions: list[str]) -> None:
+    """Block privilege escalation: an admin may only grant permissions they hold.
+
+    Hierarchy guards only check the numeric role LEVEL, so without this a
+    delegated admin holding roles:create / roles:assign could mint a lower-level
+    role carrying permissions (or *:*) they were never given and assign it to
+    themselves. Env/legacy and DB Superadmins (promoted above SUPERADMIN_LEVEL by
+    _get_admin_level) may grant anything.
+    """
+    if admin_level > SUPERADMIN_LEVEL:
+        return
+    held_list, _names, _level = await UserRoleCRUD.get_user_permissions(db, admin.id)
+    held = set(held_list)
+    not_held = sorted(p for p in permissions if not _permission_covered(p, held))
+    if not_held:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f'You cannot grant permissions you do not hold: {", ".join(not_held)}',
+        )
+
+
 # ============ Routes ============
 
 
@@ -175,6 +210,45 @@ async def get_permission_registry(
     return [
         PermissionSection(section=section, actions=list(actions)) for section, actions in PERMISSION_REGISTRY.items()
     ]
+
+
+@router.get('/users', response_model=list[AdminWithRolesResponse])
+async def list_rbac_users(
+    admin: User = Depends(require_permission('roles:read')),
+    db: AsyncSession = Depends(get_cabinet_db),
+):
+    """List all users that have at least one active RBAC role."""
+    from sqlalchemy import select as _sa_select
+    from sqlalchemy.orm import selectinload as _sel
+
+    from app.database.models import UserRole as _UserRole
+
+    result = await db.execute(
+        _sa_select(_UserRole)
+        .options(_sel(_UserRole.user), _sel(_UserRole.role))
+        .where(_UserRole.is_active.is_(True))
+        .order_by(_UserRole.user_id)
+    )
+    assignments = result.scalars().all()
+
+    users_map: dict[int, AdminWithRolesResponse] = {}
+    for a in assignments:
+        if not a.user:
+            continue
+        if a.user_id not in users_map:
+            users_map[a.user_id] = AdminWithRolesResponse(
+                user_id=a.user_id,
+                telegram_id=a.user.telegram_id,
+                username=a.user.username,
+                first_name=a.user.first_name,
+                last_name=a.user.last_name,
+                email=a.user.email,
+                role_names=[],
+            )
+        if a.role:
+            users_map[a.user_id].role_names.append(a.role.name)
+
+    return list(users_map.values())
 
 
 @router.get('/roles/{role_id}/users', response_model=list[UserRoleResponse])
@@ -250,6 +324,9 @@ async def create_role(
             detail='Cannot create a role with level >= your own role level',
         )
 
+    # Cannot grant permissions the creating admin does not themselves hold.
+    await _ensure_can_grant(db, admin, admin_level, payload.permissions)
+
     # Check name uniqueness
     existing = await AdminRoleCRUD.get_by_name(db, payload.name)
     if existing:
@@ -300,6 +377,20 @@ async def update_role(
 
     update_data = payload.model_dump(exclude_unset=True)
 
+    # System roles: only permissions can be extended, block is_active/level changes
+    if role.is_system:
+        protected = {'is_active', 'level'} & update_data.keys()
+        blocked = {field for field in protected if update_data[field] != getattr(role, field)}
+        if blocked:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f'Cannot change {", ".join(sorted(blocked))} on a system role',
+            )
+        # Older clients send unchanged fields with every save. Accept them,
+        # but never include protected fields in the system-role write.
+        for field in protected:
+            update_data.pop(field)
+
     # Validate level change
     if 'level' in update_data and update_data['level'] >= admin_level:
         raise HTTPException(
@@ -310,6 +401,8 @@ async def update_role(
     # Validate permissions
     if 'permissions' in update_data and update_data['permissions'] is not None:
         _validate_permissions(update_data['permissions'])
+        # Cannot raise a role's permissions beyond what the editing admin holds.
+        await _ensure_can_grant(db, admin, admin_level, update_data['permissions'])
 
     # Check name uniqueness if name is changing
     if 'name' in update_data and update_data['name'] != role.name:
@@ -387,6 +480,14 @@ async def assign_role(
             detail='Role not found',
         )
 
+    # Superadmin role is managed exclusively via ADMIN_IDS/ADMIN_EMAILS env config
+    if role.level >= SUPERADMIN_LEVEL:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail='Superadmin role is managed via ADMIN_IDS/ADMIN_EMAILS environment variables. '
+            'Add the user there and restart the bot.',
+        )
+
     admin_level = await _get_admin_level(db, admin)
 
     # Cannot assign a role with level >= own level
@@ -395,6 +496,10 @@ async def assign_role(
             status_code=status.HTTP_403_FORBIDDEN,
             detail='Cannot assign a role with level >= your own role level',
         )
+
+    # Cannot hand out a role whose permissions exceed the assigning admin's own
+    # (otherwise roles:assign alone lets an admin grab any lower-level role's perms).
+    await _ensure_can_grant(db, admin, admin_level, role.permissions or [])
 
     # Verify target user exists
     from app.database.crud.user import get_user_by_id
@@ -444,13 +549,11 @@ async def revoke_role(
     admin: User = Depends(require_permission('roles:assign')),
     db: AsyncSession = Depends(get_cabinet_db),
 ):
-    """Revoke a role assignment. Cannot remove the last superadmin."""
-    from sqlalchemy import select as sa_select
-
+    """Revoke a role assignment. Superadmin roles are managed via env config."""
     from app.database.models import UserRole
 
-    # Load the assignment to check hierarchy
-    result = await db.execute(sa_select(UserRole).where(UserRole.id == assignment_id))
+    # Lock the assignment row (FOR UPDATE held until commit)
+    result = await db.execute(select(UserRole).where(UserRole.id == assignment_id).with_for_update())
     user_role = result.scalar_one_or_none()
     if not user_role:
         raise HTTPException(
@@ -465,6 +568,14 @@ async def revoke_role(
             detail='Associated role not found',
         )
 
+    # Superadmin role is managed exclusively via env config
+    if role.level >= SUPERADMIN_LEVEL:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail='Superadmin role is managed via ADMIN_IDS/ADMIN_EMAILS environment variables. '
+            'Remove the user from env and restart the bot.',
+        )
+
     admin_level = await _get_admin_level(db, admin)
 
     # Cannot revoke a role at or above own level
@@ -474,23 +585,12 @@ async def revoke_role(
             detail='Cannot revoke a role at or above your own level',
         )
 
-    # Protect last superadmin (level 999)
-    superadmin_level = 999
-    if role.level == superadmin_level:
-        superadmin_count = await UserRoleCRUD.get_superadmin_count(db)
-        if superadmin_count <= 1:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail='Cannot remove the last superadmin',
-            )
-
-    revoked = await UserRoleCRUD.revoke_role(db, assignment_id)
-    if not revoked:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail='Failed to revoke role',
-        )
-
+    # Revoke directly on the locked object (avoid CRUD re-fetch without FOR UPDATE).
+    # revocation_source='ui' защищает manual decision от автоматической реактивации
+    # bootstrap'ом при следующем рестарте бота (см. _assign_if_missing).
+    user_role.is_active = False
+    user_role.revocation_source = 'ui'
+    await db.flush()
     await db.commit()
 
     logger.info(
@@ -499,5 +599,7 @@ async def revoke_role(
         assignment_id=assignment_id,
         target_user_id=user_role.user_id,
         role_name=role.name,
+        revocation_source='ui',
     )
+
     return {'message': 'Role revoked', 'assignment_id': assignment_id}

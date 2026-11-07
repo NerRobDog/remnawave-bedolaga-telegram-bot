@@ -1,3 +1,4 @@
+import html
 from datetime import UTC, datetime
 
 import structlog
@@ -12,6 +13,7 @@ from app.services.server_status_service import (
     ServerStatusError,
     ServerStatusService,
 )
+from app.utils.timezone import format_local_datetime
 
 
 logger = structlog.get_logger(__name__)
@@ -106,7 +108,7 @@ def _build_status_message(
         offline=len(offline_servers),
     )
 
-    updated_at = datetime.now(UTC).strftime('%H:%M:%S')
+    updated_at = format_local_datetime(datetime.now(UTC), '%H:%M:%S')
 
     lines.extend(
         [
@@ -169,7 +171,7 @@ def _split_into_pages(
 
         pages.append((current_online, current_offline))
 
-    return pages if pages else [([], [])]
+    return pages or [([], [])]
 
 
 def _format_server_lines(
@@ -189,7 +191,7 @@ def _format_server_lines(
         else:
             latency_text = texts.t('SERVER_STATUS_OFFLINE', 'нет ответа')
 
-        name = server.display_name or server.name
+        name = html.escape(server.display_name or server.name)
         flag_prefix = f'{server.flag} ' if server.flag else ''
         server_line = f'{flag_prefix}{name} — {latency_text}'
         lines.append(f'<blockquote>{server_line}</blockquote>')

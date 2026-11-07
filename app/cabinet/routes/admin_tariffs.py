@@ -1,10 +1,14 @@
 """Admin routes for managing tariffs in cabinet."""
 
+import asyncio
+
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
+from app.config import settings
 from app.database.crud.server_squad import get_all_server_squads
 from app.database.crud.tariff import (
     create_tariff,
@@ -17,14 +21,18 @@ from app.database.crud.tariff import (
     set_tariff_promo_groups,
     update_tariff,
 )
-from app.database.models import PromoGroup, Subscription, Tariff, Transaction, TransactionType, User
+from app.database.models import PromoGroup, Subscription, SubscriptionStatus, Tariff, Transaction, TransactionType, User
+from app.services.panel_sync import patch_panel_squads
+from app.services.tariff_squad_sync import sync_tariff_squads_in_background
 
 from ..dependencies import get_cabinet_db, require_permission
 from ..schemas.tariffs import (
+    ExternalSquadInfoResponse,
     PeriodPrice,
     PromoGroupInfo,
     ServerInfo,
     ServerTrafficLimit,
+    SyncSquadsResponse,
     TariffCreateRequest,
     TariffDetailResponse,
     TariffListItem,
@@ -125,7 +133,10 @@ async def list_tariffs(
                 is_trial_available=tariff.is_trial_available,
                 is_daily=tariff.is_daily,
                 daily_price_kopeks=tariff.daily_price_kopeks,
+                lava_product_id=tariff.lava_product_id,
+                panel_tag=tariff.panel_tag,
                 allow_traffic_topup=tariff.allow_traffic_topup,
+                show_in_gift=tariff.show_in_gift,
                 traffic_limit_gb=tariff.traffic_limit_gb,
                 device_limit=tariff.device_limit,
                 tier_level=tariff.tier_level,
@@ -156,6 +167,30 @@ async def get_available_servers(
         )
         for server in servers
     ]
+
+
+@router.get('/available-external-squads', response_model=list[ExternalSquadInfoResponse])
+async def get_available_external_squads(
+    admin: User = Depends(require_permission('tariffs:read')),
+):
+    """Fetch external squads from RemnaWave panel."""
+    from app.services.remnawave_service import RemnaWaveService
+
+    try:
+        service = RemnaWaveService()
+        async with service.get_api_client() as api:
+            squads = await api.get_external_squads()
+            return [
+                {
+                    'uuid': s.uuid,
+                    'name': s.name,
+                    'members_count': s.members_count,
+                }
+                for s in squads
+            ]
+    except Exception:
+        logger.warning('Failed to fetch external squads from RemnaWave', exc_info=True)
+        return []
 
 
 @router.put('/order')
@@ -218,6 +253,8 @@ async def get_tariff(
         tier_level=tariff.tier_level,
         display_order=tariff.display_order,
         period_prices=_period_prices_to_list(tariff.period_prices),
+        highlight_period_days=tariff.highlight_period_days,
+        is_highlighted=tariff.is_highlighted,
         allowed_squads=allowed_squads,
         server_traffic_limits=server_limits_response,
         servers=servers,
@@ -236,8 +273,15 @@ async def get_tariff(
         # Дневной тариф
         is_daily=tariff.is_daily,
         daily_price_kopeks=tariff.daily_price_kopeks,
+        lava_product_id=tariff.lava_product_id,
+        panel_tag=tariff.panel_tag,
+        trial_duration_days=tariff.trial_duration_days,
         # Режим сброса трафика
         traffic_reset_mode=tariff.traffic_reset_mode,
+        # Внешний сквад
+        external_squad_uuid=tariff.external_squad_uuid,
+        # Показывать в подарках
+        show_in_gift=tariff.show_in_gift,
         created_at=tariff.created_at,
         updated_at=tariff.updated_at,
     )
@@ -274,9 +318,11 @@ async def create_new_tariff(
         max_device_limit=request.max_device_limit,
         tier_level=request.tier_level,
         period_prices=period_prices_dict,
+        highlight_period_days=request.highlight_period_days or None,
+        is_highlighted=request.is_highlighted,
         allowed_squads=request.allowed_squads,
         server_traffic_limits=server_limits_dict,
-        promo_group_ids=request.promo_group_ids if request.promo_group_ids else None,
+        promo_group_ids=request.promo_group_ids or None,
         # Произвольное количество дней
         custom_days_enabled=request.custom_days_enabled,
         price_per_day_kopeks=request.price_per_day_kopeks,
@@ -290,8 +336,15 @@ async def create_new_tariff(
         # Дневной тариф
         is_daily=request.is_daily,
         daily_price_kopeks=request.daily_price_kopeks,
+        lava_product_id=request.lava_product_id,
+        panel_tag=request.panel_tag,
+        trial_duration_days=request.trial_duration_days,
         # Режим сброса трафика
         traffic_reset_mode=request.traffic_reset_mode,
+        # Внешний сквад
+        external_squad_uuid=request.external_squad_uuid,
+        # Показывать в подарках
+        show_in_gift=request.show_in_gift,
     )
 
     logger.info('Admin created tariff', admin_id=admin.id, tariff_id=tariff.id, tariff_name=tariff.name)
@@ -318,6 +371,10 @@ async def update_existing_tariff(
             detail='Tariff not found',
         )
 
+    # Capture old values for change detection
+    old_squads = list(tariff.allowed_squads) if tariff.allowed_squads else []
+    old_external_squad = tariff.external_squad_uuid
+
     # Build updates dict
     updates = {}
     if request.name is not None:
@@ -326,6 +383,8 @@ async def update_existing_tariff(
         updates['description'] = request.description
     if request.is_active is not None:
         updates['is_active'] = request.is_active
+    if request.is_highlighted is not None:
+        updates['is_highlighted'] = request.is_highlighted
     if request.allow_traffic_topup is not None:
         updates['allow_traffic_topup'] = request.allow_traffic_topup
     if request.traffic_topup_enabled is not None:
@@ -348,6 +407,9 @@ async def update_existing_tariff(
         updates['display_order'] = request.display_order
     if request.period_prices is not None:
         updates['period_prices'] = _period_prices_to_dict(request.period_prices)
+    # 0 снимает выделение: пустое поле означает «не трогать», а не «снять».
+    if 'highlight_period_days' in request.model_fields_set:
+        updates['highlight_period_days'] = request.highlight_period_days or None
     if request.allowed_squads is not None:
         updates['allowed_squads'] = request.allowed_squads
     if request.server_traffic_limits is not None:
@@ -376,11 +438,25 @@ async def update_existing_tariff(
     # Дневной тариф
     if request.is_daily is not None:
         updates['is_daily'] = request.is_daily
+    if request.lava_product_id is not None:
+        updates['lava_product_id'] = request.lava_product_id.strip() or None
     if request.daily_price_kopeks is not None:
         updates['daily_price_kopeks'] = request.daily_price_kopeks
     # Режим сброса трафика (None допускается как значение для сброса к глобальной настройке)
     if 'traffic_reset_mode' in request.model_fields_set:
         updates['traffic_reset_mode'] = request.traffic_reset_mode
+    # Внешний сквад (None допускается для сброса)
+    if 'external_squad_uuid' in request.model_fields_set:
+        updates['external_squad_uuid'] = request.external_squad_uuid
+    # Показывать в подарках
+    if request.show_in_gift is not None:
+        updates['show_in_gift'] = request.show_in_gift
+    # Тег панели: пустая строка/None в запросе = снять; без поля — не трогать
+    if 'panel_tag' in request.model_fields_set:
+        updates['panel_tag'] = request.panel_tag
+    # Дни триала: None = вернуться к глобальному значению
+    if 'trial_duration_days' in request.model_fields_set:
+        updates['trial_duration_days'] = request.trial_duration_days
 
     if updates:
         await update_tariff(db, tariff, **updates)
@@ -393,6 +469,18 @@ async def update_existing_tariff(
 
     # Перезагружаем периоды из БД для синхронизации с ботом
     await load_period_prices_from_db(db)
+
+    # Auto-sync squads to active subscriptions in Remnawave when squads changed
+    new_squads = tariff.allowed_squads or []
+    squads_changed = request.allowed_squads is not None and sorted(old_squads) != sorted(new_squads)
+    ext_squad_changed = (
+        'external_squad_uuid' in request.model_fields_set and tariff.external_squad_uuid != old_external_squad
+    )
+    if squads_changed or ext_squad_changed:
+        asyncio.create_task(
+            _background_sync_squads(tariff_id, admin.id),
+            name=f'sync-squads-tariff-{tariff_id}',
+        )
 
     return await get_tariff(tariff_id, admin, db)
 
@@ -553,4 +641,157 @@ async def get_tariff_stats(
         trial_subscriptions=trial_count,
         revenue_kopeks=revenue_kopeks,
         revenue_rubles=revenue_kopeks / 100,
+    )
+
+
+async def _background_sync_squads(tariff_id: int, admin_id: int) -> None:
+    """Общая с телеграм-редактором фоновая синхронизация (app.services.tariff_squad_sync)."""
+    await sync_tariff_squads_in_background(tariff_id, admin_id)
+
+
+_SYNC_SQUADS_CONCURRENCY = 5
+_SYNC_SQUADS_MAX_CONSECUTIVE_FAILURES = 10
+
+
+@router.post('/{tariff_id}/sync-squads', response_model=SyncSquadsResponse)
+async def sync_tariff_squads(
+    tariff_id: int,
+    admin: User = Depends(require_permission('tariffs:edit')),
+    db: AsyncSession = Depends(get_cabinet_db),
+):
+    """Sync squads from tariff to all active/trial subscriptions in Remnawave panel.
+
+    Updates connected_squads and external_squad_uuid for every active or trial
+    subscription linked to this tariff.  Only users that have a remnawave_id
+    (i.e. already exist in the panel) are touched.
+    """
+    tariff = await get_tariff_by_id(db, tariff_id)
+    if not tariff:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail='Tariff not found',
+        )
+
+    # Fetch active + trial subscriptions for this tariff whose users exist in Remnawave
+    result = await db.execute(
+        select(Subscription)
+        .join(User, Subscription.user_id == User.id)
+        .options(joinedload(Subscription.user))
+        .where(
+            and_(
+                Subscription.tariff_id == tariff_id,
+                Subscription.status.in_([SubscriptionStatus.ACTIVE.value, SubscriptionStatus.TRIAL.value]),
+                # См. комментарий в фоновом синке: в multi-tariff идентичность
+                # на подписке, фильтр только по User не выбрал бы никого.
+                or_(Subscription.remnawave_id.isnot(None), User.remnawave_id.isnot(None)),
+            )
+        )
+    )
+    subscriptions = list(result.unique().scalars().all())
+
+    if not subscriptions:
+        return SyncSquadsResponse(
+            tariff_id=tariff_id,
+            tariff_name=tariff.name,
+            total_subscriptions=0,
+            updated_count=0,
+            failed_count=0,
+            skipped_count=0,
+        )
+
+    new_squads = tariff.allowed_squads or []
+    # None means "clear external squad" — intentional when tariff has none
+    ext_squad_uuid = tariff.external_squad_uuid
+
+    # Sync to Remnawave panel with concurrency limit and circuit breaker
+    from app.services.abroad_mode_service import resolve_external_squad_for_sync
+    from app.services.grace_access_runtime import update_panel_user_grace_safe
+    from app.services.remnawave_service import RemnaWaveService
+
+    service = RemnaWaveService()
+    updated_count = 0
+    failed_count = 0
+    skipped_count = 0
+    consecutive_failures = 0
+    errors: list[str] = []
+    aborted = False
+
+    async with service.get_api_client() as api:
+        semaphore = asyncio.Semaphore(_SYNC_SQUADS_CONCURRENCY)
+
+        async def _sync_one(sub: Subscription) -> str:
+            # Counter mutations are safe: no `await` between read-modify-write
+            # and the check within each branch (single-threaded asyncio event loop).
+            nonlocal updated_count, failed_count, skipped_count, consecutive_failures, aborted
+
+            if aborted:
+                skipped_count += 1
+                return 'skipped'
+
+            remnawave_id = (
+                getattr(sub, 'remnawave_id', None)
+                if settings.is_multi_tariff_enabled()
+                else (sub.user.remnawave_id if sub.user else None)
+            )
+            if not remnawave_id:
+                skipped_count += 1
+                return 'skipped'
+
+            async with semaphore:
+                if aborted:
+                    skipped_count += 1
+                    return 'skipped'
+
+                try:
+                    await patch_panel_squads(
+                        api,
+                        user_id=remnawave_id,
+                        squads=new_squads,
+                        external_squad_uuid=resolve_external_squad_for_sync(sub, ext_squad_uuid),
+                        update_call=lambda **kwargs: update_panel_user_grace_safe(api, sub.id, **kwargs),
+                    )
+                    # Update local DB only on successful API call
+                    sub.connected_squads = new_squads
+                    updated_count += 1
+                    consecutive_failures = 0
+                    return 'ok'
+                except Exception as e:
+                    failed_count += 1
+                    consecutive_failures += 1
+                    errors.append(f'user_id={sub.user_id}: sync failed')
+                    logger.warning(
+                        'Failed to sync squads for user in Remnawave',
+                        user_id=sub.user_id,
+                        remnawave_id=remnawave_id,
+                        error=str(e),
+                    )
+                    if consecutive_failures >= _SYNC_SQUADS_MAX_CONSECUTIVE_FAILURES:
+                        aborted = True
+                        errors.append(f'Aborted after {_SYNC_SQUADS_MAX_CONSECUTIVE_FAILURES} consecutive failures')
+                    return 'error'
+
+        await asyncio.gather(*[_sync_one(sub) for sub in subscriptions])
+
+    # Commit local DB changes only for successfully synced subscriptions
+    await db.commit()
+
+    logger.info(
+        'Admin synced squads for tariff',
+        admin_id=admin.id,
+        tariff_id=tariff_id,
+        tariff_name=tariff.name,
+        total=len(subscriptions),
+        updated=updated_count,
+        failed=failed_count,
+        skipped=skipped_count,
+    )
+
+    return SyncSquadsResponse(
+        tariff_id=tariff_id,
+        tariff_name=tariff.name,
+        total_subscriptions=len(subscriptions),
+        updated_count=updated_count,
+        failed_count=failed_count,
+        skipped_count=skipped_count,
+        errors=errors[:20],
     )

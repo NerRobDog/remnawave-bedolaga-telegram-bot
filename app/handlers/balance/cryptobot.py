@@ -1,3 +1,6 @@
+import html
+import math
+
 import structlog
 from aiogram import types
 from aiogram.fsm.context import FSMContext
@@ -6,13 +9,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database.models import User
 from app.keyboards.inline import get_back_keyboard
+from app.keyboards.topup_amounts import get_topup_amount_keyboard
 from app.localization.texts import get_texts
 from app.services.payment_service import PaymentService
 from app.states import BalanceStates
 from app.utils.decorators import error_handler
+from app.utils.timezone import format_local_datetime
+from app.utils.topup_retry import format_topup_amount_retry
 
 
 logger = structlog.get_logger(__name__)
+
+
+async def _resolve_bot_return_url(bot) -> str | None:
+    """Ссылка на бота для кнопки «Return» на инвойсе CryptoBot."""
+    username = settings.get_bot_username()
+    if not username:
+        try:
+            username = ((await bot.get_me()).username or '').strip().lstrip('@') or None
+        except Exception as error:
+            logger.warning('Не удалось определить username бота для ссылки возврата CryptoBot', error=error)
+            return None
+    return f'https://t.me/{username}' if username else None
 
 
 @error_handler
@@ -21,7 +39,7 @@ async def start_cryptobot_payment(callback: types.CallbackQuery, db_user: User, 
 
     # Проверка ограничения на пополнение
     if getattr(db_user, 'restriction_topup', False):
-        reason = getattr(db_user, 'restriction_reason', None) or 'Действие ограничено администратором'
+        reason = html.escape(getattr(db_user, 'restriction_reason', None) or 'Действие ограничено администратором')
         support_url = settings.get_support_contact_url()
         keyboard = []
         if support_url:
@@ -53,40 +71,17 @@ async def start_cryptobot_payment(callback: types.CallbackQuery, db_user: User, 
     available_assets = settings.get_cryptobot_assets()
     assets_text = ', '.join(available_assets)
 
-    # Формируем текст сообщения в зависимости от настройки
-    if settings.is_quick_amount_buttons_enabled():
-        message_text = (
-            f'🪙 <b>Пополнение криптовалютой</b>\n\n'
-            f'Выберите сумму пополнения или введите вручную сумму '
-            f'от 100 до 100,000 ₽:\n\n'
-            f'💰 Доступные активы: {assets_text}\n'
-            f'⚡ Мгновенное зачисление на баланс\n'
-            f'🔒 Безопасная оплата через CryptoBot\n\n'
-            f'{rate_text}\n'
-            f'Сумма будет автоматически конвертирована в USD для оплаты.'
-        )
-    else:
-        message_text = (
-            f'🪙 <b>Пополнение криптовалютой</b>\n\n'
-            f'Введите сумму для пополнения от 100 до 100,000 ₽:\n\n'
-            f'💰 Доступные активы: {assets_text}\n'
-            f'⚡ Мгновенное зачисление на баланс\n'
-            f'🔒 Безопасная оплата через CryptoBot\n\n'
-            f'{rate_text}\n'
-            f'Сумма будет автоматически конвертирована в USD для оплаты.'
-        )
+    message_text = (
+        f'🪙 <b>Пополнение криптовалютой</b>\n\n'
+        f'Введите сумму для пополнения от 100 до 100,000 ₽:\n\n'
+        f'💰 Доступные активы: {assets_text}\n'
+        f'⚡ Мгновенное зачисление на баланс\n'
+        f'🔒 Безопасная оплата через CryptoBot\n\n'
+        f'{rate_text}\n'
+        f'Сумма будет автоматически конвертирована в USD для оплаты.'
+    )
 
-    # Создаем клавиатуру
-    keyboard = get_back_keyboard(db_user.language)
-
-    # Если включен быстрый выбор суммы и не отключены кнопки, добавляем кнопки
-    if settings.is_quick_amount_buttons_enabled():
-        from .main import get_quick_amount_buttons
-
-        quick_amount_buttons = await get_quick_amount_buttons(db_user.language, db_user)
-        if quick_amount_buttons:
-            # Вставляем кнопки быстрого выбора перед кнопкой "Назад"
-            keyboard.inline_keyboard = quick_amount_buttons + keyboard.inline_keyboard
+    keyboard = await get_topup_amount_keyboard('cryptobot', db_user.language, back_callback='back_to_menu')
 
     await callback.message.edit_text(message_text, reply_markup=keyboard, parse_mode='HTML')
 
@@ -108,7 +103,7 @@ async def process_cryptobot_payment_amount(
 
     # Проверка ограничения на пополнение
     if getattr(db_user, 'restriction_topup', False):
-        reason = getattr(db_user, 'restriction_reason', None) or 'Действие ограничено администратором'
+        reason = html.escape(getattr(db_user, 'restriction_reason', None) or 'Действие ограничено администратором')
         support_url = settings.get_support_contact_url()
         keyboard = []
         if support_url:
@@ -133,11 +128,17 @@ async def process_cryptobot_payment_amount(
     amount_rubles = amount_kopeks / 100
 
     if amount_rubles < 100:
-        await message.answer('Минимальная сумма пополнения: 100 ₽')
+        await message.answer(
+            format_topup_amount_retry(db_user.language, 10000, 10000000, too_low=True),
+            reply_markup=get_back_keyboard(db_user.language, callback_data='balance_topup'),
+        )
         return
 
     if amount_rubles > 100000:
-        await message.answer('Максимальная сумма пополнения: 100,000 ₽')
+        await message.answer(
+            format_topup_amount_retry(db_user.language, 10000, 10000000, too_low=False),
+            reply_markup=get_back_keyboard(db_user.language, callback_data='balance_topup'),
+        )
         return
 
     try:
@@ -154,11 +155,27 @@ async def process_cryptobot_payment_amount(
         amount_usd = round(amount_usd, 2)
 
         if amount_usd < 1:
-            await message.answer('❌ Минимальная сумма для оплаты в USD: 1.00 USD')
+            await message.answer(
+                format_topup_amount_retry(
+                    db_user.language,
+                    max(10000, math.ceil(current_rate * 100)),
+                    min(10000000, math.floor(current_rate * 100000)),
+                    too_low=True,
+                ),
+                reply_markup=get_back_keyboard(db_user.language, callback_data='balance_topup'),
+            )
             return
 
         if amount_usd > 1000:
-            await message.answer('❌ Максимальная сумма для оплаты в USD: 1,000 USD')
+            await message.answer(
+                format_topup_amount_retry(
+                    db_user.language,
+                    max(10000, math.ceil(current_rate * 100)),
+                    min(10000000, math.floor(current_rate * 100000)),
+                    too_low=False,
+                ),
+                reply_markup=get_back_keyboard(db_user.language, callback_data='balance_topup'),
+            )
             return
 
         payment_service = PaymentService(message.bot)
@@ -170,6 +187,7 @@ async def process_cryptobot_payment_amount(
             asset=settings.CRYPTOBOT_DEFAULT_ASSET,
             description=f'Пополнение баланса на {amount_rubles:.0f} ₽ ({amount_usd:.2f} USD)',
             payload=f'balance_{db_user.id}_{amount_kopeks}',
+            return_url=await _resolve_bot_return_url(message.bot),
         )
 
         if not payment_result:
@@ -209,7 +227,7 @@ async def process_cryptobot_payment_amount(
         except Exception as delete_error:  # pragma: no cover - depends on bot rights
             logger.warning('Не удалось удалить сообщение с суммой CryptoBot', delete_error=delete_error)
 
-        if prompt_message_id:
+        if prompt_message_id and prompt_message_id != message.message_id:
             try:
                 await message.bot.delete_message(prompt_chat_id, prompt_message_id)
             except Exception as delete_error:  # pragma: no cover - diagnostics
@@ -242,7 +260,7 @@ async def process_cryptobot_payment_amount(
         await state.clear()
 
         logger.info(
-            'Создан CryptoBot платеж для пользователя ₽ ( USD), ID',
+            'Создан CryptoBot платеж',
             telegram_id=db_user.telegram_id,
             amount_rubles=round(amount_rubles, 0),
             amount_usd=round(amount_usd, 2),
@@ -280,7 +298,7 @@ async def check_cryptobot_payment_status(callback: types.CallbackQuery, db: Asyn
             f'🆔 ID: {payment.invoice_id[:8]}...\n'
             f'💰 Сумма: {payment.amount} {payment.asset}\n'
             f'📊 Статус: {emoji} {status}\n'
-            f'📅 Создан: {payment.created_at.strftime("%d.%m.%Y %H:%M")}\n'
+            f'📅 Создан: {format_local_datetime(payment.created_at, "%d.%m.%Y %H:%M")}\n'
         )
 
         if payment.is_paid:

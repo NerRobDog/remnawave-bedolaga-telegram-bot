@@ -1,3 +1,4 @@
+import html
 from datetime import UTC, datetime
 
 import structlog
@@ -9,10 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database.models import User
 from app.keyboards.inline import get_back_keyboard
+from app.keyboards.topup_amounts import get_topup_amount_keyboard
 from app.localization.texts import get_texts
 from app.services.payment_service import PaymentService, get_user_by_id as fetch_user_by_id
 from app.states import BalanceStates
 from app.utils.decorators import error_handler
+from app.utils.timezone import format_local_datetime
+from app.utils.topup_retry import format_topup_amount_retry
 
 
 logger = structlog.get_logger(__name__)
@@ -28,7 +32,7 @@ async def start_wata_payment(
 
     # Проверка ограничения на пополнение
     if getattr(db_user, 'restriction_topup', False):
-        reason = getattr(db_user, 'restriction_reason', None) or 'Действие ограничено администратором'
+        reason = html.escape(getattr(db_user, 'restriction_reason', None) or 'Действие ограничено администратором')
         support_url = settings.get_support_contact_url()
         keyboard = []
         if support_url:
@@ -59,14 +63,7 @@ async def start_wata_payment(
         max_amount=settings.format_price(settings.WATA_MAX_AMOUNT_KOPEKS),
     )
 
-    keyboard = get_back_keyboard(db_user.language)
-
-    if settings.is_quick_amount_buttons_enabled():
-        from .main import get_quick_amount_buttons
-
-        quick_amount_buttons = await get_quick_amount_buttons(db_user.language, db_user)
-        if quick_amount_buttons:
-            keyboard.inline_keyboard = quick_amount_buttons + keyboard.inline_keyboard
+    keyboard = await get_topup_amount_keyboard('wata', db_user.language, back_callback='back_to_menu')
 
     await callback.message.edit_text(
         message_text,
@@ -95,7 +92,7 @@ async def process_wata_payment_amount(
 
     # Проверка ограничения на пополнение
     if getattr(db_user, 'restriction_topup', False):
-        reason = getattr(db_user, 'restriction_reason', None) or 'Действие ограничено администратором'
+        reason = html.escape(getattr(db_user, 'restriction_reason', None) or 'Действие ограничено администратором')
         support_url = settings.get_support_contact_url()
         keyboard = []
         if support_url:
@@ -117,19 +114,19 @@ async def process_wata_payment_amount(
 
     if amount_kopeks < settings.WATA_MIN_AMOUNT_KOPEKS:
         await message.answer(
-            texts.t(
-                'WATA_AMOUNT_TOO_LOW',
-                'Минимальная сумма пополнения: {amount}',
-            ).format(amount=settings.format_price(settings.WATA_MIN_AMOUNT_KOPEKS))
+            format_topup_amount_retry(
+                db_user.language, settings.WATA_MIN_AMOUNT_KOPEKS, settings.WATA_MAX_AMOUNT_KOPEKS, too_low=True
+            ),
+            reply_markup=get_back_keyboard(db_user.language, callback_data='balance_topup'),
         )
         return
 
     if amount_kopeks > settings.WATA_MAX_AMOUNT_KOPEKS:
         await message.answer(
-            texts.t(
-                'WATA_AMOUNT_TOO_HIGH',
-                'Максимальная сумма пополнения: {amount}',
-            ).format(amount=settings.format_price(settings.WATA_MAX_AMOUNT_KOPEKS))
+            format_topup_amount_retry(
+                db_user.language, settings.WATA_MIN_AMOUNT_KOPEKS, settings.WATA_MAX_AMOUNT_KOPEKS, too_low=False
+            ),
+            reply_markup=get_back_keyboard(db_user.language, callback_data='balance_topup'),
         )
         return
 
@@ -248,7 +245,7 @@ async def process_wata_payment_amount(
     await state.clear()
 
     logger.info(
-        'Создан WATA платеж для пользователя : ₽, ссылка',
+        'Создан WATA платеж',
         telegram_id=db_user.telegram_id,
         amount_kopeks=amount_kopeks / 100,
         payment_link_id=payment_link_id,
@@ -302,7 +299,7 @@ async def check_wata_payment_status(
         f'🆔 ID: {payment.payment_link_id}',
         f'💰 Сумма: {settings.format_price(payment.amount_kopeks)}',
         f'📊 Статус: {label_info["emoji"]} {label_info["label"]}',
-        f'📅 Создан: {payment.created_at.strftime("%d.%m.%Y %H:%M") if payment.created_at else "—"}',
+        f'📅 Создан: {format_local_datetime(payment.created_at, "%d.%m.%Y %H:%M") if payment.created_at else "—"}',
     ]
 
     if payment.is_paid:

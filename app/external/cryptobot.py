@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import json
 from typing import Any
 
 import aiohttp
@@ -15,7 +16,6 @@ class CryptoBotService:
     def __init__(self):
         self.api_token = settings.CRYPTOBOT_API_TOKEN
         self.base_url = settings.get_cryptobot_base_url()
-        self.webhook_secret = settings.CRYPTOBOT_WEBHOOK_SECRET
 
     async def _make_request(
         self,
@@ -66,6 +66,9 @@ class CryptoBotService:
         description: str | None = None,
         payload: str | None = None,
         expires_in: int | None = None,
+        paid_btn_name: str | None = None,
+        paid_btn_url: str | None = None,
+        hidden_message: str | None = None,
     ) -> dict[str, Any] | None:
         data = {'currency_type': 'crypto', 'asset': asset, 'amount': amount}
 
@@ -78,10 +81,18 @@ class CryptoBotService:
         if expires_in:
             data['expires_in'] = expires_in
 
+        # Crypto Pay API: paid_btn_name requires paid_btn_url, which must be http(s).
+        if paid_btn_name and paid_btn_url and paid_btn_url.startswith(('http://', 'https://')):
+            data['paid_btn_name'] = paid_btn_name
+            data['paid_btn_url'] = paid_btn_url
+
+        if hidden_message:
+            data['hidden_message'] = hidden_message
+
         result = await self._make_request('POST', 'createInvoice', data)
 
         if result:
-            logger.info('Создан CryptoBot invoice на', get=result.get('invoice_id'), amount=amount, asset=asset)
+            logger.info('Создан CryptoBot invoice', get=result.get('invoice_id'), amount=amount, asset=asset)
 
         return result
 
@@ -122,22 +133,46 @@ class CryptoBotService:
         return await self._make_request('GET', 'getExchangeRates')
 
     def verify_webhook_signature(self, body: str, signature: str) -> bool:
-        if not self.webhook_secret:
-            logger.warning('CryptoBot webhook secret не настроен')
-            return True
+        # По документации CryptoBot, ключ ВСЕГДА SHA256 от API токена
+        token = self.api_token
+        if not token:
+            logger.error('CryptoBot API token не настроен, отклоняем webhook')
+            return False
 
         try:
-            secret_hash = hashlib.sha256(self.webhook_secret.encode()).digest()
-            expected_signature = hmac.new(secret_hash, body.encode(), hashlib.sha256).hexdigest()
+            secret_hash = hashlib.sha256(token.encode()).digest()
 
-            is_valid = hmac.compare_digest(signature, expected_signature)
+            # 1. Raw body — CryptoBot шлёт compact JSON
+            expected = hmac.new(secret_hash, body.encode('utf-8'), hashlib.sha256).hexdigest()
+            if hmac.compare_digest(signature, expected):
+                logger.info('CryptoBot webhook подпись валидна (raw body)')
+                return True
 
-            if is_valid:
-                logger.info('✅ CryptoBot webhook подпись валидна')
-            else:
-                logger.error('❌ Неверная подпись CryptoBot webhook')
+            # 2. Fallback: re-serialize compact JSON
+            parsed = json.loads(body)
+            check_string = json.dumps(parsed, separators=(',', ':'), ensure_ascii=False)
+            expected_reserialized = hmac.new(secret_hash, check_string.encode('utf-8'), hashlib.sha256).hexdigest()
+            if hmac.compare_digest(signature, expected_reserialized):
+                logger.info('CryptoBot webhook подпись валидна (re-serialized)')
+                return True
 
-            return is_valid
+            # 3. Fallback: ensure_ascii=True
+            check_string_ascii = json.dumps(parsed, separators=(',', ':'), ensure_ascii=True)
+            expected_ascii = hmac.new(secret_hash, check_string_ascii.encode('utf-8'), hashlib.sha256).hexdigest()
+            if hmac.compare_digest(signature, expected_ascii):
+                logger.info('CryptoBot webhook подпись валидна (ascii-escaped)')
+                return True
+
+            logger.error(
+                'Неверная подпись CryptoBot webhook',
+                received_signature=signature,
+                expected_raw=expected,
+                expected_reserialized=expected_reserialized,
+                body_length=len(body),
+                token_length=len(token),
+                token_prefix=token[:4] + '...',
+            )
+            return False
 
         except Exception as e:
             logger.error('Ошибка проверки подписи CryptoBot webhook', error=e)

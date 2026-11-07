@@ -27,7 +27,6 @@ def anyio_backend() -> str:
 def _enable_token(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, 'CRYPTOBOT_API_TOKEN', 'token', raising=False)
     monkeypatch.setattr(type(settings), 'get_cryptobot_base_url', lambda self: 'https://cryptobot.test', raising=False)
-    monkeypatch.setattr(settings, 'CRYPTOBOT_WEBHOOK_SECRET', 'secret', raising=False)
 
 
 @pytest.mark.anyio('asyncio')
@@ -69,7 +68,7 @@ async def test_make_request_returns_none_without_token(monkeypatch: pytest.Monke
 
 
 def test_verify_webhook_signature(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, 'CRYPTOBOT_WEBHOOK_SECRET', 'supersecret', raising=False)
+    monkeypatch.setattr(settings, 'CRYPTOBOT_API_TOKEN', 'supersecret', raising=False)
     service = CryptoBotService()
 
     body = '{"invoice_id":1}'
@@ -80,7 +79,69 @@ def test_verify_webhook_signature(monkeypatch: pytest.MonkeyPatch) -> None:
     assert service.verify_webhook_signature(body, 'invalid') is False
 
 
-def test_verify_webhook_signature_without_secret(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, 'CRYPTOBOT_WEBHOOK_SECRET', '', raising=False)
+def test_verify_webhook_signature_without_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Fail-closed: без настроенного токена подпись проверить нельзя, поэтому любой
+    # webhook ОТКЛОНЯЕТСЯ. Иначе подделанный webhook мог бы зачислить баланс.
+    monkeypatch.setattr(settings, 'CRYPTOBOT_API_TOKEN', '', raising=False)
     service = CryptoBotService()
-    assert service.verify_webhook_signature('{}', 'anything') is True
+    assert service.verify_webhook_signature('{}', 'anything') is False
+
+
+@pytest.mark.anyio('asyncio')
+async def test_create_invoice_passes_return_button_and_hidden_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    _enable_token(monkeypatch)
+    service = CryptoBotService()
+    captured: dict[str, Any] = {}
+
+    async def fake_make_request(method: str, endpoint: str, data: dict[str, Any] | None = None):
+        captured['data'] = data
+        return {'invoice_id': 1}
+
+    monkeypatch.setattr(service, '_make_request', fake_make_request, raising=False)
+
+    await service.create_invoice(
+        amount='10.00',
+        paid_btn_name='callback',
+        paid_btn_url='https://example.com/return',
+        hidden_message='Баланс будет зачислен в течение минуты',
+    )
+
+    assert captured['data']['paid_btn_name'] == 'callback'
+    assert captured['data']['paid_btn_url'] == 'https://example.com/return'
+    assert captured['data']['hidden_message'] == 'Баланс будет зачислен в течение минуты'
+
+
+@pytest.mark.anyio('asyncio')
+async def test_create_invoice_omits_return_button_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    _enable_token(monkeypatch)
+    service = CryptoBotService()
+    captured: dict[str, Any] = {}
+
+    async def fake_make_request(method: str, endpoint: str, data: dict[str, Any] | None = None):
+        captured['data'] = data
+        return {'invoice_id': 1}
+
+    monkeypatch.setattr(service, '_make_request', fake_make_request, raising=False)
+
+    await service.create_invoice(amount='10.00')
+
+    assert not {'paid_btn_name', 'paid_btn_url', 'hidden_message'} & set(captured['data'])
+
+
+@pytest.mark.anyio('asyncio')
+async def test_create_invoice_drops_button_without_http_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The API requires paid_btn_url together with paid_btn_name and only accepts http(s).
+    _enable_token(monkeypatch)
+    service = CryptoBotService()
+    captured: dict[str, Any] = {}
+
+    async def fake_make_request(method: str, endpoint: str, data: dict[str, Any] | None = None):
+        captured['data'] = data
+        return {'invoice_id': 1}
+
+    monkeypatch.setattr(service, '_make_request', fake_make_request, raising=False)
+
+    await service.create_invoice(amount='10.00', paid_btn_name='callback', paid_btn_url='tg://resolve?domain=bot')
+
+    assert 'paid_btn_name' not in captured['data']
+    assert 'paid_btn_url' not in captured['data']

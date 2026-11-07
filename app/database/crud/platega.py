@@ -18,7 +18,7 @@ logger = structlog.get_logger(__name__)
 async def create_platega_payment(
     db: AsyncSession,
     *,
-    user_id: int,
+    user_id: int | None,
     amount_kopeks: int,
     currency: str,
     description: str | None,
@@ -55,7 +55,7 @@ async def create_platega_payment(
     await db.refresh(payment)
 
     logger.info(
-        'Создан Platega платеж # (tx=) на сумму копеек для пользователя',
+        'Создан Platega платеж',
         payment_id=payment.id,
         platega_transaction_id=platega_transaction_id,
         amount_kopeks=amount_kopeks,
@@ -71,7 +71,12 @@ async def get_platega_payment_by_id(db: AsyncSession, payment_id: int) -> Plateg
 
 
 async def get_platega_payment_by_id_for_update(db: AsyncSession, payment_id: int) -> PlategaPayment | None:
-    result = await db.execute(select(PlategaPayment).where(PlategaPayment.id == payment_id).with_for_update())
+    result = await db.execute(
+        select(PlategaPayment)
+        .where(PlategaPayment.id == payment_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     return result.scalar_one_or_none()
 
 
@@ -130,6 +135,6 @@ async def link_platega_payment_to_transaction(
 ) -> PlategaPayment:
     payment.transaction_id = transaction_id
     payment.updated_at = datetime.now(UTC)
-    await db.commit()
+    await db.flush()
     await db.refresh(payment)
     return payment

@@ -1,7 +1,7 @@
 """Схемы для колеса удачи (Fortune Wheel)."""
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
@@ -9,14 +9,14 @@ from pydantic import BaseModel, Field
 # ==================== ENUMS ====================
 
 
-class WheelPaymentType(str, Enum):
+class WheelPaymentType(StrEnum):
     """Способы оплаты спина."""
 
     TELEGRAM_STARS = 'telegram_stars'
     SUBSCRIPTION_DAYS = 'subscription_days'
 
 
-class WheelPrizeType(str, Enum):
+class WheelPrizeType(StrEnum):
     """Типы призов."""
 
     SUBSCRIPTION_DAYS = 'subscription_days'
@@ -61,6 +61,7 @@ class WheelConfigResponse(BaseModel):
     user_balance_kopeks: int = 0
     required_balance_kopeks: int = 0
     has_subscription: bool = False
+    eligible_subscriptions: list[dict] | None = None
 
 
 class SpinAvailabilityResponse(BaseModel):
@@ -81,6 +82,7 @@ class SpinRequest(BaseModel):
     """Запрос на спин."""
 
     payment_type: WheelPaymentType
+    subscription_id: int | None = None
 
 
 class SpinResultResponse(BaseModel):
@@ -103,6 +105,11 @@ class SpinHistoryItem(BaseModel):
     """Элемент истории спинов."""
 
     id: int
+    # WheelPrize id of the won prize (None if that prize was later deleted). The
+    # cabinet uses it to land the wheel animation on the exact winning sector after
+    # a Stars payment, instead of guessing by name/emoji (which could mismatch and
+    # fall back to a random — often falsely winning — angle).
+    prize_id: int | None = None
     payment_type: str
     payment_amount: int
     prize_type: str

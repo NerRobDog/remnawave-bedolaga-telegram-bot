@@ -8,13 +8,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from structlog.testing import capture_logs
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-import app.services.payment_service as payment_service_module
 from app.config import settings
 from app.services.payment_service import PaymentService
 
@@ -97,8 +97,7 @@ async def test_create_platega_payment_success(monkeypatch: pytest.MonkeyPatch) -
         return DummyLocalPayment(payment_id=777)
 
     monkeypatch.setattr(
-        payment_service_module,
-        'create_platega_payment',
+        'app.services.payment_service.create_platega_payment',
         fake_create_platega_payment,
         raising=False,
     )
@@ -108,14 +107,23 @@ async def test_create_platega_payment_success(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(settings, 'PLATEGA_RETURN_URL', 'https://return', raising=False)
     monkeypatch.setattr(settings, 'PLATEGA_FAILED_URL', 'https://failed', raising=False)
 
-    result = await service.create_platega_payment(
-        db=db,
-        user_id=42,
-        amount_kopeks=50_000,
-        description='Пополнение счёта',
-        language='ru',
-        payment_method_code=10,
-    )
+    with capture_logs() as events:
+        result = await service.create_platega_payment(
+            db=db,
+            user_id=42,
+            amount_kopeks=50_000,
+            description='Пополнение счёта',
+            language='ru',
+            payment_method_code=11,
+        )
+
+    created = next(event for event in events if event.get('transaction_id') == 'trx-001')
+    assert 'пользователя 42' in created['event']
+    assert 'метод 11' in created['event']
+    assert '500.00 RUB' in created['event']
+    assert created['user_id'] == 42
+    assert created['payment_method_code'] == 11
+    assert created['amount_value'] == 500.0
 
     assert result is not None
     assert result['local_payment_id'] == 777
@@ -125,9 +133,9 @@ async def test_create_platega_payment_success(monkeypatch: pytest.MonkeyPatch) -
     assert 'correlation_id' in result and len(result['correlation_id']) == 32
     assert captured_args['user_id'] == 42
     assert captured_args['amount_kopeks'] == 50_000
-    assert captured_args['payment_method_code'] == 10
-    assert captured_args['metadata']['selected_method'] == 10
-    assert stub.calls and stub.calls[0]['payment_method'] == 10
+    assert captured_args['payment_method_code'] == 11
+    assert captured_args['metadata']['selected_method'] == 11
+    assert stub.calls and stub.calls[0]['payment_method'] == 11
     assert stub.calls[0]['amount'] == pytest.approx(500.0)
     assert stub.calls[0]['currency'] == 'RUB'
     assert captured_args['metadata']['language'] == 'ru'
@@ -185,8 +193,7 @@ async def test_create_platega_payment_handles_service_errors(monkeypatch: pytest
         pytest.fail('local payment must not be created when Platega call fails')
 
     monkeypatch.setattr(
-        payment_service_module,
-        'create_platega_payment',
+        'app.services.payment_service.create_platega_payment',
         fake_create_platega_payment,
         raising=False,
     )
@@ -209,13 +216,13 @@ def test_get_platega_active_methods_parses_and_filters(monkeypatch: pytest.Monke
     monkeypatch.setattr(
         settings,
         'PLATEGA_ACTIVE_METHODS',
-        ' 2,10, 11 ;12,13,13,invalid ',
+        ' 2, 11 ;12,13,13,invalid ',
         raising=False,
     )
 
     methods = settings.get_platega_active_methods()
 
-    assert methods == [2, 10, 11, 12, 13]
+    assert methods == [2, 11, 12, 13]
 
 
 def test_get_platega_active_methods_returns_default(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -227,7 +234,7 @@ def test_get_platega_active_methods_returns_default(monkeypatch: pytest.MonkeyPa
 
 
 def test_platega_method_display_helpers() -> None:
-    assert settings.get_platega_method_display_name(10) == 'Банковские карты (RUB)'
-    assert settings.get_platega_method_display_title(10) == '💳 Карты (RUB)'
+    assert settings.get_platega_method_display_name(11) == 'Карты (RUB)'
+    assert settings.get_platega_method_display_title(11) == '💳 Карты (RUB)'
     assert settings.get_platega_method_display_name(999) == 'Метод 999'
     assert settings.get_platega_method_display_title(999) == 'Platega 999'

@@ -2,6 +2,8 @@
 Обработчики админ-панели для управления черным списком
 """
 
+import html
+
 import structlog
 from aiogram import types
 from aiogram.filters import StateFilter
@@ -29,7 +31,7 @@ async def show_blacklist_settings(callback: types.CallbackQuery, db_user: User, 
     blacklist_count = len(await blacklist_service.get_all_blacklisted_users())
 
     status_text = '✅ Включена' if is_enabled else '❌ Отключена'
-    url_text = github_url if github_url else 'Не задан'
+    url_text = github_url or 'Не задан'
 
     text = f"""
 🔐 <b>Настройки черного списка</b>
@@ -147,7 +149,7 @@ async def show_blacklist_users(callback: types.CallbackQuery, db_user: User, sta
 
         # Показываем первые 20 записей
         for i, (tg_id, username, reason) in enumerate(blacklist_users[:20], 1):
-            text += f'{i}. <code>{tg_id}</code> {username or ""} — {reason}\n'
+            text += f'{i}. <code>{tg_id}</code> {html.escape(username or "")} — {html.escape(reason or "")}\n'
 
         if len(blacklist_users) > 20:
             text += f'\n... и еще {len(blacklist_users) - 20} записей'

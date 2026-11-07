@@ -25,9 +25,17 @@ class TicketCRUD:
         media_type: str | None = None,
         media_file_id: str | None = None,
         media_caption: str | None = None,
+        media_items: list[dict] | None = None,
+        diagnostics: dict | None = None,
     ) -> Ticket:
         """Создать новый тикет с первым сообщением"""
-        ticket = Ticket(user_id=user_id, title=title, status=TicketStatus.OPEN.value, priority=priority)
+        ticket = Ticket(
+            user_id=user_id,
+            title=title,
+            status=TicketStatus.OPEN.value,
+            priority=priority,
+            diagnostics=diagnostics,
+        )
         db.add(ticket)
         await db.flush()  # Получаем ID тикета
 
@@ -37,10 +45,11 @@ class TicketCRUD:
             user_id=user_id,
             message_text=message_text,
             is_from_admin=False,
-            has_media=bool(media_type and media_file_id),
+            has_media=bool(media_type and media_file_id) or bool(media_items),
             media_type=media_type,
             media_file_id=media_file_id,
             media_caption=media_caption,
+            media_items=media_items,
         )
         db.add(message)
 
@@ -381,6 +390,7 @@ class TicketMessageCRUD:
         media_type: str | None = None,
         media_file_id: str | None = None,
         media_caption: str | None = None,
+        media_items: list[dict] | None = None,
     ) -> TicketMessage:
         """Добавить сообщение в тикет"""
         message = TicketMessage(
@@ -388,10 +398,11 @@ class TicketMessageCRUD:
             user_id=user_id,
             message_text=message_text,
             is_from_admin=is_from_admin,
-            has_media=bool(media_type and media_file_id),
+            has_media=bool(media_type and media_file_id) or bool(media_items),
             media_type=media_type,
             media_file_id=media_file_id,
             media_caption=media_caption,
+            media_items=media_items,
         )
 
         db.add(message)

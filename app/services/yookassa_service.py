@@ -1,5 +1,7 @@
 import asyncio
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -12,6 +14,126 @@ from app.config import settings
 
 
 logger = structlog.get_logger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# YooKassa SDK hardening: socket timeout + isolated thread pool.
+#
+# Root-cause incident: yookassa==3.x's ``ApiClient.execute`` calls
+# ``requests.Session.request(...)`` WITHOUT a timeout. When the YooKassa
+# API hangs (degradation, network drop), the synchronous call blocks on
+# ``socket.recv()`` for hours until TCP keep-alive eventually kills it.
+#
+# We invoke the SDK via ``loop.run_in_executor(None, ...)`` which uses
+# the default process-wide ``ThreadPoolExecutor`` (cap 8-12 threads).
+# A wave of slow/dead YK requests fills every slot, the event loop
+# starves on every subsequent ``run_in_executor`` (DNS, TCP-connect),
+# and the bot effectively freezes — aiogram handlers stop replying
+# ('query is too old'), aiohttp to RemnaWave reports
+# ``ConnectionTimeoutError`` (event loop starvation, not RemnaWave).
+#
+# Two defences applied at module import:
+#
+#   1. **Monkey-patch ``ApiClient.execute``** to pass
+#      ``timeout=(connect, read)``. The thread is guaranteed to exit
+#      within ``read`` seconds even if the API is dead. ``asyncio.timeout``
+#      around the executor call (which we keep for belt-and-suspenders)
+#      cancels the coroutine but DOES NOT kill the underlying thread —
+#      only the socket timeout does.
+#
+#   2. **Dedicated ``ThreadPoolExecutor``** with a small bounded size
+#      (``max_workers=4``). If all 4 slots fill with stuck YK calls,
+#      everything else (RemnaWave, DB sync ops, etc.) keeps running on
+#      the default executor. The bot degrades gracefully instead of
+#      freezing entirely.
+# ---------------------------------------------------------------------------
+
+
+def _patch_yookassa_timeout() -> None:
+    """Add a socket-level timeout to ``yookassa.client.ApiClient.execute``.
+
+    Idempotent — checks a ``_timeout_patched`` flag so a hot-reload of
+    the module does not double-wrap. Mirrors the upstream method signature
+    exactly so we can drop in our own ``session.request`` call with
+    the timeout argument added.
+
+    (connect=5s, read=15s) — operators with consistently slow YK can
+    bump these via ``YOOKASSA_HTTP_CONNECT_TIMEOUT`` /
+    ``YOOKASSA_HTTP_READ_TIMEOUT`` env vars.
+    """
+    try:
+        from yookassa.client import ApiClient
+    except Exception as exc:  # pragma: no cover — defensive
+        logger.warning('Could not import yookassa.client.ApiClient for timeout patch', error=str(exc))
+        return
+
+    if getattr(ApiClient, '_timeout_patched', False):
+        return
+
+    connect_timeout = max(1, int(getattr(settings, 'YOOKASSA_HTTP_CONNECT_TIMEOUT', 5) or 5))
+    read_timeout = max(1, int(getattr(settings, 'YOOKASSA_HTTP_READ_TIMEOUT', 15) or 15))
+
+    def execute_with_timeout(self, body, method, path, query_params, request_headers):
+        session = self.get_session()
+        self.log_request(body, method, path, query_params, request_headers)
+        try:
+            raw_response = session.request(
+                method,
+                self.endpoint + path,
+                params=query_params,
+                headers=request_headers,
+                json=body,
+                verify=self.configuration.verify,
+                timeout=(connect_timeout, read_timeout),
+            )
+        finally:
+            # Match upstream behaviour: close the session even on error.
+            # Without this, requests.Session pooled connections leak.
+            try:
+                session.close()
+            except Exception:
+                pass
+        self.log_response(
+            raw_response.content,
+            self.get_response_info(raw_response),
+            raw_response.headers,
+        )
+        return raw_response
+
+    ApiClient.execute = execute_with_timeout
+    ApiClient._timeout_patched = True
+    logger.info(
+        'YooKassa ApiClient.execute monkey-patched with HTTP timeout',
+        connect_timeout=connect_timeout,
+        read_timeout=read_timeout,
+    )
+
+
+# Dedicated executor for all synchronous YK SDK calls. Bounded so YK
+# slowness can never starve the rest of the bot. ``thread_name_prefix``
+# makes stack traces / py-spy output identifiable.
+#
+# Pool size is operator-tunable via ``settings.YOOKASSA_MAX_CONCURRENT_REQUESTS``
+# (default 4). Floored at 1 so a misconfigured ``0`` doesn't disable
+# YK entirely; the floor matches the same defensive pattern used for
+# the timeout values above.
+def _resolve_max_workers() -> int:
+    raw = getattr(settings, 'YOOKASSA_MAX_CONCURRENT_REQUESTS', 4)
+    try:
+        value = int(raw or 4)
+    except (TypeError, ValueError):
+        value = 4
+    return max(1, value)
+
+
+_yookassa_executor: ThreadPoolExecutor = ThreadPoolExecutor(
+    max_workers=_resolve_max_workers(),
+    thread_name_prefix='yookassa-sdk',
+)
+
+
+# Apply the patch at import time. Idempotent.
+_patch_yookassa_timeout()
 
 
 class YooKassaService:
@@ -52,7 +174,7 @@ class YooKassaService:
         else:
             self.return_url = 'https://t.me/'
             logger.warning(
-                'КРИТИЧНО: YOOKASSA_RETURN_URL не установлен И username бота не предоставлен. Используем заглушку: . Платежи могут работать некорректно.',
+                'КРИТИЧНО: YOOKASSA_RETURN_URL не установлен И username бота не предоставлен. Используем заглушку. Платежи могут работать некорректно.',
                 return_url=self.return_url,
             )
 
@@ -66,6 +188,7 @@ class YooKassaService:
         metadata: dict[str, Any],
         receipt_email: str | None = None,
         receipt_phone: str | None = None,
+        return_url: str | None = None,
     ) -> dict[str, Any] | None:
         """Создает платеж в YooKassa"""
 
@@ -93,7 +216,7 @@ class YooKassaService:
             builder = PaymentRequestBuilder()
             builder.set_amount({'value': str(round(amount, 2)), 'currency': currency.upper()})
             builder.set_capture(True)
-            builder.set_confirmation({'type': ConfirmationType.REDIRECT, 'return_url': self.return_url})
+            builder.set_confirmation({'type': ConfirmationType.REDIRECT, 'return_url': return_url or self.return_url})
             builder.set_description(description)
             builder.set_metadata(metadata)
 
@@ -112,11 +235,17 @@ class YooKassaService:
 
             builder.set_receipt(receipt_data_dict)
 
+            # Рекуррентные платежи: сохранение карты
+            if settings.YOOKASSA_RECURRENT_ENABLED:
+                if settings.YOOKASSA_RECURRENT_REQUIRED:
+                    builder.set_save_payment_method(True)
+                # Если не required — не устанавливаем, YooKassa покажет чекбокс
+
             idempotence_key = str(uuid.uuid4())
             payment_request = builder.build()
 
             logger.info(
-                'Создание платежа YooKassa (Idempotence-Key: ). Сумма: . Метаданные: . Чек',
+                'Создание платежа YooKassa',
                 idempotence_key=idempotence_key,
                 amount=amount,
                 currency=currency,
@@ -125,12 +254,13 @@ class YooKassaService:
             )
 
             loop = asyncio.get_running_loop()
-            response = await loop.run_in_executor(
-                None, lambda: YooKassaPayment.create(payment_request, idempotence_key)
-            )
+            async with asyncio.timeout(30):
+                response = await loop.run_in_executor(
+                    _yookassa_executor, lambda: YooKassaPayment.create(payment_request, idempotence_key)
+                )
 
             logger.info(
-                'Ответ YooKassa Payment.create: ID=, Status=, Paid',
+                'Ответ YooKassa Payment.create',
                 response_id=response.id,
                 status=response.status,
                 paid=response.paid,
@@ -164,6 +294,7 @@ class YooKassaService:
         metadata: dict[str, Any],
         receipt_email: str | None = None,
         receipt_phone: str | None = None,
+        return_url: str | None = None,
     ) -> dict[str, Any] | None:
         if not self.configured:
             logger.error('YooKassa не сконфигурирован. Невозможно создать платеж через СБП.')
@@ -195,7 +326,7 @@ class YooKassaService:
             builder.set_capture(True)
 
             # Устанавливаем подтверждение через redirect для получения вебхуков
-            builder.set_confirmation({'type': 'redirect', 'return_url': self.return_url})
+            builder.set_confirmation({'type': 'redirect', 'return_url': return_url or self.return_url})
 
             builder.set_description(description)
 
@@ -223,7 +354,7 @@ class YooKassaService:
             payment_request = builder.build()
 
             logger.info(
-                'Создание платежа YooKassa СБП с подтверждением redirect (Idempotence-Key: ). Сумма: . Метаданные: . Чек',
+                'Создание платежа YooKassa СБП с подтверждением redirect',
                 idempotence_key=idempotence_key,
                 amount=amount,
                 currency=currency,
@@ -232,12 +363,13 @@ class YooKassaService:
             )
 
             loop = asyncio.get_running_loop()
-            response = await loop.run_in_executor(
-                None, lambda: YooKassaPayment.create(payment_request, idempotence_key)
-            )
+            async with asyncio.timeout(30):
+                response = await loop.run_in_executor(
+                    _yookassa_executor, lambda: YooKassaPayment.create(payment_request, idempotence_key)
+                )
 
             logger.info(
-                'Ответ YooKassa Payment.create (СБП, redirect): ID=, Status=, Paid',
+                'Ответ YooKassa Payment.create (СБП, redirect)',
                 response_id=response.id,
                 status=response.status,
                 paid=response.paid,
@@ -276,14 +408,17 @@ class YooKassaService:
             return None
 
         try:
-            logger.info('Получение информации о платеже YooKassa ID', payment_id_in_yookassa=payment_id_in_yookassa)
+            logger.info('Получение информации о платеже YooKassa', payment_id_in_yookassa=payment_id_in_yookassa)
 
             loop = asyncio.get_running_loop()
-            payment_info_yk = await loop.run_in_executor(None, lambda: YooKassaPayment.find_one(payment_id_in_yookassa))
+            async with asyncio.timeout(30):
+                payment_info_yk = await loop.run_in_executor(
+                    _yookassa_executor, lambda: YooKassaPayment.find_one(payment_id_in_yookassa)
+                )
 
             if payment_info_yk:
                 logger.info(
-                    'Информация о платеже YooKassa Status=, Paid',
+                    'Информация о платеже YooKassa',
                     payment_id_in_yookassa=payment_id_in_yookassa,
                     status=payment_info_yk.status,
                     paid=payment_info_yk.paid,
@@ -306,9 +441,24 @@ class YooKassaService:
                     'payment_method_type': payment_info_yk.payment_method.type
                     if payment_info_yk.payment_method
                     else None,
+                    'payment_method_id': payment_info_yk.payment_method.id if payment_info_yk.payment_method else None,
+                    'payment_method_saved': payment_info_yk.payment_method.saved
+                    if payment_info_yk.payment_method and hasattr(payment_info_yk.payment_method, 'saved')
+                    else False,
+                    'payment_method_card': {
+                        'first6': payment_info_yk.payment_method.card.first6,
+                        'last4': payment_info_yk.payment_method.card.last4,
+                        'card_type': payment_info_yk.payment_method.card.card_type,
+                        'expiry_month': payment_info_yk.payment_method.card.expiry_month,
+                        'expiry_year': payment_info_yk.payment_method.card.expiry_year,
+                    }
+                    if payment_info_yk.payment_method
+                    and hasattr(payment_info_yk.payment_method, 'card')
+                    and payment_info_yk.payment_method.card
+                    else None,
                     'test_mode': payment_info_yk.test if hasattr(payment_info_yk, 'test') else None,
                 }
-            logger.warning('Платеж не найден в YooKassa ID', payment_id_in_yookassa=payment_id_in_yookassa)
+            logger.warning('Платеж не найден в YooKassa', payment_id_in_yookassa=payment_id_in_yookassa)
             return None
         except YooKassaNotFoundError:
             logger.warning(
@@ -320,6 +470,108 @@ class YooKassaService:
             logger.error(
                 'Ошибка получения информации о платеже YooKassa',
                 payment_id_in_yookassa=payment_id_in_yookassa,
+                error=e,
+                exc_info=True,
+            )
+            return None
+
+    async def create_autopayment(
+        self,
+        amount: float,
+        currency: str,
+        description: str,
+        payment_method_id: str,
+        metadata: dict[str, Any],
+        receipt_email: str | None = None,
+        receipt_phone: str | None = None,
+        idempotence_key: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Создаёт рекуррентный автоплатёж через сохранённый payment_method_id (без confirmation)."""
+
+        if not self.configured:
+            logger.error('YooKassa не сконфигурирован. Невозможно создать автоплатёж.')
+            return None
+
+        customer_contact_for_receipt = {}
+        if receipt_email:
+            customer_contact_for_receipt['email'] = receipt_email
+        elif receipt_phone:
+            customer_contact_for_receipt['phone'] = receipt_phone
+        elif hasattr(settings, 'YOOKASSA_DEFAULT_RECEIPT_EMAIL') and settings.YOOKASSA_DEFAULT_RECEIPT_EMAIL:
+            customer_contact_for_receipt['email'] = settings.YOOKASSA_DEFAULT_RECEIPT_EMAIL
+        else:
+            logger.error(
+                'КРИТИЧНО: Не предоставлен email/телефон для чека автоплатежа и YOOKASSA_DEFAULT_RECEIPT_EMAIL не установлен.'
+            )
+            return None
+
+        try:
+            builder = PaymentRequestBuilder()
+            builder.set_amount({'value': str(round(amount, 2)), 'currency': currency.upper()})
+            builder.set_capture(True)
+            builder.set_payment_method_id(payment_method_id)
+            builder.set_description(description)
+            builder.set_metadata(metadata)
+
+            receipt_items_list: list[dict[str, Any]] = [
+                {
+                    'description': description[:128],
+                    'quantity': '1.00',
+                    'amount': {'value': str(round(amount, 2)), 'currency': currency.upper()},
+                    'vat_code': str(getattr(settings, 'YOOKASSA_VAT_CODE', 1)),
+                    'payment_mode': getattr(settings, 'YOOKASSA_PAYMENT_MODE', 'full_payment'),
+                    'payment_subject': getattr(settings, 'YOOKASSA_PAYMENT_SUBJECT', 'service'),
+                }
+            ]
+            receipt_data_dict: dict[str, Any] = {'customer': customer_contact_for_receipt, 'items': receipt_items_list}
+            builder.set_receipt(receipt_data_dict)
+
+            if not idempotence_key:
+                sub_id = metadata.get('subscription_id', uuid.uuid4())
+                idempotence_key = f'autopay_{sub_id}_{datetime.now(UTC).strftime("%Y-%m-%d")}'
+            payment_request = builder.build()
+
+            logger.info(
+                'Создание автоплатежа YooKassa',
+                amount=amount,
+                currency=currency,
+                payment_method_id=payment_method_id,
+                metadata=metadata,
+                idempotence_key=idempotence_key,
+            )
+
+            loop = asyncio.get_running_loop()
+            async with asyncio.timeout(30):
+                response = await loop.run_in_executor(
+                    _yookassa_executor, lambda: YooKassaPayment.create(payment_request, idempotence_key)
+                )
+
+            logger.info(
+                'Ответ YooKassa автоплатёж',
+                response_id=response.id,
+                status=response.status,
+                paid=response.paid,
+            )
+
+            return {
+                'id': response.id,
+                'status': response.status,
+                'paid': response.paid,
+                'metadata': response.metadata,
+                'amount_value': float(response.amount.value),
+                'amount_currency': response.amount.currency,
+                'idempotence_key_used': idempotence_key,
+                'refundable': response.refundable,
+                'created_at': response.created_at.isoformat()
+                if hasattr(response.created_at, 'isoformat')
+                else str(response.created_at),
+                'description_from_yk': response.description,
+                'test_mode': response.test if hasattr(response, 'test') else None,
+            }
+        except Exception as e:
+            logger.error(
+                'Ошибка создания автоплатежа YooKassa',
+                payment_method_id=payment_method_id,
                 error=e,
                 exc_info=True,
             )

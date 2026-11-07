@@ -1,5 +1,7 @@
 """Service for managing payment method display configurations in cabinet."""
 
+from typing import Any, Protocol
+
 import structlog
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,7 +11,54 @@ from app.config import settings
 from app.database.models import PaymentMethodConfig, PromoGroup
 
 
+class TopupPresetsSource(Protocol):
+    """Источник динамических быстрых сумм (см. app.services.topup_presets.TopupPresetsBasis).
+
+    Протокол, а не импорт: topup_presets тянет кабинетные маршруты, а этот модуль
+    импортируется из app.config.
+    """
+
+    def amounts_for(self, min_kopeks: int, max_kopeks: int) -> list[int]: ...
+
+    def hints_for(self, min_kopeks: int, max_kopeks: int) -> list[Any] | None: ...
+
+
 logger = structlog.get_logger(__name__)
+
+
+# ============ Display-name override cache ============
+# The cabinet stores per-method name overrides in PaymentMethodConfig.display_name.
+# The bot keyboards (app/keyboards/inline.py) are synchronous and have no DB handle,
+# so they read overrides from this in-process cache instead. It is warmed at startup
+# and refreshed whenever the cabinet edits a method, keeping bot button labels in sync
+# with the cabinet. Bot and cabinet run in the same process, so refresh is immediate.
+_display_name_overrides: dict[str, str] = {}
+_display_sort_orders: dict[str, int] = {}
+
+
+def _config_method_id(method_id: str) -> str:
+    return {'stars': 'telegram_stars', 'yookassa_sbp': 'yookassa'}.get(method_id, method_id)
+
+
+async def refresh_display_name_overrides(db: AsyncSession) -> None:
+    """Reload names and saved order for synchronous Telegram keyboards."""
+    global _display_name_overrides, _display_sort_orders
+    result = await db.execute(
+        select(PaymentMethodConfig.method_id, PaymentMethodConfig.display_name, PaymentMethodConfig.sort_order)
+    )
+    rows = result.all()
+    _display_name_overrides = {method_id: name for method_id, name, _ in rows if name and name.strip()}
+    _display_sort_orders = {method_id: order for method_id, _, order in rows}
+    logger.debug('Кэш имён платёжных методов обновлён', count=len(_display_name_overrides))
+
+
+def get_display_name_override(method_id: str) -> str | None:
+    """Sync read of a cabinet-set display name for a method, or None if not set."""
+    return _display_name_overrides.get(_config_method_id(method_id))
+
+
+def get_display_sort_order(method_id: str) -> int | None:
+    return _display_sort_orders.get(_config_method_id(method_id))
 
 
 # ============ Default method definitions ============
@@ -117,17 +166,174 @@ def _get_method_defaults() -> dict:
             'is_configured': settings.is_cloudpayments_enabled(),
             'default_min': settings.CLOUDPAYMENTS_MIN_AMOUNT_KOPEKS,
             'default_max': settings.CLOUDPAYMENTS_MAX_AMOUNT_KOPEKS,
-            'available_sub_options': [
-                {'id': 'card', 'name': 'Карта'},
-                {'id': 'sbp', 'name': 'СБП'},
-            ],
+            # CloudPayments doesn't support programmatic card/sbp routing —
+            # user selects payment method on the provider's payment page.
+            'available_sub_options': None,
         },
         'kassa_ai': {
             'default_display_name': settings.get_kassa_ai_display_name(),
             'is_configured': settings.is_kassa_ai_enabled(),
             'default_min': settings.KASSA_AI_MIN_AMOUNT_KOPEKS,
             'default_max': settings.KASSA_AI_MAX_AMOUNT_KOPEKS,
+            'available_sub_options': [
+                {'id': 'sbp', 'name': 'СБП'},
+                {'id': 'card', 'name': 'Карта'},
+                {'id': 'sberpay', 'name': 'SberPay'},
+            ],
+        },
+        'riopay': {
+            'default_display_name': settings.get_riopay_display_name(),
+            'is_configured': settings.is_riopay_enabled(),
+            'default_min': settings.RIOPAY_MIN_AMOUNT_KOPEKS,
+            'default_max': settings.RIOPAY_MAX_AMOUNT_KOPEKS,
             'available_sub_options': None,
+        },
+        'severpay': {
+            'default_display_name': settings.get_severpay_display_name(),
+            'is_configured': settings.is_severpay_enabled(),
+            'default_min': settings.SEVERPAY_MIN_AMOUNT_KOPEKS,
+            'default_max': settings.SEVERPAY_MAX_AMOUNT_KOPEKS,
+            'available_sub_options': None,
+        },
+        'rollypay': {
+            'default_display_name': settings.get_rollypay_display_name(),
+            'is_configured': settings.is_rollypay_enabled(),
+            'default_min': settings.ROLLYPAY_MIN_AMOUNT_KOPEKS,
+            'default_max': settings.ROLLYPAY_MAX_AMOUNT_KOPEKS,
+            'available_sub_options': [
+                {'id': 'sbp', 'name': 'СБП'},
+                {'id': 'card', 'name': 'Карта'},
+                {'id': 'crypto', 'name': 'Криптовалюта'},
+            ],
+        },
+        'overpay': {
+            'default_display_name': settings.get_overpay_display_name(),
+            'is_configured': settings.is_overpay_enabled(),
+            'default_min': settings.OVERPAY_MIN_AMOUNT_KOPEKS,
+            'default_max': settings.OVERPAY_MAX_AMOUNT_KOPEKS,
+            'available_sub_options': _get_overpay_sub_options(),
+        },
+        'aurapay': {
+            'default_display_name': settings.get_aurapay_display_name(),
+            'is_configured': settings.is_aurapay_enabled(),
+            'default_min': settings.AURAPAY_MIN_AMOUNT_KOPEKS,
+            'default_max': settings.AURAPAY_MAX_AMOUNT_KOPEKS,
+            'available_sub_options': [
+                {'id': 'card', 'name': 'Карта'},
+                {'id': 'sbp', 'name': 'СБП'},
+            ],
+        },
+        'etoplatezhi': {
+            'default_display_name': settings.get_etoplatezhi_display_name(),
+            'is_configured': settings.is_etoplatezhi_enabled(),
+            'default_min': settings.ETOPLATEZHI_MIN_AMOUNT_KOPEKS,
+            'default_max': settings.ETOPLATEZHI_MAX_AMOUNT_KOPEKS,
+            'available_sub_options': [
+                {'id': 'card', 'name': 'Карта'},
+                {'id': 'sbp', 'name': 'СБП'},
+            ],
+        },
+        'antilopay': {
+            'default_display_name': settings.get_antilopay_display_name(),
+            'is_configured': settings.is_antilopay_enabled(),
+            'default_min': settings.ANTILOPAY_MIN_AMOUNT_KOPEKS,
+            'default_max': settings.ANTILOPAY_MAX_AMOUNT_KOPEKS,
+            'available_sub_options': [
+                {'id': 'card', 'name': 'Карта'},
+                {'id': 'sbp', 'name': 'СБП'},
+                {'id': 'sberpay', 'name': 'SberPay'},
+            ],
+        },
+        'jupiter': {
+            'default_display_name': settings.get_jupiter_display_name(),
+            'is_configured': settings.is_jupiter_enabled(),
+            'default_min': settings.JUPITER_MIN_AMOUNT_KOPEKS,
+            'default_max': settings.JUPITER_MAX_AMOUNT_KOPEKS,
+            'available_sub_options': [
+                {'id': 'sbp', 'name': 'СБП'},
+            ],
+        },
+        'donut': {
+            'default_display_name': settings.get_donut_display_name(),
+            'is_configured': settings.is_donut_enabled(),
+            'default_min': settings.DONUT_MIN_AMOUNT_KOPEKS,
+            'default_max': settings.DONUT_MAX_AMOUNT_KOPEKS,
+            'available_sub_options': [
+                {'id': 'card', 'name': 'Карта'},
+                {'id': 'sbp', 'name': 'СБП'},
+                {'id': 'sbp_qr', 'name': 'СБП QR'},
+            ],
+        },
+        'lava': {
+            'default_display_name': settings.get_lava_display_name(),
+            'is_configured': settings.is_lava_enabled(),
+            'default_min': settings.LAVA_MIN_AMOUNT_KOPEKS,
+            'default_max': settings.LAVA_MAX_AMOUNT_KOPEKS,
+            'available_sub_options': [
+                {'id': 'card', 'name': 'Карта'},
+                {'id': 'sbp', 'name': 'СБП'},
+            ],
+        },
+        'cispay': {
+            'default_display_name': settings.get_cispay_display_name(),
+            'is_configured': settings.is_cispay_enabled(),
+            'default_min': settings.CISPAY_MIN_AMOUNT_KOPEKS,
+            'default_max': settings.CISPAY_MAX_AMOUNT_KOPEKS,
+            'available_sub_options': [
+                {
+                    'id': method,
+                    'name': {'card': 'Карта', 'sbp': 'СБП', 'crypto': 'Криптовалюта'}[method],
+                    **({'min_amount_kopeks': 5000} if method == 'card' else {}),
+                }
+                for method in settings.get_cispay_methods()
+            ],
+        },
+        'paritypay': {
+            'default_display_name': settings.get_paritypay_display_name(),
+            'is_configured': settings.is_paritypay_enabled(),
+            'default_min': settings.PARITYPAY_MIN_AMOUNT_KOPEKS,
+            'default_max': settings.PARITYPAY_MAX_AMOUNT_KOPEKS,
+            'available_sub_options': [
+                {'id': 'card', 'name': 'Карта'},
+                {'id': 'sbp', 'name': 'СБП'},
+            ],
+        },
+        'anore': {
+            'default_display_name': settings.get_anore_display_name(),
+            'is_configured': settings.is_anore_enabled(),
+            'default_min': settings.ANORE_MIN_AMOUNT_KOPEKS,
+            'default_max': settings.ANORE_MAX_AMOUNT_KOPEKS,
+            'available_sub_options': [
+                {
+                    'id': method,
+                    'name': {'sbp': 'СБП', 'card': 'Карта', 'yoomoney': 'ЮMoney', 'crypto': 'Криптовалюта'}[method],
+                }
+                for method in settings.get_anore_methods()
+            ],
+        },
+        'tabpay': {
+            'default_display_name': settings.get_tabpay_display_name(),
+            'is_configured': settings.is_tabpay_enabled(),
+            'default_min': settings.TABPAY_MIN_AMOUNT_KOPEKS,
+            'default_max': settings.TABPAY_MAX_AMOUNT_KOPEKS,
+            'available_sub_options': [
+                {'id': 'card', 'name': 'Карта'},
+                {'id': 'sbp', 'name': 'СБП'},
+            ],
+        },
+        'cashera': {
+            'default_display_name': settings.get_cashera_display_name(),
+            'is_configured': settings.is_cashera_enabled(),
+            'default_min': settings.CASHERA_MIN_AMOUNT_KOPEKS,
+            'default_max': settings.CASHERA_MAX_AMOUNT_KOPEKS,
+            'available_sub_options': _get_cashera_sub_options(),
+        },
+        'antarctic': {
+            'default_display_name': settings.get_antarctic_display_name(),
+            'is_configured': settings.is_antarctic_enabled(),
+            'default_min': settings.ANTARCTIC_MIN_AMOUNT_KOPEKS,
+            'default_max': settings.ANTARCTIC_MAX_AMOUNT_KOPEKS,
+            'default_description': settings.ANTARCTIC_DESCRIPTION,
         },
     }
 
@@ -148,9 +354,30 @@ def _get_platega_sub_options() -> list[dict] | None:
                     'name': info.get('title') or info.get('name') or f'Platega {method_code}',
                 }
             )
-        return options if options else None
+        return options or None
     except Exception:
         return None
+
+
+def _get_cashera_sub_options() -> list[dict] | None:
+    """Методы Cashera из CASHERA_ACTIVE_METHODS — как у Platega."""
+    try:
+        return [
+            {'id': code, 'name': settings.get_cashera_method_display_title(code)}
+            for code in settings.get_cashera_active_methods()
+        ] or None
+    except Exception:
+        return None
+
+
+def _get_overpay_sub_options() -> list[dict]:
+    options = [
+        {'id': 'card', 'name': 'Карта'},
+        {'id': 'fps', 'name': 'СБП'},
+    ]
+    if settings.is_overpay_int_enabled():
+        options.append({'id': 'int', 'name': 'Международная карта (EUR)'})
+    return options
 
 
 # Default order of methods
@@ -169,7 +396,75 @@ DEFAULT_METHOD_ORDER = [
     'freekassa_card',
     'cloudpayments',
     'kassa_ai',
+    'riopay',
+    'severpay',
+    'rollypay',
+    'overpay',
+    'aurapay',
+    'etoplatezhi',
+    'antilopay',
+    'jupiter',
+    'donut',
+    'lava',
+    'cispay',
+    'anore',
+    'tabpay',
+    'paritypay',
+    'cashera',
+    'antarctic',
 ]
+
+
+DEFAULT_QUICK_AMOUNTS = [10000, 30000, 50000, 100000]
+MAX_QUICK_AMOUNTS = 10
+MAX_QUICK_AMOUNT_KOPEKS = 100_000_000
+
+
+def normalize_quick_amounts(values: list | None) -> list[int] | None:
+    if values is None:
+        return None
+    if not isinstance(values, list):
+        raise ValueError('quick_amounts must be a list')
+    unique: set[int] = set()
+    for value in values:
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError('quick_amounts items must be integers')
+        if value <= 0:
+            raise ValueError('quick_amounts items must be positive')
+        if value > MAX_QUICK_AMOUNT_KOPEKS:
+            raise ValueError(f'quick_amounts items must not exceed {MAX_QUICK_AMOUNT_KOPEKS // 100} rub')
+        unique.add(value)
+    if len(unique) > MAX_QUICK_AMOUNTS:
+        raise ValueError(f'quick_amounts cannot have more than {MAX_QUICK_AMOUNTS} items')
+    # Пустой список — валидное значение «кнопки отключены», НЕ схлопываем в None
+    # (None = «использовать дефолты»). Кабинетный фронт для сброса шлёт явный
+    # флаг reset_quick_amounts, а не пустой список.
+    return sorted(unique)
+
+
+def get_effective_quick_amounts(
+    quick_amounts: list[int] | None,
+    min_amount_kopeks: int,
+    max_amount_kopeks: int,
+) -> list[int]:
+    # None → дефолты; [] → админ отключил кнопки быстрых сумм (пустой результат)
+    source = DEFAULT_QUICK_AMOUNTS if quick_amounts is None else quick_amounts
+    return [amount for amount in source if min_amount_kopeks <= amount <= max_amount_kopeks]
+
+
+def _resolve_quick_amounts(
+    quick_amounts: list[int] | None,
+    min_amount_kopeks: int,
+    max_amount_kopeks: int,
+    topup_presets: 'TopupPresetsSource | None',
+) -> tuple[list[int], list[dict] | None]:
+    """Суммы кнопок и пояснения к ним (None, если суммы статические)."""
+    if quick_amounts is None and topup_presets is not None:
+        dynamic = topup_presets.amounts_for(min_amount_kopeks, max_amount_kopeks)
+        if dynamic:
+            hints = topup_presets.hints_for(min_amount_kopeks, max_amount_kopeks)
+            return dynamic, [hint.as_dict() for hint in hints] if hints is not None else None
+    return get_effective_quick_amounts(quick_amounts, min_amount_kopeks, max_amount_kopeks), None
 
 
 # ============ Initialization ============
@@ -260,17 +555,20 @@ async def ensure_payment_method_configs(db: AsyncSession) -> None:
 
 
 async def get_all_configs(db: AsyncSession) -> list[PaymentMethodConfig]:
-    """Get all payment method configs ordered by sort_order."""
+    """Get supported payment method configs ordered by sort_order."""
     result = await db.execute(
         select(PaymentMethodConfig)
         .options(selectinload(PaymentMethodConfig.allowed_promo_groups))
+        .where(PaymentMethodConfig.method_id.in_(DEFAULT_METHOD_ORDER))
         .order_by(PaymentMethodConfig.sort_order)
     )
     return list(result.scalars().all())
 
 
 async def get_config_by_method_id(db: AsyncSession, method_id: str) -> PaymentMethodConfig | None:
-    """Get a single config by method_id."""
+    """Get a single config by method_id, ignoring retired backup entries."""
+    if method_id not in DEFAULT_METHOD_ORDER:
+        return None
     result = await db.execute(
         select(PaymentMethodConfig)
         .options(selectinload(PaymentMethodConfig.allowed_promo_groups))
@@ -290,16 +588,22 @@ async def update_config(
     if not config:
         return None
 
+    if 'quick_amounts' in data:
+        data = {**data, 'quick_amounts': normalize_quick_amounts(data['quick_amounts'])}
+
     # Update scalar fields
     updatable_fields = (
         'is_enabled',
         'display_name',
+        'description',
         'sub_options',
+        'quick_amounts',
         'min_amount_kopeks',
         'max_amount_kopeks',
         'user_type_filter',
         'first_topup_filter',
         'promo_group_filter_mode',
+        'open_url_direct',
     )
     for key in updatable_fields:
         if key in data:
@@ -316,6 +620,7 @@ async def update_config(
 
     await db.commit()
     await db.refresh(config)
+    await refresh_display_name_overrides(db)
     return config
 
 
@@ -328,6 +633,7 @@ async def update_sort_order(db: AsyncSession, ordered_method_ids: list[str]) -> 
             config.sort_order = index
 
     await db.commit()
+    await refresh_display_name_overrides(db)
 
 
 async def get_all_promo_groups(db: AsyncSession) -> list[PromoGroup]:
@@ -343,8 +649,13 @@ async def get_enabled_methods_for_user(
     db: AsyncSession,
     user: 'User | None' = None,
     is_first_topup: bool | None = None,
+    topup_presets: 'TopupPresetsSource | None' = None,
 ) -> list[dict]:
     """Get payment methods available for a specific user.
+
+    ``topup_presets`` — данные для динамических быстрых сумм (цены продления пользователя).
+    Они подставляются только там, где админ не задал свой ``quick_amounts`` (None в БД);
+    явный список админа, в том числе пустой, всегда главнее.
 
     Applies all filters from PaymentMethodConfig:
     - is_enabled
@@ -392,11 +703,18 @@ async def get_enabled_methods_for_user(
         if config.promo_group_filter_mode == 'selected' and user:
             allowed_group_ids = {pg.id for pg in config.allowed_promo_groups}
             if allowed_group_ids:
-                # Get user's promo groups
+                # Собираем ВСЕ промогруппы юзера — из M2M `user_promo_groups` (новая
+                # система) И из legacy `user.promo_group_id` (одна группа на юзера,
+                # для бэк-совместимости со старыми записями). Без учёта legacy юзеры,
+                # созданные до миграции на M2M, "теряют" фильтрованные методы оплаты —
+                # их фактическая промогруппа невидима фильтру (issue #422).
                 user_groups_result = await db.execute(
                     select(UserPromoGroup.promo_group_id).where(UserPromoGroup.user_id == user.id)
                 )
                 user_group_ids = set(user_groups_result.scalars().all())
+                legacy_group_id = getattr(user, 'promo_group_id', None)
+                if legacy_group_id is not None:
+                    user_group_ids.add(legacy_group_id)
 
                 # Check if user has at least one allowed group
                 if not user_group_ids.intersection(allowed_group_ids):
@@ -418,7 +736,14 @@ async def get_enabled_methods_for_user(
         # Build options (filter by sub_options config)
         options = None
         available_sub_options = method_def.get('available_sub_options')
-        if available_sub_options and config.sub_options:
+        if method_id in {'antilopay', 'anore', 'cispay'} and available_sub_options:
+            # Preserve the distinction between default options and all disabled.
+            # Cabinet checkout must never fall back to the provider's unrestricted form.
+            configured_options = config.sub_options or {}
+            options = [opt for opt in available_sub_options if configured_options.get(opt['id'], True)]
+            if not options:
+                continue
+        elif available_sub_options and config.sub_options:
             enabled_options = []
             for opt in available_sub_options:
                 opt_id = opt['id']
@@ -427,15 +752,87 @@ async def get_enabled_methods_for_user(
             if enabled_options:
                 options = enabled_options
 
+        quick_amounts, quick_amount_hints = _resolve_quick_amounts(
+            config.quick_amounts, min_amount, max_amount, topup_presets
+        )
         result.append(
             {
                 'id': method_id,
                 'name': display_name,
+                'description': config.description or method_def.get('default_description'),
                 'min_amount_kopeks': min_amount,
                 'max_amount_kopeks': max_amount,
                 'options': options,
+                'quick_amounts': quick_amounts,
+                'quick_amount_hints': quick_amount_hints,
                 'sort_order': config.sort_order,
+                # Если True — кабинет, получив payment_url, делает
+                # window.location.href сразу вместо показа панели с ссылкой.
+                'open_url_direct': bool(getattr(config, 'open_url_direct', False)),
             }
         )
 
     return result
+
+
+async def get_anore_checkout_policy(db: AsyncSession, user) -> dict | None:
+    """Effective policy shared by checkout prompts and creation entry points."""
+    if not settings.is_anore_enabled():
+        return None
+    config = await get_config_by_method_id(db, 'anore')
+    if config is not None:
+        methods = await get_enabled_methods_for_user(
+            db, user, is_first_topup=not getattr(user, 'has_made_first_topup', False) if user else None
+        )
+        return next((method for method in methods if method['id'] == 'anore'), None)
+    default = _get_method_defaults()['anore']
+    return {
+        'id': 'anore',
+        'name': default['default_display_name'],
+        'min_amount_kopeks': default['default_min'],
+        'max_amount_kopeks': default['default_max'],
+        'options': default['available_sub_options'],
+    }
+
+
+async def get_cispay_checkout_policy(db: AsyncSession, user, payment_method_type: str | None = None) -> dict | None:
+    """Shared effective checkout policy; generic checkout selects an explicit fiat method."""
+    if not settings.is_cispay_enabled():
+        return None
+    config = await get_config_by_method_id(db, 'cispay')
+    if config is not None:
+        if user is None and (
+            config.user_type_filter != 'all'
+            or config.first_topup_filter != 'any'
+            or config.promo_group_filter_mode == 'selected'
+        ):
+            return None
+        methods = await get_enabled_methods_for_user(
+            db, user, is_first_topup=not getattr(user, 'has_made_first_topup', False) if user else None
+        )
+        policy = next((method for method in methods if method['id'] == 'cispay'), None)
+        if policy is None:
+            return None
+        policy = dict(policy)
+    else:
+        default = _get_method_defaults()['cispay']
+        policy = {
+            'id': 'cispay',
+            'name': default['default_display_name'],
+            'min_amount_kopeks': default['default_min'],
+            'max_amount_kopeks': default['default_max'],
+            'options': default['available_sub_options'],
+        }
+    enabled = set(settings.get_cispay_methods())
+    policy['options'] = [option for option in (policy.get('options') or []) if option['id'] in enabled]
+    allowed = {option['id'] for option in policy['options']}
+    if not allowed:
+        return None
+    requested = payment_method_type.lower() if isinstance(payment_method_type, str) else payment_method_type
+    if requested is not None and requested not in allowed:
+        return None
+    selected = requested or next((method for method in ('card', 'sbp') if method in allowed), None)
+    policy['selected_method'] = selected.upper() if selected else None
+    if selected == 'card':
+        policy['min_amount_kopeks'] = max(policy['min_amount_kopeks'], 5000)
+    return policy

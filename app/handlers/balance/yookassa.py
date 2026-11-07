@@ -1,3 +1,4 @@
+import html
 from datetime import UTC, datetime
 
 import structlog
@@ -9,10 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database.models import User
 from app.keyboards.inline import get_back_keyboard
+from app.keyboards.topup_amounts import get_topup_amount_keyboard
 from app.localization.texts import get_texts
 from app.services.payment_service import PaymentService
 from app.states import BalanceStates
 from app.utils.decorators import error_handler
+from app.utils.timezone import format_local_datetime
+from app.utils.topup_retry import format_topup_amount_retry
 
 
 logger = structlog.get_logger(__name__)
@@ -24,7 +28,7 @@ async def start_yookassa_payment(callback: types.CallbackQuery, db_user: User, s
 
     # Проверка ограничения на пополнение
     if getattr(db_user, 'restriction_topup', False):
-        reason = getattr(db_user, 'restriction_reason', None) or 'Действие ограничено администратором'
+        reason = html.escape(getattr(db_user, 'restriction_reason', None) or 'Действие ограничено администратором')
         support_url = settings.get_support_contact_url()
         keyboard = []
         if support_url:
@@ -46,30 +50,12 @@ async def start_yookassa_payment(callback: types.CallbackQuery, db_user: User, s
     min_amount_rub = settings.YOOKASSA_MIN_AMOUNT_KOPEKS / 100
     max_amount_rub = settings.YOOKASSA_MAX_AMOUNT_KOPEKS / 100
 
-    # Формируем текст сообщения в зависимости от настройки
-    if settings.is_quick_amount_buttons_enabled():
-        message_text = (
-            f'💳 <b>Оплата банковской картой</b>\n\n'
-            f'Выберите сумму пополнения или введите вручную сумму '
-            f'от {min_amount_rub:.0f} до {max_amount_rub:,.0f} рублей:'
-        )
-    else:
-        message_text = (
-            f'💳 <b>Оплата банковской картой</b>\n\n'
-            f'Введите сумму для пополнения от {min_amount_rub:.0f} до {max_amount_rub:,.0f} рублей:'
-        )
+    message_text = (
+        f'💳 <b>Оплата банковской картой</b>\n\n'
+        f'Введите сумму для пополнения от {min_amount_rub:.0f} до {max_amount_rub:,.0f} рублей:'
+    )
 
-    # Создаем клавиатуру
-    keyboard = get_back_keyboard(db_user.language)
-
-    # Если включен быстрый выбор суммы и не отключены кнопки, добавляем кнопки
-    if settings.is_quick_amount_buttons_enabled():
-        from .main import get_quick_amount_buttons
-
-        quick_amount_buttons = await get_quick_amount_buttons(db_user.language, db_user)
-        if quick_amount_buttons:
-            # Вставляем кнопки быстрого выбора перед кнопкой "Назад"
-            keyboard.inline_keyboard = quick_amount_buttons + keyboard.inline_keyboard
+    keyboard = await get_topup_amount_keyboard('yookassa', db_user.language, back_callback='back_to_menu')
 
     await callback.message.edit_text(message_text, reply_markup=keyboard, parse_mode='HTML')
 
@@ -88,7 +74,7 @@ async def start_yookassa_sbp_payment(callback: types.CallbackQuery, db_user: Use
 
     # Проверка ограничения на пополнение
     if getattr(db_user, 'restriction_topup', False):
-        reason = getattr(db_user, 'restriction_reason', None) or 'Действие ограничено администратором'
+        reason = html.escape(getattr(db_user, 'restriction_reason', None) or 'Действие ограничено администратором')
         support_url = settings.get_support_contact_url()
         keyboard = []
         if support_url:
@@ -110,30 +96,12 @@ async def start_yookassa_sbp_payment(callback: types.CallbackQuery, db_user: Use
     min_amount_rub = settings.YOOKASSA_MIN_AMOUNT_KOPEKS / 100
     max_amount_rub = settings.YOOKASSA_MAX_AMOUNT_KOPEKS / 100
 
-    # Формируем текст сообщения в зависимости от настройки
-    if settings.is_quick_amount_buttons_enabled():
-        message_text = (
-            f'🏦 <b>Оплата через СБП</b>\n\n'
-            f'Выберите сумму пополнения или введите вручную сумму '
-            f'от {min_amount_rub:.0f} до {max_amount_rub:,.0f} рублей:'
-        )
-    else:
-        message_text = (
-            f'🏦 <b>Оплата через СБП</b>\n\n'
-            f'Введите сумму для пополнения от {min_amount_rub:.0f} до {max_amount_rub:,.0f} рублей:'
-        )
+    message_text = (
+        f'🏦 <b>Оплата через СБП</b>\n\n'
+        f'Введите сумму для пополнения от {min_amount_rub:.0f} до {max_amount_rub:,.0f} рублей:'
+    )
 
-    # Создаем клавиатуру
-    keyboard = get_back_keyboard(db_user.language)
-
-    # Если включен быстрый выбор суммы и не отключены кнопки, добавляем кнопки
-    if settings.is_quick_amount_buttons_enabled():
-        from .main import get_quick_amount_buttons
-
-        quick_amount_buttons = await get_quick_amount_buttons(db_user.language, db_user)
-        if quick_amount_buttons:
-            # Вставляем кнопки быстрого выбора перед кнопкой "Назад"
-            keyboard.inline_keyboard = quick_amount_buttons + keyboard.inline_keyboard
+    keyboard = await get_topup_amount_keyboard('yookassa_sbp', db_user.language, back_callback='back_to_menu')
 
     await callback.message.edit_text(message_text, reply_markup=keyboard, parse_mode='HTML')
 
@@ -154,7 +122,7 @@ async def process_yookassa_payment_amount(
 
     # Проверка ограничения на пополнение
     if getattr(db_user, 'restriction_topup', False):
-        reason = getattr(db_user, 'restriction_reason', None) or 'Действие ограничено администратором'
+        reason = html.escape(getattr(db_user, 'restriction_reason', None) or 'Действие ограничено администратором')
         support_url = settings.get_support_contact_url()
         keyboard = []
         if support_url:
@@ -177,13 +145,24 @@ async def process_yookassa_payment_amount(
         return
 
     if amount_kopeks < settings.YOOKASSA_MIN_AMOUNT_KOPEKS:
-        min_rubles = settings.YOOKASSA_MIN_AMOUNT_KOPEKS / 100
-        await message.answer(f'❌ Минимальная сумма для оплаты картой: {min_rubles:.0f} ₽')
+        await message.answer(
+            format_topup_amount_retry(
+                db_user.language, settings.YOOKASSA_MIN_AMOUNT_KOPEKS, settings.YOOKASSA_MAX_AMOUNT_KOPEKS, too_low=True
+            ),
+            reply_markup=get_back_keyboard(db_user.language, callback_data='balance_topup'),
+        )
         return
 
     if amount_kopeks > settings.YOOKASSA_MAX_AMOUNT_KOPEKS:
-        max_rubles = settings.YOOKASSA_MAX_AMOUNT_KOPEKS / 100
-        await message.answer(f'❌ Максимальная сумма для оплаты картой: {max_rubles:,.0f} ₽'.replace(',', ' '))
+        await message.answer(
+            format_topup_amount_retry(
+                db_user.language,
+                settings.YOOKASSA_MIN_AMOUNT_KOPEKS,
+                settings.YOOKASSA_MAX_AMOUNT_KOPEKS,
+                too_low=False,
+            ),
+            reply_markup=get_back_keyboard(db_user.language, callback_data='balance_topup'),
+        )
         return
 
     try:
@@ -235,7 +214,7 @@ async def process_yookassa_payment_amount(
         except Exception as delete_error:  # pragma: no cover - зависит от прав бота
             logger.warning('Не удалось удалить сообщение с суммой YooKassa', delete_error=delete_error)
 
-        if prompt_message_id:
+        if prompt_message_id and prompt_message_id != message.message_id:
             try:
                 await message.bot.delete_message(prompt_chat_id, prompt_message_id)
             except Exception as delete_error:  # pragma: no cover - диагностический лог
@@ -283,7 +262,7 @@ async def process_yookassa_payment_amount(
 
         await state.clear()
         logger.info(
-            'Создан платеж YooKassa для пользователя ₽, ID',
+            'Создан платеж YooKassa',
             telegram_id=db_user.telegram_id,
             value=amount_kopeks // 100,
             payment_result=payment_result['yookassa_payment_id'],
@@ -303,7 +282,7 @@ async def process_yookassa_sbp_payment_amount(
 
     # Проверка ограничения на пополнение
     if getattr(db_user, 'restriction_topup', False):
-        reason = getattr(db_user, 'restriction_reason', None) or 'Действие ограничено администратором'
+        reason = html.escape(getattr(db_user, 'restriction_reason', None) or 'Действие ограничено администратором')
         support_url = settings.get_support_contact_url()
         keyboard = []
         if support_url:
@@ -326,13 +305,24 @@ async def process_yookassa_sbp_payment_amount(
         return
 
     if amount_kopeks < settings.YOOKASSA_MIN_AMOUNT_KOPEKS:
-        min_rubles = settings.YOOKASSA_MIN_AMOUNT_KOPEKS / 100
-        await message.answer(f'❌ Минимальная сумма для оплаты через СБП: {min_rubles:.0f} ₽')
+        await message.answer(
+            format_topup_amount_retry(
+                db_user.language, settings.YOOKASSA_MIN_AMOUNT_KOPEKS, settings.YOOKASSA_MAX_AMOUNT_KOPEKS, too_low=True
+            ),
+            reply_markup=get_back_keyboard(db_user.language, callback_data='balance_topup'),
+        )
         return
 
     if amount_kopeks > settings.YOOKASSA_MAX_AMOUNT_KOPEKS:
-        max_rubles = settings.YOOKASSA_MAX_AMOUNT_KOPEKS / 100
-        await message.answer(f'❌ Максимальная сумма для оплаты через СБП: {max_rubles:,.0f} ₽'.replace(',', ' '))
+        await message.answer(
+            format_topup_amount_retry(
+                db_user.language,
+                settings.YOOKASSA_MIN_AMOUNT_KOPEKS,
+                settings.YOOKASSA_MAX_AMOUNT_KOPEKS,
+                too_low=False,
+            ),
+            reply_markup=get_back_keyboard(db_user.language, callback_data='balance_topup'),
+        )
         return
 
     try:
@@ -453,7 +443,7 @@ async def process_yookassa_sbp_payment_amount(
         except Exception as delete_error:  # pragma: no cover - зависит от прав бота
             logger.warning('Не удалось удалить сообщение с суммой YooKassa (СБП)', delete_error=delete_error)
 
-        if prompt_message_id:
+        if prompt_message_id and prompt_message_id != message.message_id:
             try:
                 await message.bot.delete_message(prompt_chat_id, prompt_message_id)
             except Exception as delete_error:  # pragma: no cover - диагностический лог
@@ -522,7 +512,7 @@ async def process_yookassa_sbp_payment_amount(
 
         await state.clear()
         logger.info(
-            'Создан платеж YooKassa СБП для пользователя ₽, ID',
+            'Создан платеж YooKassa СБП',
             telegram_id=db_user.telegram_id,
             value=amount_kopeks // 100,
             payment_result=payment_result['yookassa_payment_id'],
@@ -571,7 +561,7 @@ async def check_yookassa_payment_status(callback: types.CallbackQuery, db: Async
             f'🆔 ID: {payment.yookassa_payment_id[:8]}...\n'
             f'💰 Сумма: {settings.format_price(payment.amount_kopeks)}\n'
             f'📊 Статус: {emoji} {status}\n'
-            f'📅 Создан: {payment.created_at.strftime("%d.%m.%Y %H:%M")}\n'
+            f'📅 Создан: {format_local_datetime(payment.created_at, "%d.%m.%Y %H:%M")}\n'
         )
 
         if payment.is_succeeded:

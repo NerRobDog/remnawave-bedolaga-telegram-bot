@@ -68,11 +68,13 @@ class WataPaymentMixin:
     async def create_wata_payment(
         self,
         db: AsyncSession,
-        user_id: int,
+        user_id: int | None,
         amount_kopeks: int,
         description: str,
         *,
         language: str | None = None,
+        return_url: str | None = None,
+        failed_url: str | None = None,
     ) -> dict[str, Any] | None:
         if not getattr(self, 'wata_service', None):
             logger.error('WATA service is not initialised')
@@ -98,7 +100,10 @@ class WataPaymentMixin:
 
         # Добавляем идентификатор плательщика (telegram_id или email) в описание
         try:
-            user = await payment_module.get_user_by_id(db, user_id)
+            if user_id is not None:
+                user = await payment_module.get_user_by_id(db, user_id)
+            else:
+                user = None
             if user:
                 if user.telegram_id:
                     description = f'{description} | ID: {user.telegram_id}'
@@ -107,7 +112,7 @@ class WataPaymentMixin:
         except Exception as error:
             logger.debug('Не удалось получить данные пользователя для описания WATA', error=error)
 
-        order_id = f'wata_{user_id}_{uuid.uuid4().hex[:12]}'
+        order_id = f'wata_{user_id or "guest"}_{uuid.uuid4().hex[:12]}'
 
         try:
             response = await self.wata_service.create_payment_link(  # type: ignore[union-attr]
@@ -115,6 +120,8 @@ class WataPaymentMixin:
                 currency='RUB',
                 description=description,
                 order_id=order_id,
+                success_url=return_url,
+                fail_url=failed_url,
             )
         except WataAPIError as error:
             logger.error('Ошибка создания WATA платежа', error=error)
@@ -161,7 +168,7 @@ class WataPaymentMixin:
         )
 
         logger.info(
-            'Создан WATA платеж на ₽ для пользователя',
+            'Создан WATA платеж',
             payment_link_id=payment_link_id,
             amount_kopeks=amount_kopeks / 100,
             user_id=user_id,
@@ -189,7 +196,7 @@ class WataPaymentMixin:
             return False
 
         order_id_raw = payload.get('orderId')
-        payment_link_raw = payload.get('paymentLinkId') or payload.get('id')
+        payment_link_raw = payload.get('paymentLinkId') or payload.get('id') or payload.get('transactionId')
         transaction_status_raw = payload.get('transactionStatus')
 
         order_id = str(order_id_raw) if order_id_raw else None
@@ -211,10 +218,16 @@ class WataPaymentMixin:
             payment = await payment_module.get_wata_payment_by_link_id(db, payment_link_id)
 
         if not payment:
-            logger.error(
-                'WATA платеж не найден (order_id payment_link_id=)', order_id=order_id, payment_link_id=payment_link_id
-            )
+            logger.error('WATA платеж не найден', order_id=order_id, payment_link_id=payment_link_id)
             return False
+
+        # Lock payment row immediately to prevent concurrent webhook processing (TOCTOU race)
+        wata_crud = import_module('app.database.crud.wata')
+        locked = await wata_crud.get_wata_payment_by_id_for_update(db, payment.id)
+        if not locked:
+            logger.error('WATA: не удалось заблокировать платёж', payment_id=payment.id)
+            return False
+        payment = locked
 
         status_lower = transaction_status.lower()
         metadata = dict(getattr(payment, 'metadata_json', {}) or {})
@@ -223,17 +236,38 @@ class WataPaymentMixin:
             payload.get('terminalPublicId') or payload.get('terminal_public_id') or payload.get('terminalPublicID')
         )
 
+        if status_lower == 'paid':
+            if payment.is_paid:
+                logger.info('WATA платеж уже помечен как оплачен', payment_link_id=payment.payment_link_id)
+                # Update callback payload without releasing the lock prematurely
+                payment.callback_payload = payload
+                payment.metadata_json = metadata
+                if terminal_public_id:
+                    payment.terminal_public_id = terminal_public_id
+                await db.commit()
+                return True
+
+            # Inline field updates — NO intermediate commit that would release FOR UPDATE lock
+            payment.status = transaction_status
+            payment.last_status = transaction_status
+            payment.callback_payload = payload
+            payment.metadata_json = metadata
+            if terminal_public_id:
+                payment.terminal_public_id = terminal_public_id
+            await db.flush()
+
+            await self._finalize_wata_payment(db, payment, payload)
+            return True
+
+        # Non-success statuses: safe to use update_wata_payment_status (commits)
         update_kwargs: dict[str, Any] = {
             'metadata': metadata,
             'callback_payload': payload,
             'terminal_public_id': terminal_public_id,
+            'status': transaction_status,
+            'last_status': transaction_status,
         }
-
-        if transaction_status:
-            update_kwargs['status'] = transaction_status
-            update_kwargs['last_status'] = transaction_status
-
-        if status_lower != 'paid' and not payment.is_paid:
+        if not payment.is_paid:
             update_kwargs['is_paid'] = False
 
         payment = await payment_module.update_wata_payment_status(
@@ -241,14 +275,6 @@ class WataPaymentMixin:
             payment=payment,
             **update_kwargs,
         )
-
-        if status_lower == 'paid':
-            if payment.is_paid:
-                logger.info('WATA платеж уже помечен как оплачен', payment_link_id=payment.payment_link_id)
-                return True
-
-            await self._finalize_wata_payment(db, payment, payload)
-            return True
 
         if status_lower == 'declined':
             logger.info('WATA платеж отклонён', payment_link_id=payment.payment_link_id)
@@ -325,7 +351,7 @@ class WataPaymentMixin:
                                 break
                     except WataAPIError as error:
                         logger.error(
-                            'Ошибка поиска WATA транзакций для', payment_link_id=payment.payment_link_id, error=error
+                            'Ошибка поиска WATA транзакций', payment_link_id=payment.payment_link_id, error=error
                         )
                     except Exception as error:  # pragma: no cover - safety net
                         logger.exception('Непредвиденная ошибка при поиске WATA транзакции', error=error)
@@ -357,10 +383,21 @@ class WataPaymentMixin:
                 if raw_status:
                     normalized_status = str(raw_status).lower()
             if normalized_status == 'paid':
-                payment = await self._finalize_wata_payment(db, payment, transaction_payload)
+                # Lock payment row before finalization to prevent concurrent double-processing
+                wata_crud = import_module('app.database.crud.wata')
+                locked = await wata_crud.get_wata_payment_by_id_for_update(db, payment.id)
+                if not locked:
+                    logger.error('WATA status check: не удалось заблокировать платёж', payment_id=payment.id)
+                elif locked.is_paid:
+                    # Another concurrent handler already processed — skip
+                    logger.info('WATA платеж уже оплачен после блокировки', payment_link_id=locked.payment_link_id)
+                    payment = locked
+                else:
+                    payment = locked
+                    payment = await self._finalize_wata_payment(db, payment, transaction_payload)
             else:
                 logger.debug(
-                    'WATA транзакция в статусе , повторная обработка не требуется',
+                    'WATA транзакция в этом статусе повторной обработки не требует',
                     transaction_id=transaction_id or getattr(payment, 'payment_link_id', ''),
                     normalized_status=normalized_status or 'unknown',
                 )
@@ -392,6 +429,15 @@ class WataPaymentMixin:
                 paid_status=paid_status,
             )
 
+        # FOR UPDATE lock already acquired by caller — just check idempotency
+        if payment.transaction_id:
+            logger.info(
+                'WATA платеж уже привязан к транзакции',
+                payment_link_id=payment.payment_link_id,
+                transaction_id=payment.transaction_id,
+            )
+            return payment
+
         paid_at = None
         if isinstance(transaction_payload, dict):
             paid_at = WataService._parse_datetime(transaction_payload.get('paymentTime'))
@@ -413,22 +459,26 @@ class WataPaymentMixin:
 
         existing_metadata['transaction'] = transaction_payload
 
-        await payment_module.update_wata_payment_status(
-            db,
-            payment=payment,
-            status='Paid',
-            is_paid=True,
-            paid_at=paid_at,
-            callback_payload=transaction_payload,
-            metadata=existing_metadata,
-        )
+        # Inline field updates — NO intermediate commit that would release FOR UPDATE lock
+        payment.status = 'Paid'
+        payment.is_paid = True
+        payment.paid_at = paid_at
+        payment.callback_payload = transaction_payload
+        payment.metadata_json = existing_metadata
+        await db.flush()
 
-        if payment.transaction_id:
-            logger.info(
-                'WATA платеж уже привязан к транзакции',
-                payment_link_id=payment.payment_link_id,
-                transaction_id=payment.transaction_id,
-            )
+        # --- Guest purchase flow (landing page) ---
+        wata_metadata = dict(getattr(payment, 'metadata_json', {}) or {})
+        from app.services.payment.common import try_fulfill_guest_purchase
+
+        guest_result = await try_fulfill_guest_purchase(
+            db,
+            metadata=wata_metadata,
+            payment_amount_kopeks=payment.amount_kopeks,
+            provider_payment_id=payment.payment_link_id,
+            provider_name='wata',
+        )
+        if guest_result is not None:
             return payment
 
         user = await payment_module.get_user_by_id(db, payment.user_id)
@@ -449,9 +499,15 @@ class WataPaymentMixin:
             external_id=transaction_external_id or payment.payment_link_id,
             is_completed=True,
             created_at=getattr(payment, 'created_at', None),
+            commit=False,
         )
 
         await payment_module.link_wata_payment_to_transaction(db, payment, transaction.id)
+
+        # Lock user row to prevent concurrent balance race conditions
+        from app.database.crud.user import lock_user_for_update
+
+        user = await lock_user_for_update(db, user)
 
         old_balance = user.balance_kopeks
         was_first_topup = not user.has_made_first_topup
@@ -459,6 +515,20 @@ class WataPaymentMixin:
         user.balance_kopeks += payment.amount_kopeks
         user.updated_at = datetime.now(UTC)
         await db.commit()
+
+        # Emit deferred side-effects after atomic commit
+        from app.database.crud.transaction import emit_transaction_side_effects
+
+        await emit_transaction_side_effects(
+            db,
+            transaction,
+            amount_kopeks=payment.amount_kopeks,
+            user_id=payment.user_id,
+            type=TransactionType.DEPOSIT,
+            payment_method=PaymentMethod.WATA,
+            external_id=transaction_external_id or payment.payment_link_id,
+        )
+
         user = await payment_module.get_user_by_id(db, user.id)
         if not user:
             logger.error('Пользователь не найден после коммита WATA', user_id=payment.user_id)
@@ -481,7 +551,7 @@ class WataPaymentMixin:
         except Exception as error:
             logger.error('Ошибка обработки реферального пополнения WATA', error=error)
 
-        if was_first_topup and not user.has_made_first_topup:
+        if was_first_topup and not user.has_made_first_topup and not user.referred_by_id:
             user.has_made_first_topup = True
             await db.commit()
             await db.refresh(user)
@@ -504,7 +574,7 @@ class WataPaymentMixin:
             except Exception as error:
                 logger.error('Ошибка отправки админ уведомления WATA', error=error)
 
-        if getattr(self, 'bot', None) and user.telegram_id:
+        if getattr(self, 'bot', None) and user.telegram_id and settings.is_notifications_enabled():
             try:
                 keyboard = await self.build_topup_success_keyboard(user)
                 await self.bot.send_message(

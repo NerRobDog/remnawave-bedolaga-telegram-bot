@@ -1,10 +1,10 @@
-FROM python:3.13-slim AS builder
+FROM python:3.14-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=ghcr.io/astral-sh/uv:0.10.7 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.10.8 /uv /uvx /bin/
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -15,16 +15,26 @@ WORKDIR /app
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     --mount=type=bind,source=uv.lock,target=uv.lock \
-    uv sync --locked --no-dev
+    uv sync --frozen --no-dev
 
-FROM python:3.13-slim
+FROM python:3.14-slim
 
-ARG VERSION="v3.22.0" # x-release-please-version
+ARG VERSION="v5.1.0" # x-release-please-version
 ARG BUILD_DATE
 ARG VCS_REF
 
 COPY --from=builder /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
+
+# База — плавающий тег python:3.14-slim, и между её пересборками Debian успевает
+# выпустить исправления системных пакетов (util-linux, zlib, PCRE2 в отчётах
+# Trivy). Ставим их на этапе сборки: иначе образ уезжает с дырами, которые в
+# апстриме уже закрыты, а сама база подтянется неизвестно когда.
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+
+# Системные pip и setuptools базового образа приложению не нужны (зависимости в .venv), а Trivy
+# находит в них CVE (setuptools 70.3.0, msgpack внутри pip) — убираем из образа.
+RUN /usr/local/bin/python -m pip uninstall -y setuptools pip
 
 RUN groupadd -g 1000 app && \
     useradd -u 1000 -g 1000 -m -s /bin/bash app
@@ -33,7 +43,8 @@ WORKDIR /app
 
 COPY --chown=app:app . .
 
-RUN mkdir -p logs data && chown app:app logs data
+RUN mkdir -p logs data uploads/images uploads/videos uploads/thumbnails locales && \
+    chown -R app:app logs data uploads locales
 
 USER app
 

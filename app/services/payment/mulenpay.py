@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from importlib import import_module
 from typing import Any
 
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database.models import PaymentMethod, TransactionType
+from app.services.payment.payer_identity import payer_from_guest, resolve_user_payer
 from app.utils.payment_logger import payment_logger as logger
 from app.utils.user_utils import format_referrer_info
 
@@ -20,12 +22,18 @@ class MulenPayPaymentMixin:
     async def create_mulenpay_payment(
         self,
         db: AsyncSession,
-        user_id: int,
+        user_id: int | None,
         amount_kopeks: int,
         description: str,
         language: str | None = None,
+        client: str | None = None,
     ) -> dict[str, Any] | None:
-        """Создаёт локальный платеж и инициализирует сессию в MulenPay."""
+        """Создаёт локальный платеж и инициализирует сессию в MulenPay.
+
+        ``client`` — контакт плательщика-гостя; у пользователя он читается по
+        ``user_id``. MulenPay (письмо провайдера 2026-09-15) требует поле в каждом
+        платеже: «почтой, телефоном или ТГ ид и т.п.» — см. payer_identity.
+        """
         display_name = settings.get_mulenpay_display_name()
         settings.get_mulenpay_display_name_html()
         if not getattr(self, 'mulenpay_service', None):
@@ -52,8 +60,15 @@ class MulenPayPaymentMixin:
 
         payment_module = import_module('app.services.payment_service')
         try:
-            payment_uuid = f'mulen_{user_id}_{uuid.uuid4().hex}'
+            payment_uuid = f'mulen_{user_id or "guest"}_{uuid.uuid4().hex}'
             amount_rubles = amount_kopeks / 100
+
+            if client:
+                payer_client = client
+            elif user_id is not None:
+                payer_client = (await resolve_user_payer(db, user_id)).contact
+            else:
+                payer_client = payer_from_guest(payment_uuid, contact_type=None, contact_value=None).contact
 
             items = [
                 {
@@ -73,6 +88,7 @@ class MulenPayPaymentMixin:
                 items=items,
                 language=language or settings.MULENPAY_LANGUAGE,
                 website_url=settings.MULENPAY_WEBSITE_URL or settings.WEBHOOK_URL,
+                client=payer_client,
             )
 
             if not response:
@@ -102,7 +118,7 @@ class MulenPayPaymentMixin:
             )
 
             logger.info(
-                'Создан платеж на ₽ для пользователя',
+                'Создан MulenPay платеж',
                 display_name=display_name,
                 mulen_payment_id=mulen_payment_id,
                 amount_rubles=amount_rubles,
@@ -166,12 +182,20 @@ class MulenPayPaymentMixin:
 
             if not payment:
                 logger.error(
-                    'платеж не найден (uuid id=)',
+                    'MulenPay платеж не найден',
                     display_name=display_name,
                     uuid_value=uuid_value,
                     mulen_payment_id_raw=mulen_payment_id_raw,
                 )
                 return False
+
+            # Lock payment row immediately to prevent concurrent webhook processing (TOCTOU race)
+            mulenpay_lock_crud = import_module('app.database.crud.mulenpay')
+            locked = await mulenpay_lock_crud.get_mulenpay_payment_by_id_for_update(db, payment.id)
+            if not locked:
+                logger.error('MulenPay: не удалось заблокировать платёж', payment_id=payment.id)
+                return False
+            payment = locked
 
             metadata = dict(getattr(payment, 'metadata_json', {}) or {})
             invoice_message = metadata.get('invoice_message') or {}
@@ -198,11 +222,9 @@ class MulenPayPaymentMixin:
             if payment.is_paid:
                 if invoice_message_removed:
                     try:
-                        await payment_module.update_mulenpay_payment_metadata(
-                            db,
-                            payment=payment,
-                            metadata=metadata,
-                        )
+                        payment.metadata_json = metadata
+                        payment.updated_at = datetime.now(UTC)
+                        await db.commit()
                     except Exception as error:  # pragma: no cover - diagnostics
                         logger.warning(
                             'Не удалось обновить метаданные после удаления счёта',
@@ -216,17 +238,33 @@ class MulenPayPaymentMixin:
                 return True
 
             if payment_status == 'success':
-                await payment_module.update_mulenpay_payment_status(
-                    db,
-                    payment=payment,
-                    status='success',
-                    callback_payload=callback_data,
-                    mulen_payment_id=mulen_payment_id_int,
-                    metadata=metadata,
-                )
+                # Inline field updates — NO intermediate commit that would release FOR UPDATE lock
+                payment.status = 'success'
+                payment.is_paid = True
+                payment.paid_at = datetime.now(UTC)
+                payment.callback_payload = callback_data
+                if mulen_payment_id_int is not None and not payment.mulen_payment_id:
+                    payment.mulen_payment_id = mulen_payment_id_int
+                payment.metadata_json = metadata
+                payment.updated_at = datetime.now(UTC)
+                await db.flush()
 
                 if payment.transaction_id:
                     logger.info('Для платежа уже создана транзакция', display_name=display_name, uuid=payment.uuid)
+                    return True
+
+                # --- Guest purchase flow (landing page) ---
+                payment_meta = dict(getattr(payment, 'metadata_json', {}) or {})
+                from app.services.payment.common import try_fulfill_guest_purchase
+
+                guest_result = await try_fulfill_guest_purchase(
+                    db,
+                    metadata=payment_meta,
+                    payment_amount_kopeks=payment.amount_kopeks,
+                    provider_payment_id=payment.uuid,
+                    provider_name='mulenpay',
+                )
+                if guest_result is not None:
                     return True
 
                 payment_description = getattr(
@@ -245,6 +283,7 @@ class MulenPayPaymentMixin:
                     external_id=payment.uuid,
                     is_completed=True,
                     created_at=getattr(payment, 'created_at', None),
+                    commit=False,
                 )
 
                 await payment_module.link_mulenpay_payment_to_transaction(
@@ -260,15 +299,31 @@ class MulenPayPaymentMixin:
                     )
                     return False
 
+                # Lock user row to prevent concurrent balance race conditions
+                from app.database.crud.user import lock_user_for_update
+
+                user = await lock_user_for_update(db, user)
+
                 old_balance = user.balance_kopeks
                 was_first_topup = not user.has_made_first_topup
 
-                await payment_module.add_user_balance(
+                # Начисляем баланс напрямую (без add_user_balance, который делает db.commit())
+                user.balance_kopeks += payment.amount_kopeks
+                user.updated_at = datetime.now(UTC)
+
+                await db.commit()
+
+                # Emit deferred side-effects after atomic commit
+                from app.database.crud.transaction import emit_transaction_side_effects
+
+                await emit_transaction_side_effects(
                     db,
-                    user,
-                    payment.amount_kopeks,
-                    f'Пополнение {display_name}: {payment.amount_kopeks // 100}₽',
-                    create_transaction=False,
+                    transaction,
+                    amount_kopeks=payment.amount_kopeks,
+                    user_id=payment.user_id,
+                    type=TransactionType.DEPOSIT,
+                    payment_method=PaymentMethod.MULENPAY,
+                    external_id=payment.uuid,
                 )
 
                 try:
@@ -283,7 +338,7 @@ class MulenPayPaymentMixin:
                 except Exception as error:
                     logger.error('Ошибка обработки реферального пополнения', display_name=display_name, error=error)
 
-                if was_first_topup and not user.has_made_first_topup:
+                if was_first_topup and not user.has_made_first_topup and not user.referred_by_id:
                     user.has_made_first_topup = True
                     await db.commit()
 
@@ -323,7 +378,7 @@ class MulenPayPaymentMixin:
                     except Exception as error:
                         logger.error('Ошибка отправки уведомления о пополнении', display_name=display_name, error=error)
 
-                if getattr(self, 'bot', None) and user.telegram_id:
+                if getattr(self, 'bot', None) and user.telegram_id and settings.is_notifications_enabled():
                     try:
                         keyboard = await self.build_topup_success_keyboard(user)
                         await self.bot.send_message(

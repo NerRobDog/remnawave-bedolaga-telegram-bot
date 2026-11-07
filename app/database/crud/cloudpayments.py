@@ -18,7 +18,7 @@ logger = structlog.get_logger(__name__)
 async def create_cloudpayments_payment(
     db: AsyncSession,
     *,
-    user_id: int,
+    user_id: int | None,
     invoice_id: str,
     amount_kopeks: int,
     description: str | None = None,
@@ -65,7 +65,7 @@ async def create_cloudpayments_payment(
     await db.refresh(payment)
 
     logger.debug(
-        'Created CloudPayments payment: id invoice amount',
+        'Created CloudPayments payment',
         payment_id=payment.id,
         invoice_id=invoice_id,
         amount_kopeks=amount_kopeks,
@@ -90,6 +90,16 @@ async def get_cloudpayments_payment_by_id(
     """Get CloudPayments payment by internal ID."""
     result = await db.execute(select(CloudPaymentsPayment).where(CloudPaymentsPayment.id == payment_id))
     return result.scalars().first()
+
+
+async def get_cloudpayments_payment_by_id_for_update(
+    db: AsyncSession,
+    payment_id: int,
+) -> CloudPaymentsPayment | None:
+    result = await db.execute(
+        select(CloudPaymentsPayment).where(CloudPaymentsPayment.id == payment_id).with_for_update()
+    )
+    return result.scalar_one_or_none()
 
 
 async def get_cloudpayments_payment_by_transaction_id(
@@ -194,9 +204,7 @@ async def mark_cloudpayments_payment_as_paid(
     await db.flush()
     await db.refresh(payment)
 
-    logger.info(
-        'Marked CloudPayments payment as paid: id invoice', payment_id=payment.id, invoice_id=payment.invoice_id
-    )
+    logger.info('Marked CloudPayments payment as paid', payment_id=payment.id, invoice_id=payment.invoice_id)
 
     return payment
 

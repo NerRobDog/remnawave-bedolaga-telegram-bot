@@ -1,6 +1,7 @@
 """Subscription schemas for cabinet."""
 
 from datetime import datetime
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -48,6 +49,7 @@ class SubscriptionData(BaseModel):
     hide_subscription_link: bool = False  # Скрывать ли отображение ссылки (но кнопки работают)
     is_active: bool
     is_expired: bool
+    is_limited: bool = False
     traffic_purchases: list[TrafficPurchaseInfo] = []
     # Daily tariff fields
     is_daily: bool = False
@@ -57,6 +59,9 @@ class SubscriptionData(BaseModel):
     tariff_id: int | None = None
     tariff_name: str | None = None
     traffic_reset_mode: str | None = None
+    # Старая подписка (платная, без тарифа при включённых тарифах): продления
+    # и автоплатежа нет, единственный путь — выбрать тариф, он надевается на неё же.
+    requires_tariff_selection: bool = False
 
     class Config:
         from_attributes = True
@@ -81,33 +86,68 @@ class RenewalOptionResponse(BaseModel):
     price_rubles: float
     discount_percent: int = 0
     original_price_kopeks: int | None = None
+    # Период, отмеченный оператором как самый выгодный.
+    is_highlighted: bool = False
 
 
 class RenewalRequest(BaseModel):
     """Request to renew subscription."""
 
     period_days: int = Field(..., ge=1, le=3650, description='Renewal period in days')
+    subscription_id: int | None = Field(
+        default=None,
+        description='ID of subscription to renew (required in multi-tariff mode)',
+    )
+    # See PurchasePreviewRequest.yandex_cid (#558449).
+    yandex_cid: str | None = Field(
+        None,
+        max_length=128,
+        pattern=r'^[A-Za-z0-9._:-]{4,128}$',
+    )
 
 
 class TrafficPackageResponse(BaseModel):
-    """Available traffic package."""
+    """Available traffic package.
+
+    ``price_kopeks`` / ``price_rubles`` are the *discounted* price the user
+    pays. When the user's promo group grants a traffic discount, the original
+    price is exposed via ``base_price_kopeks`` (rendered struck-through in the
+    cabinet) alongside ``discount_percent`` / ``discount_kopeks``. These fields
+    stay ``0`` / ``None`` when no discount applies — mirroring the device and
+    renewal endpoints so the frontend can display the ``-N%`` badge.
+    """
 
     gb: int
     price_kopeks: int
     price_rubles: float
     is_unlimited: bool = False
+    discount_percent: int = 0
+    base_price_kopeks: int | None = None
+    discount_kopeks: int | None = None
 
 
 class TrafficPurchaseRequest(BaseModel):
     """Request to purchase additional traffic."""
 
     gb: int = Field(..., ge=0, le=100_000, description='GB to purchase (0 = unlimited)')
+    # See PurchasePreviewRequest.yandex_cid (#558449).
+    yandex_cid: str | None = Field(
+        None,
+        max_length=128,
+        pattern=r'^[A-Za-z0-9._:-]{4,128}$',
+    )
 
 
 class DevicePurchaseRequest(BaseModel):
     """Request to purchase additional device slots."""
 
     devices: int = Field(..., ge=1, le=100, description='Number of additional devices')
+    # See PurchasePreviewRequest.yandex_cid (#558449).
+    yandex_cid: str | None = Field(
+        None,
+        max_length=128,
+        pattern=r'^[A-Za-z0-9._:-]{4,128}$',
+    )
 
 
 class AutopayUpdateRequest(BaseModel):
@@ -115,6 +155,20 @@ class AutopayUpdateRequest(BaseModel):
 
     enabled: bool
     days_before: int | None = Field(None, ge=1, le=30, description='Days before expiration to charge')
+
+
+class TrialActivateRequest(BaseModel):
+    """Optional body for POST /trial — used to forward the Yandex CID for the
+    offline-conversion trial-add (and purchase, when TRIAL_PAYMENT_ENABLED)
+    events. The endpoint previously took no body so cabinet calls can still
+    POST without a payload — all fields are optional."""
+
+    # See PurchasePreviewRequest.yandex_cid (#558449).
+    yandex_cid: str | None = Field(
+        None,
+        max_length=128,
+        pattern=r'^[A-Za-z0-9._:-]{4,128}$',
+    )
 
 
 class TrialInfoResponse(BaseModel):
@@ -128,6 +182,10 @@ class TrialInfoResponse(BaseModel):
     price_kopeks: int = 0
     price_rubles: float = 0.0
     reason_unavailable: str | None = None
+    # 'full' | 'lite' | None (триала нет). У лёгкого триала срок короче суток возможен, поэтому
+    # точный срок — в часах; duration_days для него округляется вниз и может быть 0.
+    kind: str | None = None
+    duration_hours: int | None = None
 
 
 # ============ Purchase Options Schemas ============
@@ -147,6 +205,17 @@ class PurchasePreviewRequest(BaseModel):
     """Request to preview purchase pricing."""
 
     selection: PurchaseSelectionRequest
+    # Cached Yandex.Metrika ClientID from the frontend (#558449). When the user
+    # opens cabinet for the first time and buys before the separate /yandex-cid
+    # POST completes, the purchase event would silently drop because the
+    # backend's CID lookup finds nothing. Passing the value directly here lets
+    # the backend persist it synchronously before firing the conversion event.
+    yandex_cid: str | None = Field(
+        None,
+        max_length=128,
+        pattern=r'^[A-Za-z0-9._:-]{4,128}$',
+        description='Cached Yandex.Metrika ClientID (optional).',
+    )
 
 
 # ============ Tariff Purchase Schemas ============
@@ -155,8 +224,28 @@ class PurchasePreviewRequest(BaseModel):
 class TariffPurchaseRequest(BaseModel):
     """Request to purchase a tariff."""
 
+    checkout_id: UUID | None = Field(None, description='Stable purchase attempt ID; reuse on retries')
+
     tariff_id: int = Field(..., description='Tariff ID to purchase')
     period_days: int = Field(..., ge=1, le=3650, description='Period in days')
     traffic_gb: int | None = Field(
         None, ge=0, le=100_000, description='Custom traffic in GB (for custom_traffic_enabled tariffs)'
+    )
+    # When the user is renewing an EXISTING subscription (multi-tariff
+    # mode), the frontend passes the explicit subscription_id so the
+    # backend can resolve the target row by ID instead of doing a
+    # race-vulnerable (user_id, tariff_id) re-lookup at confirm time.
+    # Optional — None means "no existing sub to extend, treat as fresh
+    # purchase" which is the correct semantics for catalog-browse flows.
+    subscription_id: int | None = Field(
+        None,
+        ge=1,
+        description='Existing subscription_id when renewing (multi-tariff). Resolves race with concurrent panel webhooks.',
+    )
+    # See PurchasePreviewRequest.yandex_cid (#558449).
+    yandex_cid: str | None = Field(
+        None,
+        max_length=128,
+        pattern=r'^[A-Za-z0-9._:-]{4,128}$',
+        description='Cached Yandex.Metrika ClientID (optional).',
     )

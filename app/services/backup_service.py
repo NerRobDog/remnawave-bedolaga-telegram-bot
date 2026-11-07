@@ -12,6 +12,7 @@ from datetime import UTC, date as dt_date, datetime, time as dt_time, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import aiofiles
 import pyzipper
@@ -19,8 +20,9 @@ import structlog
 from aiogram.types import FSInputFile
 from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import selectinload
+from sqlalchemy.pool import NullPool
 
 from app.config import settings
 from app.database.database import AsyncSessionLocal, engine, sync_postgres_sequences
@@ -30,25 +32,48 @@ from app.database.models import (
     AdminRole,
     AdvertisingCampaign,
     AdvertisingCampaignRegistration,
+    AnorePayment,
+    AntarcticPayment,
+    AntilopayPayment,
+    AppleIAPAbuseEvent,
+    AppleIAPAccount,
+    AppleNotification,
+    AppleTransaction,
+    AuraPayPayment,
     BroadcastHistory,
     ButtonClickLog,
     CabinetRefreshToken,
+    CasheraPayment,
+    CisPayPayment,
     CloudPaymentsPayment,
     ContestAttempt,
     ContestRound,
     ContestTemplate,
     CryptoBotPayment,
     DiscountOffer,
+    DonutPayment,
+    EmailTemplate,
+    EtoplatezhiPayment,
     FaqPage,
     FaqSetting,
     FreekassaPayment,
+    GuestPurchase,
     HeleketPayment,
+    InfoPage,
+    JupiterPayment,
     KassaAiPayment,
+    LandingPage,
+    LavaPayment,
     MainMenuButton,
     MenuLayoutHistory,
     MonitoringLog,
     MulenPayPayment,
+    NewsArticle,
+    NewsCategory,
+    NewsTag,
+    OverpayPayment,
     Pal24Payment,
+    ParityPayPayment,
     PartnerApplication,
     PaymentMethodConfig,
     PinnedMessage,
@@ -65,14 +90,20 @@ from app.database.models import (
     PromoOfferLog,
     PromoOfferTemplate,
     PublicOffer,
+    RecurrentPayments,
     ReferralContest,
     ReferralContestEvent,
     ReferralContestVirtualParticipant,
     ReferralEarning,
+    ReferralRewardLevel,
     RequiredChannel,
+    RioPayPayment,
+    RollyPayPayment,
+    SavedPaymentMethod,
     SentNotification,
     ServerSquad,
     ServiceRule,
+    SeverPayPayment,
     Squad,
     Subscription,
     SubscriptionConversion,
@@ -81,6 +112,7 @@ from app.database.models import (
     SubscriptionTemporaryAccess,
     SupportAuditLog,
     SystemSetting,
+    TabPayPayment,
     Tariff,
     Ticket,
     TicketMessage,
@@ -101,14 +133,45 @@ from app.database.models import (
     WheelPrize,
     WheelSpin,
     WithdrawalRequest,
+    YandexClientIdMap,
     YooKassaPayment,
     payment_method_promo_groups,
     server_squad_promo_groups,
     tariff_promo_groups,
 )
+from app.utils.timezone import format_local_datetime
 
 
 logger = structlog.get_logger(__name__)
+
+
+async def _terminate_competing_backends(conn) -> int:
+    """Drop other DB sessions so a restore TRUNCATE can grab its ACCESS EXCLUSIVE lock.
+
+    TRUNCATE needs ACCESS EXCLUSIVE, which conflicts with the ACCESS SHARE the live
+    bot/cabinet hold on every table they read (same deployment, same DB). Without this the
+    TRUNCATE waits out lock_timeout and fails with LockNotAvailableError, then the per-table
+    fallback hits the same wall (Telegram bug #649289). A restore is destructive by
+    definition — it wipes and replaces the data — so terminating the other sessions is
+    acceptable; they reconnect onto the restored data. Best-effort: if the DB role lacks
+    privilege to signal backends, we log and leave the previous behaviour unchanged.
+
+    Returns the number of backends terminated (0 on failure).
+    """
+    try:
+        result = await conn.execute(
+            text(
+                'SELECT pg_terminate_backend(pid) FROM pg_stat_activity '
+                'WHERE datname = current_database() AND pid <> pg_backend_pid()'
+            )
+        )
+        terminated = len(result.fetchall())
+        if terminated:
+            logger.info('🔌 Завершены конкурирующие сессии БД перед TRUNCATE', terminated=terminated)
+        return terminated
+    except Exception as e:
+        logger.warning('Не удалось завершить конкурирующие сессии БД перед TRUNCATE (best-effort)', error=e)
+        return 0
 
 
 @dataclass
@@ -143,6 +206,14 @@ class BackupService:
         self.data_dir = self.backup_dir.parent
         self.archive_format_version = '2.0'
         self._auto_backup_task = None
+        # Сериализует start/stop scheduler-таски. На холодном старте
+        # start_auto_backup зовут конкурентно до 6 раз (по одному на каждую
+        # BACKUP_* настройку из _apply_to_settings + вызов из main.py): без
+        # лока два вызова одновременно проходят cancel-await старой таски,
+        # оба создают новые циклы, второй перезаписывает _auto_backup_task —
+        # первый цикл осиротевает и живёт параллельно. Осиротевшие циклы
+        # одновременно пишут один gzip-архив и рвут его (#3030).
+        self._scheduler_lock = asyncio.Lock()
         self._settings = self._load_settings()
 
         self._base_backup_models = [
@@ -165,6 +236,12 @@ class BackupService:
             MulenPayPayment,
             Pal24Payment,
             PromoCodeUse,
+            # Правила уровней — конфигурация, а не история, и без них восстановленный
+            # бот встаёт с включённой схемой 'levels' (она лежит в SystemSetting и
+            # переживает восстановление) и пустой таблицей правил: цепочка не находит
+            # ни одного уровня и молча не платит НИЧЕГО, без ошибки в логах.
+            # Идёт после Tariff: ссылается на него через referrer/referee_tariff_id.
+            ReferralRewardLevel,
             ReferralEarning,
             SentNotification,
             DiscountOffer,
@@ -182,15 +259,48 @@ class BackupService:
             CloudPaymentsPayment,
             FreekassaPayment,
             KassaAiPayment,
+            RioPayPayment,
+            SeverPayPayment,
+            RollyPayPayment,
+            OverpayPayment,
+            AuraPayPayment,
+            AntilopayPayment,
+            EtoplatezhiPayment,
+            JupiterPayment,
+            DonutPayment,
+            LavaPayment,
+            CisPayPayment,
+            AntarcticPayment,
+            CasheraPayment,
+            AnorePayment,
+            TabPayPayment,
+            ParityPayPayment,
+            AppleIAPAccount,
+            AppleTransaction,
+            AppleNotification,
+            AppleIAPAbuseEvent,
+            SavedPaymentMethod,
             # --- Settings/content ---
             PaymentMethodConfig,
             PrivacyPolicy,
             PublicOffer,
+            RecurrentPayments,
             FaqSetting,
             FaqPage,
             PinnedMessage,
             MainMenuButton,
             MenuLayoutHistory,
+            EmailTemplate,
+            InfoPage,
+            # --- News (FK: none / self-contained) ---
+            NewsCategory,
+            NewsTag,
+            NewsArticle,
+            # --- Landing / Guest purchases (FK: users, tariffs, landings) ---
+            LandingPage,
+            GuestPurchase,
+            # --- Yandex analytics (FK: users) ---
+            YandexClientIdMap,
             # --- User data (FK: users, promo_groups, subscriptions) ---
             UserPromoGroup,
             TrafficPurchase,
@@ -246,15 +356,53 @@ class BackupService:
         }
 
     def _load_settings(self) -> BackupSettings:
+        """Загружает настройки бекапов из `settings` (а не напрямую из env).
+
+        `SystemSettingsService.set_value` (вызывается при сохранении из кабинета)
+        делает `setattr(settings, key, value)`, поэтому чтение через `settings.*`
+        автоматически подхватывает изменения из БД. Чтение через `os.getenv`
+        работало бы только до первого изменения через UI.
+        """
         return BackupSettings(
-            auto_backup_enabled=os.getenv('BACKUP_AUTO_ENABLED', 'true').lower() == 'true',
-            backup_interval_hours=int(os.getenv('BACKUP_INTERVAL_HOURS', '24')),
-            backup_time=os.getenv('BACKUP_TIME', '03:00'),
-            max_backups_keep=int(os.getenv('BACKUP_MAX_KEEP', '7')),
-            compression_enabled=os.getenv('BACKUP_COMPRESSION', 'true').lower() == 'true',
-            include_logs=os.getenv('BACKUP_INCLUDE_LOGS', 'false').lower() == 'true',
-            backup_location=os.getenv('BACKUP_LOCATION', '/app/data/backups'),
+            auto_backup_enabled=bool(settings.BACKUP_AUTO_ENABLED),
+            backup_interval_hours=int(settings.BACKUP_INTERVAL_HOURS or 24),
+            backup_time=str(settings.BACKUP_TIME or '03:00'),
+            max_backups_keep=int(settings.BACKUP_MAX_KEEP or 7),
+            compression_enabled=bool(settings.BACKUP_COMPRESSION),
+            include_logs=bool(settings.BACKUP_INCLUDE_LOGS),
+            backup_location=str(settings.BACKUP_LOCATION or '/app/data/backups'),
         )
+
+    def reload_settings_from_db(self) -> BackupSettings:
+        """Перечитывает настройки из `settings` (которые синхронизируются с БД).
+
+        Используется в `_auto_backup_loop` перед расчётом next_run, чтобы изменения
+        BACKUP_TIME/BACKUP_INTERVAL_HOURS из кабинета вступали в силу без рестарта
+        бота. Также может быть вызван из SystemSettingsService для немедленного
+        применения изменений (перезапуск scheduler-таски).
+
+        Обновляет вычисляемые поля, которые зависят от настроек:
+        - `backup_dir` — берётся из `BACKUP_LOCATION`
+        - `backup_models_ordered` — включает MonitoringLog только при `include_logs`
+        """
+        new_settings = self._load_settings()
+        old_location = self._settings.backup_location
+        old_include_logs = self._settings.include_logs
+        self._settings = new_settings
+
+        # BACKUP_LOCATION мог измениться — обновляем backup_dir / data_dir
+        if new_settings.backup_location != old_location:
+            self.backup_dir = Path(new_settings.backup_location).expanduser().resolve()
+            self.backup_dir.mkdir(parents=True, exist_ok=True)
+            self.data_dir = self.backup_dir.parent
+
+        # BACKUP_INCLUDE_LOGS мог измениться — пересобираем список моделей
+        if new_settings.include_logs != old_include_logs:
+            self.backup_models_ordered = self._base_backup_models.copy()
+            if new_settings.include_logs:
+                self.backup_models_ordered.append(MonitoringLog)
+
+        return self._settings
 
     def _parse_backup_time(self) -> tuple[int, int]:
         time_str = (self._settings.backup_time or '').strip()
@@ -280,27 +428,73 @@ class BackupService:
             self._settings.backup_time = '03:00'
             return default_hours, default_minutes
 
+    def _get_timezone(self) -> ZoneInfo:
+        tz_name = settings.TIMEZONE or 'UTC'
+        try:
+            return ZoneInfo(tz_name)
+        except Exception:
+            logger.warning('Некорректная TIMEZONE, для расчёта бекапов используется UTC', timezone=tz_name)
+            return ZoneInfo('UTC')
+
+    def _format_local(self, dt: datetime) -> str:
+        """UTC-aware datetime → строка в settings.TIMEZONE с меткой зоны для логов.
+
+        Все лог-строки о времени запуска идут через этот хелпер, чтобы оператор
+        везде видел время, совпадающее с его BACKUP_TIME, а не UTC (#3030).
+        """
+        return dt.astimezone(self._get_timezone()).strftime('%d.%m.%Y %H:%M:%S %Z')
+
     def _calculate_next_backup_datetime(self, reference: datetime | None = None) -> datetime:
+        """Ближайший запуск по BACKUP_TIME, интерпретированному в settings.TIMEZONE.
+
+        Раньше часы/минуты из настроек подставлялись напрямую в UTC-«сейчас»:
+        TZ контейнера игнорировался, и бекап уезжал на разницу с UTC (для MSK —
+        на 3 часа, #3030). settings.TIMEZONE наследует env TZ, так что
+        BACKUP_TIME теперь означает локальное время оператора. Возвращается
+        aware-datetime в UTC — сам цикл продолжает жить в UTC.
+        """
         reference = reference or datetime.now(UTC)
+        # Naive reference → трактуем как UTC (конвенция кодбазы). Иначе astimezone
+        # ниже интерпретировал бы его в системной зоне хоста и сдвинул расчёт —
+        # тот же класс бага, что #3030.
+        if reference.tzinfo is None:
+            reference = reference.replace(tzinfo=UTC)
         hours, minutes = self._parse_backup_time()
 
-        next_run = reference.replace(hour=hours, minute=minutes, second=0, microsecond=0)
-        if next_run <= reference:
-            next_run += timedelta(days=1)
+        tz = self._get_timezone()
+        local_reference = reference.astimezone(tz)
+        next_local = local_reference.replace(hour=hours, minute=minutes, second=0, microsecond=0)
+        if next_local <= local_reference:
+            next_local += timedelta(days=1)
 
-        return next_run
+        return next_local.astimezone(UTC)
 
     def _get_backup_interval(self) -> timedelta:
         hours = self._settings.backup_interval_hours
 
         if hours <= 0:
             logger.warning(
-                'Некорректное значение BACKUP_INTERVAL_HOURS=. Используется значение по умолчанию 24.', hours=hours
+                'Некорректное значение BACKUP_INTERVAL_HOURS. Используется значение по умолчанию 24.', hours=hours
             )
             hours = 24
             self._settings.backup_interval_hours = hours
 
         return timedelta(hours=hours)
+
+    @staticmethod
+    def _next_future_run(next_run: datetime, interval: timedelta, now: datetime) -> datetime:
+        """Advance next_run by one interval, skipping any already-missed slots.
+
+        A stale schedule (downtime, a first run computed in the past, or an interval
+        shorter than how long a backup takes) otherwise made _auto_backup_loop fire a
+        backup for EACH missed slot back-to-back — the reported "кидает 6 файлов подряд"
+        (Telegram bug #650541). Advancing straight to the next FUTURE slot caps it at one
+        catch-up backup.
+        """
+        next_run = next_run + interval
+        while next_run <= now:
+            next_run += interval
+        return next_run
 
     def _get_models_for_backup(self, include_logs: bool) -> list[Any]:
         models = self._base_backup_models.copy()
@@ -346,7 +540,7 @@ class BackupService:
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp_path = Path(temp_dir)
                 staging_dir = temp_path / 'backup'
-                staging_dir.mkdir(parents=True, exist_ok=True)
+                await asyncio.to_thread(lambda: staging_dir.mkdir(parents=True, exist_ok=True))
 
                 database_info = await self._dump_database(staging_dir, include_logs=include_logs)
                 database_info.setdefault('tables_count', overview.get('tables_count', 0))
@@ -374,11 +568,17 @@ class BackupService:
                     await meta_file.write(json_lib.dumps(metadata, ensure_ascii=False, indent=2))
 
                 mode = 'w:gz' if compress else 'w'
-                with tarfile.open(backup_path, mode) as tar:
-                    for item in staging_dir.iterdir():
-                        tar.add(item, arcname=item.name)
 
-            file_size = backup_path.stat().st_size
+                def _write_archive() -> None:
+                    # tar.add reads + gzip-compresses each file; running it inline froze the
+                    # whole event loop (and thus the bot) for the duration of every auto-backup.
+                    with tarfile.open(backup_path, mode) as tar:
+                        for item in staging_dir.iterdir():
+                            tar.add(item, arcname=item.name)
+
+                await asyncio.to_thread(_write_archive)
+
+            file_size = (await asyncio.to_thread(backup_path.stat)).st_size
 
             await self._cleanup_old_backups()
 
@@ -409,12 +609,25 @@ class BackupService:
 
             return False, error_msg, None
 
+    @staticmethod
+    def _invalidate_restored_caches() -> None:
+        """Сбросить кэши, читающие восстановленные таблицы.
+
+        Восстановление пишет строки НАПРЯМУЮ, минуя crud, а сброс кэша уровней
+        живёт именно в crud. Без этого бот продолжал бы начислять по правилам,
+        которые только что заменили: экран показывает восстановленную лестницу,
+        а платит доресторная — до перезапуска.
+        """
+        from app.services.referral_reward_service import ReferralRewardLevelService
+
+        ReferralRewardLevelService.invalidate_cache()
+
     async def restore_backup(self, backup_file_path: str, clear_existing: bool = False) -> tuple[bool, str]:
         try:
-            logger.info('📄 Начинаем восстановление из', backup_file_path=backup_file_path)
+            logger.info('📄 Начинаем восстановление из файла', backup_file_path=backup_file_path)
 
             backup_path = Path(backup_file_path)
-            if not backup_path.exists():
+            if not await asyncio.to_thread(backup_path.exists):
                 return False, f'❌ Файл бекапа не найден: {backup_file_path}'
 
             if self._is_archive_backup(backup_path):
@@ -472,7 +685,11 @@ class BackupService:
             if pg_dump_path:
                 dump_path = staging_dir / 'database.sql'
                 await self._dump_postgres(dump_path, pg_dump_path)
-                size = dump_path.stat().st_size if dump_path.exists() else 0
+                size = (
+                    (await asyncio.to_thread(dump_path.stat)).st_size
+                    if await asyncio.to_thread(dump_path.exists)
+                    else 0
+                )
                 return {
                     'type': 'postgresql',
                     'path': dump_path.name,
@@ -487,7 +704,7 @@ class BackupService:
 
         dump_path = staging_dir / 'database.sqlite'
         await self._dump_sqlite(dump_path)
-        size = dump_path.stat().st_size if dump_path.exists() else 0
+        size = (await asyncio.to_thread(dump_path.stat)).st_size if await asyncio.to_thread(dump_path.exists) else 0
         return {
             'type': 'sqlite',
             'path': dump_path.name,
@@ -515,9 +732,9 @@ class BackupService:
         ]
 
         logger.info('📦 Экспорт PostgreSQL через pg_dump ...', pg_dump_path=pg_dump_path)
-        dump_path.parent.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(lambda: dump_path.parent.mkdir(parents=True, exist_ok=True))
 
-        with dump_path.open('wb') as dump_file:
+        with open(dump_path, 'wb') as dump_file:
             process = await asyncio.create_subprocess_exec(
                 *command,
                 stdout=dump_file,
@@ -557,7 +774,7 @@ class BackupService:
         async with aiofiles.open(dump_path, 'w', encoding='utf-8') as dump_file:
             await dump_file.write(json_lib.dumps(dump_structure, ensure_ascii=False, indent=2))
 
-        size = dump_path.stat().st_size if dump_path.exists() else 0
+        size = (await asyncio.to_thread(dump_path.stat)).st_size if await asyncio.to_thread(dump_path.exists) else 0
 
         logger.info('✅ PostgreSQL экспортирован через ORM в JSON', dump_path=dump_path)
 
@@ -574,10 +791,10 @@ class BackupService:
 
     async def _dump_sqlite(self, dump_path: Path):
         sqlite_path = Path(settings.SQLITE_PATH)
-        if not sqlite_path.exists():
+        if not await asyncio.to_thread(sqlite_path.exists):
             raise FileNotFoundError(f'SQLite база данных не найдена по пути {sqlite_path}')
 
-        dump_path.parent.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(lambda: dump_path.parent.mkdir(parents=True, exist_ok=True))
         await asyncio.to_thread(shutil.copy2, sqlite_path, dump_path)
         logger.info('✅ SQLite база данных скопирована', dump_path=dump_path)
 
@@ -598,7 +815,7 @@ class BackupService:
                         query = select(model)
 
                         if model == User:
-                            query = query.options(selectinload(User.subscription))
+                            query = query.options(selectinload(User.subscriptions).selectinload(Subscription.tariff))
                         elif model == Subscription:
                             query = query.options(selectinload(Subscription.user))
                         elif model == Transaction:
@@ -645,7 +862,9 @@ class BackupService:
                     backup_data[table_name] = table_data
                     total_records += len(table_data)
 
-                    logger.info('✅ Экспортировано записей из', table_data_count=len(table_data), table_name=table_name)
+                    logger.info(
+                        '✅ Экспортировано записей из таблицы', table_data_count=len(table_data), table_name=table_name
+                    )
 
                 association_data = await self._export_association_tables(db)
                 for records in association_data.values():
@@ -661,11 +880,11 @@ class BackupService:
     async def _collect_files(self, staging_dir: Path, include_logs: bool) -> list[dict[str, Any]]:
         files_info: list[dict[str, Any]] = []
         files_dir = staging_dir / 'files'
-        files_dir.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(lambda: files_dir.mkdir(parents=True, exist_ok=True))
 
         if include_logs and settings.LOG_FILE:
             log_path = Path(settings.LOG_FILE)
-            if log_path.exists():
+            if await asyncio.to_thread(log_path.exists):
                 dest = files_dir / log_path.name
                 await asyncio.to_thread(shutil.copy2, log_path, dest)
                 files_info.append(
@@ -675,8 +894,8 @@ class BackupService:
                     }
                 )
 
-        if not files_info and files_dir.exists():
-            files_dir.rmdir()
+        if not files_info and await asyncio.to_thread(files_dir.exists):
+            await asyncio.to_thread(files_dir.rmdir)
 
         return files_info
 
@@ -687,7 +906,7 @@ class BackupService:
             'items': 0,
         }
 
-        if not self.data_dir.exists():
+        if not await asyncio.to_thread(self.data_dir.exists):
             return snapshot_info
 
         counter = {'items': 0}
@@ -727,11 +946,16 @@ class BackupService:
             temp_path = Path(temp_dir)
 
             mode = 'r:gz' if backup_path.suffixes and backup_path.suffixes[-1] == '.gz' else 'r'
-            with tarfile.open(backup_path, mode) as tar:
-                tar.extractall(temp_path, filter='data')
+
+            def _extract_archive() -> None:
+                # Decompress + extract off the event loop so a large restore doesn't freeze the bot.
+                with tarfile.open(backup_path, mode) as tar:
+                    tar.extractall(temp_path, filter='data')
+
+            await asyncio.to_thread(_extract_archive)
 
             metadata_path = temp_path / 'metadata.json'
-            if not metadata_path.exists():
+            if not await asyncio.to_thread(metadata_path.exists):
                 return False, '❌ Метаданные бекапа отсутствуют'
 
             async with aiofiles.open(metadata_path, encoding='utf-8') as meta_file:
@@ -757,11 +981,13 @@ class BackupService:
                 await self._restore_sqlite(dump_file, clear_existing)
 
             data_dir = temp_path / 'data'
-            if data_dir.exists():
+            if await asyncio.to_thread(data_dir.exists):
                 await self._restore_data_snapshot(data_dir, clear_existing)
 
             if files_info:
                 await self._restore_files(files_info, temp_path)
+
+            self._invalidate_restored_caches()
 
             message = (
                 f'✅ Восстановление завершено!\n'
@@ -774,7 +1000,7 @@ class BackupService:
             return True, message
 
     async def _restore_postgres(self, dump_path: Path, clear_existing: bool):
-        if not dump_path.exists():
+        if not await asyncio.to_thread(dump_path.exists):
             raise FileNotFoundError(f'Dump PostgreSQL не найден: {dump_path}')
 
         psql_path = self._resolve_command_path('psql', 'PSQL_PATH')
@@ -832,7 +1058,7 @@ class BackupService:
         logger.info('✅ PostgreSQL восстановлен', dump_path=dump_path)
 
     async def _restore_postgres_json(self, dump_path: Path, clear_existing: bool):
-        if not dump_path.exists():
+        if not await asyncio.to_thread(dump_path.exists):
             raise FileNotFoundError(f'JSON дамп PostgreSQL не найден: {dump_path}')
 
         async with aiofiles.open(dump_path, encoding='utf-8') as dump_file:
@@ -852,20 +1078,20 @@ class BackupService:
         logger.info('✅ PostgreSQL восстановлен из ORM JSON', dump_path=dump_path)
 
     async def _restore_sqlite(self, dump_path: Path, clear_existing: bool):
-        if not dump_path.exists():
+        if not await asyncio.to_thread(dump_path.exists):
             raise FileNotFoundError(f'SQLite файл не найден: {dump_path}')
 
         target_path = Path(settings.SQLITE_PATH)
-        target_path.parent.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(lambda: target_path.parent.mkdir(parents=True, exist_ok=True))
 
-        if clear_existing and target_path.exists():
-            target_path.unlink()
+        if clear_existing and await asyncio.to_thread(target_path.exists):
+            await asyncio.to_thread(target_path.unlink)
 
         await asyncio.to_thread(shutil.copy2, dump_path, target_path)
         logger.info('✅ SQLite база восстановлена', target_path=target_path)
 
     async def _restore_data_snapshot(self, source_dir: Path, clear_existing: bool):
-        if not source_dir.exists():
+        if not await asyncio.to_thread(source_dir.exists):
             return
 
         def _restore():
@@ -890,7 +1116,7 @@ class BackupService:
         logger.info('📁 Снимок директории data восстановлен')
 
     async def _restore_files(self, files_info: list[dict[str, Any]], temp_path: Path):
-        allowed_base = self.data_dir.resolve()
+        allowed_base = await asyncio.to_thread(self.data_dir.resolve)
 
         for file_info in files_info:
             relative_path = file_info.get('relative_path')
@@ -898,21 +1124,22 @@ class BackupService:
             if not relative_path or not target_path:
                 continue
 
-            target_resolved = target_path.resolve()
+            target_resolved = await asyncio.to_thread(target_path.resolve)
             if not str(target_resolved).startswith(str(allowed_base) + os.sep) and target_resolved != allowed_base:
                 logger.warning('Заблокирована запись за пределами data_dir', target_path=target_path)
                 continue
 
-            source_file = (temp_path / relative_path).resolve()
-            if not str(source_file).startswith(str(temp_path.resolve()) + os.sep):
+            source_file = await asyncio.to_thread((temp_path / relative_path).resolve)
+            temp_path_resolved = await asyncio.to_thread(temp_path.resolve)
+            if not str(source_file).startswith(str(temp_path_resolved) + os.sep):
                 logger.warning('Path traversal в relative_path', relative_path=relative_path)
                 continue
 
-            if not source_file.exists():
+            if not await asyncio.to_thread(source_file.exists):
                 logger.warning('Файл отсутствует в архиве', relative_path=relative_path)
                 continue
 
-            target_resolved.parent.mkdir(parents=True, exist_ok=True)
+            await asyncio.to_thread(lambda: target_resolved.parent.mkdir(parents=True, exist_ok=True))
             await asyncio.to_thread(shutil.copy2, source_file, target_resolved)
             logger.info('📁 Файл восстановлен', target_resolved=target_resolved)
 
@@ -1070,6 +1297,8 @@ class BackupService:
             if restored_files:
                 logger.info('📁 Восстановлено файлов конфигурации', restored_files=restored_files)
 
+        self._invalidate_restored_caches()
+
         message = (
             f'✅ Восстановление завершено!\n'
             f'📊 Таблиц: {restored_tables}\n'
@@ -1099,9 +1328,20 @@ class BackupService:
                     existing = existing_user.scalar_one_or_none()
 
                     if existing:
-                        for key, value in processed_data.items():
-                            if key != 'id':
-                                setattr(existing, key, value)
+                        try:
+                            async with db.begin_nested():
+                                for key, value in processed_data.items():
+                                    if key != 'id':
+                                        setattr(existing, key, value)
+                                await db.flush()
+                        except IntegrityError:
+                            db.expire(existing)
+                            logger.warning(
+                                'Конфликт уникального ключа при обновлении пользователя, пропускаем',
+                                user_id=processed_data.get('id'),
+                                telegram_id=processed_data.get('telegram_id'),
+                            )
+                            continue
                     else:
                         instance = User(**processed_data)
                         try:
@@ -1110,7 +1350,7 @@ class BackupService:
                                 await db.flush()
                         except IntegrityError:
                             logger.warning(
-                                'Дубликат пользователя (id telegram_id=), пропускаем',
+                                'Дубликат пользователя, пропускаем',
                                 processed_data=processed_data.get('id'),
                                 processed_data_2=processed_data.get('telegram_id'),
                             )
@@ -1123,7 +1363,7 @@ class BackupService:
                             await db.flush()
                     except IntegrityError:
                         logger.warning(
-                            'Дубликат пользователя (telegram_id=), пропускаем',
+                            'Дубликат пользователя, пропускаем',
                             processed_data=processed_data.get('telegram_id'),
                         )
                         continue
@@ -1254,7 +1494,7 @@ class BackupService:
                 result = await db.execute(select(table_obj))
                 rows = result.mappings().all()
                 association_data[table_name] = [dict(row) for row in rows]
-                logger.info('✅ Экспортировано связей из', rows_count=len(rows), table_name=table_name)
+                logger.info('✅ Экспортировано связей из таблицы', rows_count=len(rows), table_name=table_name)
             except Exception as e:
                 logger.error('Ошибка экспорта таблицы связей', table_name=table_name, error=e)
 
@@ -1370,9 +1610,20 @@ class BackupService:
                     existing = existing_record.scalar_one_or_none()
 
                     if existing:
-                        for key, value in processed_data.items():
-                            if key not in pk_cols:
-                                setattr(existing, key, value)
+                        try:
+                            async with db.begin_nested():
+                                for key, value in processed_data.items():
+                                    if key not in pk_cols:
+                                        setattr(existing, key, value)
+                                await db.flush()
+                        except IntegrityError:
+                            db.expire(existing)
+                            logger.warning(
+                                'Конфликт уникального ключа при обновлении записи, пропускаем',
+                                table_name=table_name,
+                                pk={col: processed_data.get(col) for col in pk_cols},
+                            )
+                            continue
                     else:
                         instance = model(**processed_data)
                         try:
@@ -1394,7 +1645,7 @@ class BackupService:
                 restored_count += 1
 
             except Exception as e:
-                logger.error('Ошибка восстановления записи в', table_name=table_name, error=e)
+                logger.error('Ошибка восстановления записи в таблицу', table_name=table_name, error=e)
                 logger.error('Проблемные данные', record_data=record_data)
                 raise
 
@@ -1448,6 +1699,24 @@ class BackupService:
             'cloudpayments_payments',
             'freekassa_payments',
             'kassa_ai_payments',
+            'riopay_payments',
+            'severpay_payments',
+            'rollypay_payments',
+            'overpay_payments',
+            'aurapay_payments',
+            'etoplatezhi_payments',
+            'antilopay_payments',
+            'anore_payments',
+            'tabpay_payments',
+            'paritypay_payments',
+            'cispay_payments',
+            'antarctic_payments',
+            'cashera_payments',
+            'donut_payments',
+            'jupiter_payments',
+            'lava_payments',
+            'apple_transactions',
+            'saved_payment_methods',
             # --- Content/config ---
             'pinned_messages',
             'main_menu_buttons',
@@ -1456,7 +1725,19 @@ class BackupService:
             'faq_settings',
             'privacy_policies',
             'public_offers',
+            'recurrent_payments',
             'payment_method_configs',
+            'email_templates',
+            'info_pages',
+            # --- News ---
+            'news_articles',
+            'news_categories',
+            'news_tags',
+            # --- Landing / Guest purchases ---
+            'guest_purchases',
+            'landing_pages',
+            # --- Yandex analytics ---
+            'yandex_client_id_map',
             # --- Support ---
             'support_audit_logs',
             'ticket_messages',
@@ -1473,6 +1754,10 @@ class BackupService:
             'broadcast_history',
             'subscription_conversions',
             'referral_earnings',
+            # Правила уровней — тоже часть восстанавливаемого состояния. Без
+            # очистки восстановление «с заменой» оставило бы правила приёмника,
+            # и программа платила бы по чужой конфигурации при своей истории.
+            'referral_reward_levels',
             'promocode_uses',
             'yookassa_payments',
             'cryptobot_payments',
@@ -1519,24 +1804,59 @@ class BackupService:
         if not tables_to_truncate:
             return
 
-        # TRUNCATE CASCADE — одна команда для всех таблиц.
-        # CASCADE автоматически очищает любые таблицы с FK-ссылками,
-        # даже если они не в нашем списке. Это решает проблему с admin_audit_log и др.
-        tables_str = ', '.join(tables_to_truncate)
+        # TRUNCATE CASCADE requires ACCESS EXCLUSIVE locks on all affected tables
+        # and can take a long time with 80+ tables. The main engine has command_timeout=30s
+        # which is too short. Use a dedicated connection with extended timeouts.
+        from app.database.database import DATABASE_URL
+
+        truncate_engine = create_async_engine(
+            DATABASE_URL,
+            connect_args={
+                'server_settings': {
+                    'statement_timeout': '300000',  # 5 минут
+                    'lock_timeout': '120000',  # 2 минуты ожидания блокировок
+                },
+                'command_timeout': 300,
+            },
+            poolclass=NullPool,
+        )
         try:
-            await db.execute(text(f'TRUNCATE {tables_str} RESTART IDENTITY CASCADE'))
+            tables_str = ', '.join(tables_to_truncate)
+            async with truncate_engine.begin() as conn:
+                # Free table locks held by the live app so TRUNCATE doesn't wait out
+                # lock_timeout and fail with LockNotAvailableError (#649289).
+                await _terminate_competing_backends(conn)
+                await conn.execute(text(f'TRUNCATE {tables_str} RESTART IDENTITY CASCADE'))
             logger.info('🗑️ Очищены все таблицы', tables_count=len(tables_to_truncate))
         except Exception as e:
-            logger.error('❌ Ошибка TRUNCATE CASCADE, пробуем поштучно с savepoints', error=e)
-            await db.rollback()
-            # Fallback: поштучная очистка с savepoints
+            logger.error('❌ Ошибка TRUNCATE CASCADE, пробуем поштучно', error=e)
+            # The most common cause is lock contention with the live app. Free the locks
+            # once before the per-table retries (no point repeating it per table — killed
+            # sessions reconnect, and re-killing 80× just thrashes).
+            try:
+                async with truncate_engine.begin() as conn:
+                    await _terminate_competing_backends(conn)
+            except Exception as term_err:
+                logger.warning('Не удалось завершить сессии перед поштучной очисткой', error=term_err)
+            # Fallback: поштучная очистка, каждая в отдельном соединении
+            # чтобы PendingRollbackError не каскадировал на остальные таблицы
+            failed_tables = []
             for table_name in tables_to_truncate:
                 try:
-                    async with db.begin_nested():
-                        await db.execute(text(f'TRUNCATE {table_name} CASCADE'))
+                    async with truncate_engine.begin() as conn:
+                        await conn.execute(text(f'TRUNCATE {table_name} CASCADE'))
                     logger.info('🗑️ Очищена таблица', table_name=table_name)
                 except Exception as table_err:
                     logger.warning('⚠️ Не удалось очистить таблицу', table_name=table_name, error=table_err)
+                    failed_tables.append(table_name)
+            if failed_tables:
+                logger.warning(
+                    '⚠️ Не удалось очистить таблицы',
+                    failed_tables=failed_tables,
+                    count=len(failed_tables),
+                )
+        finally:
+            await truncate_engine.dispose()
 
     async def _collect_file_snapshots(self) -> dict[str, dict[str, Any]]:
         return {}
@@ -1544,16 +1864,49 @@ class BackupService:
     async def _restore_file_snapshots(self, file_snapshots: dict[str, dict[str, Any]]) -> int:
         return 0
 
+    @staticmethod
+    def _build_corrupted_backup_entry(backup_file: Path, file_stats: os.stat_result, *, reason: str) -> dict[str, Any]:
+        """Build a list-entry placeholder for a backup file we can't read."""
+        return {
+            'filename': backup_file.name,
+            'filepath': str(backup_file),
+            'timestamp': datetime.fromtimestamp(file_stats.st_mtime, tz=UTC).isoformat(),
+            'tables_count': '?',
+            'total_records': '?',
+            'compressed': backup_file.suffix == '.gz',
+            'file_size_bytes': file_stats.st_size,
+            'file_size_mb': round(file_stats.st_size / 1024 / 1024, 2),
+            'created_by': None,
+            'database_type': 'unknown',
+            'version': 'unknown',
+            'error': reason,
+            'corrupted': True,
+        }
+
     async def get_backup_list(self) -> list[dict[str, Any]]:
         backups = []
 
         try:
-            for backup_file in sorted(self.backup_dir.glob('backup_*'), reverse=True):
-                if not backup_file.is_file():
+            for backup_file in sorted(
+                await asyncio.to_thread(lambda: list(self.backup_dir.glob('backup_*'))), reverse=True
+            ):
+                if not await asyncio.to_thread(backup_file.is_file):
+                    continue
+
+                file_stats = await asyncio.to_thread(backup_file.stat)
+
+                # Empty file (0 bytes) — прерванный бэкап / гонка записи. Не пытаемся
+                # его открыть, иначе tarfile/gzip/json валятся с ReadError и логируют
+                # ERROR (а через TelegramNotifierProcessor — заливают админ-чат).
+                if file_stats.st_size == 0:
+                    logger.warning('Skipping empty backup file', backup_file=str(backup_file))
+                    backups.append(
+                        self._build_corrupted_backup_entry(backup_file, file_stats, reason='Файл пуст (0 байт)')
+                    )
                     continue
 
                 try:
-                    metadata = {}
+                    metadata: dict[str, Any] = {}
 
                     if self._is_archive_backup(backup_file):
                         mode = 'r:gz' if backup_file.suffixes and backup_file.suffixes[-1] == '.gz' else 'r'
@@ -1572,8 +1925,6 @@ class BackupService:
                             with open(backup_file, encoding='utf-8') as f:
                                 backup_structure = json_lib.load(f)
                         metadata = backup_structure.get('metadata', {})
-
-                    file_stats = backup_file.stat()
 
                     backup_info = {
                         'filename': backup_file.name,
@@ -1599,24 +1950,35 @@ class BackupService:
 
                     backups.append(backup_info)
 
-                except Exception as e:
-                    logger.error('Ошибка чтения метаданных', backup_file=backup_file, error=e)
-                    file_stats = backup_file.stat()
+                except (
+                    tarfile.ReadError,
+                    tarfile.CompressionError,
+                    gzip.BadGzipFile,
+                    json_lib.JSONDecodeError,
+                    EOFError,
+                    UnicodeDecodeError,
+                ) as corruption_error:
+                    # Известные классы повреждения — это не «упало», это плохой
+                    # архив. Логируем как warning, чтобы не уезжало через
+                    # TelegramNotifierProcessor в админ-чат на каждом list-вызове.
+                    logger.warning(
+                        'Backup file appears corrupted',
+                        backup_file=str(backup_file),
+                        error=str(corruption_error)[:200],
+                        error_type=type(corruption_error).__name__,
+                    )
                     backups.append(
-                        {
-                            'filename': backup_file.name,
-                            'filepath': str(backup_file),
-                            'timestamp': datetime.fromtimestamp(file_stats.st_mtime, tz=UTC).isoformat(),
-                            'tables_count': '?',
-                            'total_records': '?',
-                            'compressed': backup_file.suffix == '.gz',
-                            'file_size_bytes': file_stats.st_size,
-                            'file_size_mb': round(file_stats.st_size / 1024 / 1024, 2),
-                            'created_by': None,
-                            'database_type': 'unknown',
-                            'version': 'unknown',
-                            'error': f'Ошибка чтения: {e!s}',
-                        }
+                        self._build_corrupted_backup_entry(
+                            backup_file,
+                            file_stats,
+                            reason=f'{type(corruption_error).__name__}: {corruption_error!s}'[:200],
+                        )
+                    )
+                except Exception as e:
+                    # Реально неожиданное — оставляем error для расследования.
+                    logger.error('Ошибка чтения метаданных', backup_file=str(backup_file), error=e)
+                    backups.append(
+                        self._build_corrupted_backup_entry(backup_file, file_stats, reason=f'Ошибка чтения: {e!s}')
                     )
 
         except Exception as e:
@@ -1626,14 +1988,15 @@ class BackupService:
 
     async def delete_backup(self, backup_filename: str) -> tuple[bool, str]:
         try:
-            backup_path = (self.backup_dir / backup_filename).resolve()
-            if not str(backup_path).startswith(str(self.backup_dir.resolve()) + os.sep):
+            backup_path = await asyncio.to_thread((self.backup_dir / backup_filename).resolve)
+            backup_dir_resolved = await asyncio.to_thread(self.backup_dir.resolve)
+            if not str(backup_path).startswith(str(backup_dir_resolved) + os.sep):
                 return False, '❌ Недопустимое имя файла бекапа'
 
-            if not backup_path.is_file():
+            if not await asyncio.to_thread(backup_path.is_file):
                 return False, f'❌ Файл бекапа не найден: {backup_filename}'
 
-            backup_path.unlink()
+            await asyncio.to_thread(backup_path.unlink)
             message = f'✅ Бекап {backup_filename} удален'
             logger.info(message)
 
@@ -1682,27 +2045,45 @@ class BackupService:
             return False
 
     async def start_auto_backup(self):
-        if self._auto_backup_task and not self._auto_backup_task.done():
-            self._auto_backup_task.cancel()
+        # Лок обязателен: без него конкурентные вызовы (6 штук на холодном
+        # старте) интерливятся на await отмены старой таски, каждый создаёт
+        # свой цикл, а ссылку _auto_backup_task получает только последний —
+        # остальные циклы осиротевают и параллельно пишут один архив (#3030).
+        async with self._scheduler_lock:
+            # Дожидаемся отмены старой таски, чтобы не было двух циклов параллельно
+            # во время рестарта scheduler'а после изменения BACKUP_TIME из кабинета.
+            if self._auto_backup_task and not self._auto_backup_task.done():
+                self._auto_backup_task.cancel()
+                import contextlib
 
-        if self._settings.auto_backup_enabled:
-            next_run = self._calculate_next_backup_datetime()
-            interval = self._get_backup_interval()
-            self._auto_backup_task = asyncio.create_task(self._auto_backup_loop(next_run))
-            logger.info(
-                '📄 Автобекапы включены, интервал: ч, ближайший запуск',
-                total_seconds=interval.total_seconds() / 3600,
-                next_run=next_run.strftime('%d.%m.%Y %H:%M:%S'),
-            )
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._auto_backup_task
+
+            if self._settings.auto_backup_enabled:
+                next_run = self._calculate_next_backup_datetime()
+                interval = self._get_backup_interval()
+                self._auto_backup_task = asyncio.create_task(self._auto_backup_loop(next_run))
+                logger.info(
+                    '📄 Автобекапы включены, интервал: ч, ближайший запуск',
+                    total_seconds=interval.total_seconds() / 3600,
+                    next_run=self._format_local(next_run),
+                )
 
     async def stop_auto_backup(self):
-        if self._auto_backup_task and not self._auto_backup_task.done():
-            self._auto_backup_task.cancel()
-            logger.info('ℹ️ Автобекапы остановлены')
+        async with self._scheduler_lock:
+            if self._auto_backup_task and not self._auto_backup_task.done():
+                self._auto_backup_task.cancel()
+                import contextlib
+
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._auto_backup_task
+                logger.info('ℹ️ Автобекапы остановлены')
 
     async def _auto_backup_loop(self, next_run: datetime | None = None):
+        # Перечитываем настройки в начале цикла — на случай если admin изменил
+        # BACKUP_TIME до того, как scheduler первый раз сюда зашёл.
+        self.reload_settings_from_db()
         next_run = next_run or self._calculate_next_backup_datetime()
-        interval = self._get_backup_interval()
 
         while True:
             try:
@@ -1711,15 +2092,15 @@ class BackupService:
 
                 if delay > 0:
                     logger.info(
-                        '⏰ Следующий автоматический бекап запланирован на (через ч)',
-                        next_run=next_run.strftime('%d.%m.%Y %H:%M:%S'),
+                        '⏰ Запланирован следующий автоматический бекап',
+                        next_run=self._format_local(next_run),
                         delay=delay / 3600,
                     )
                     await asyncio.sleep(delay)
                 else:
                     logger.info(
                         '⏰ Время автоматического бекапа уже наступило, запускаем немедленно',
-                        next_run=next_run.strftime('%d.%m.%Y %H:%M:%S'),
+                        next_run=self._format_local(next_run),
                     )
 
                 logger.info('📄 Запуск автоматического бекапа...')
@@ -1730,12 +2111,25 @@ class BackupService:
                 else:
                     logger.error('❌ Ошибка автобекапа', message=message)
 
-                next_run = next_run + interval
+                # Перед расчётом следующего запуска перечитываем настройки —
+                # admin мог изменить BACKUP_TIME / BACKUP_INTERVAL_HOURS из кабинета,
+                # пока scheduler спал. Без этого изменения вступали в силу только
+                # после рестарта бота.
+                self.reload_settings_from_db()
+                if not self._settings.auto_backup_enabled:
+                    logger.info('ℹ️ Автобекапы отключены через настройки, останавливаем цикл')
+                    break
+                interval = self._get_backup_interval()
+                # Skip missed slots so a stale/past next_run doesn't trigger a burst of
+                # back-to-back catch-up backups (#650541).
+                next_run = self._next_future_run(next_run, interval, datetime.now(UTC))
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error('Ошибка в цикле автобекапов', error=e)
+                self.reload_settings_from_db()
+                interval = self._get_backup_interval()
                 next_run = datetime.now(UTC) + interval
 
     async def _send_backup_notification(self, event_type: str, message: str, file_path: str = None):
@@ -1752,13 +2146,15 @@ class BackupService:
             if file_path:
                 notification_text += f'\n📁 <code>{Path(file_path).name}</code>'
 
-            notification_text += f'\n\n⏰ <i>{datetime.now(UTC).strftime("%d.%m.%Y %H:%M:%S")}</i>'
+            notification_text += f'\n\n⏰ <i>{format_local_datetime(datetime.now(UTC), "%d.%m.%Y %H:%M:%S")}</i>'
 
             try:
-                from app.services.admin_notification_service import AdminNotificationService
+                from app.services.admin_notification_service import AdminNotificationService, NotificationCategory
 
                 admin_service = AdminNotificationService(self.bot)
-                await admin_service._send_message(notification_text)
+                await admin_service.send_admin_notification(
+                    notification_text, category=NotificationCategory.INFRASTRUCTURE
+                )
             except Exception as e:
                 logger.error('Ошибка отправки уведомления через AdminNotificationService', error=e)
 
@@ -1786,7 +2182,7 @@ class BackupService:
             caption = '📦 <b>Резервная копия</b>\n\n'
             if temp_zip_path:
                 caption += '🔐 <b>Архив защищён паролем</b>\n\n'
-            caption += f'⏰ <i>{datetime.now(UTC).strftime("%d.%m.%Y %H:%M:%S")}</i>'
+            caption += f'⏰ <i>{format_local_datetime(datetime.now(UTC), "%d.%m.%Y %H:%M:%S")}</i>'
 
             send_kwargs = {
                 'chat_id': chat_id,
@@ -1801,9 +2197,9 @@ class BackupService:
             await self.bot.send_document(**send_kwargs)
             logger.info('Бекап отправлен в чат', chat_id=chat_id)
 
-            if temp_zip_path and Path(temp_zip_path).exists():
+            if temp_zip_path and await asyncio.to_thread(Path(temp_zip_path).exists):
                 try:
-                    Path(temp_zip_path).unlink()
+                    await asyncio.to_thread(Path(temp_zip_path).unlink)
                 except Exception as cleanup_error:
                     logger.warning('Не удалось удалить временный архив', cleanup_error=cleanup_error)
 
@@ -1813,7 +2209,7 @@ class BackupService:
     async def _create_password_protected_archive(self, file_path: str, password: str) -> str | None:
         try:
             source_path = Path(file_path)
-            if not source_path.exists():
+            if not await asyncio.to_thread(source_path.exists):
                 logger.error('Исходный файл бекапа не найден', file_path=file_path)
                 return None
 

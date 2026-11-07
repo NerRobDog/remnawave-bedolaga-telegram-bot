@@ -1,6 +1,5 @@
 """CRUD операции для платежей KassaAI."""
 
-import json
 from datetime import UTC, datetime
 
 import structlog
@@ -16,7 +15,7 @@ logger = structlog.get_logger(__name__)
 async def create_kassa_ai_payment(
     db: AsyncSession,
     *,
-    user_id: int,
+    user_id: int | None,
     order_id: str,
     amount_kopeks: int,
     currency: str = 'RUB',
@@ -24,7 +23,7 @@ async def create_kassa_ai_payment(
     payment_url: str | None = None,
     payment_system_id: int | None = None,
     expires_at: datetime | None = None,
-    metadata_json: str | None = None,
+    metadata_json: dict | None = None,
 ) -> KassaAiPayment:
     """Создает запись о платеже KassaAI."""
     payment = KassaAiPayment(
@@ -36,14 +35,14 @@ async def create_kassa_ai_payment(
         payment_url=payment_url,
         payment_system_id=payment_system_id,
         expires_at=expires_at,
-        metadata_json=json.loads(metadata_json) if metadata_json else None,
+        metadata_json=metadata_json,
         status='pending',
         is_paid=False,
     )
     db.add(payment)
     await db.commit()
     await db.refresh(payment)
-    logger.info('Создан платеж KassaAI: order_id=, user_id', order_id=order_id, user_id=user_id)
+    logger.info('Создан платеж KassaAI', order_id=order_id, user_id=user_id)
     return payment
 
 
@@ -62,6 +61,16 @@ async def get_kassa_ai_payment_by_external_order_id(db: AsyncSession, kassa_ai_o
 async def get_kassa_ai_payment_by_id(db: AsyncSession, payment_id: int) -> KassaAiPayment | None:
     """Получает платеж по ID."""
     result = await db.execute(select(KassaAiPayment).where(KassaAiPayment.id == payment_id))
+    return result.scalar_one_or_none()
+
+
+async def get_kassa_ai_payment_by_id_for_update(db: AsyncSession, payment_id: int) -> KassaAiPayment | None:
+    result = await db.execute(
+        select(KassaAiPayment)
+        .where(KassaAiPayment.id == payment_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     return result.scalar_one_or_none()
 
 
@@ -95,7 +104,7 @@ async def update_kassa_ai_payment_status(
     await db.commit()
     await db.refresh(payment)
     logger.info(
-        'Обновлен статус платежа KassaAI: order_id=, status=, is_paid',
+        'Обновлен статус платежа KassaAI',
         order_id=payment.order_id,
         status=status,
         is_paid=is_paid,

@@ -1,15 +1,16 @@
 from datetime import UTC, datetime
 
 import structlog
-from aiogram import Bot
-from aiogram.client.default import DefaultBotProperties
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot_factory import create_bot
 from app.config import settings
 from app.database.crud.transaction import get_user_total_spent_kopeks
+from app.database.crud.user import lock_user_for_update
 from app.database.models import PromoGroup, User
 from app.services.admin_notification_service import AdminNotificationService
+from app.services.promo_group_notifications import notify_user_about_auto_assignment
 
 
 logger = structlog.get_logger(__name__)
@@ -30,7 +31,7 @@ async def _notify_admins_about_auto_assignment(
         logger.debug('BOT_TOKEN не настроен — пропускаем уведомление о промогруппе')
         return
 
-    bot = Bot(token=bot_token, default=DefaultBotProperties(parse_mode='HTML'))
+    bot = create_bot(token=bot_token)
     try:
         notification_service = AdminNotificationService(bot)
         reason = (
@@ -87,10 +88,22 @@ async def _get_best_group_for_spending(
 async def maybe_assign_promo_group_by_total_spent(
     db: AsyncSession,
     user_id: int,
+    *,
+    notify_admins: bool = True,
+    notify_user: bool = True,
 ) -> PromoGroup | None:
+    """Выдаёт человеку промогруппу по сумме трат.
+
+    ``notify_admins=False`` — для массового пересчёта: там сводка одна на весь
+    проход, уведомление на каждого человека было бы потоком в админ-чат.
+    ``notify_user=False`` — там же: пересчёт задним числом прошёл бы по всей
+    базе рассылкой без ограничения скорости.
+    """
     from app.database.crud.user_promo_group import (
         add_user_to_promo_group,
+        get_user_promo_groups,
         has_user_promo_group,
+        remove_user_from_promo_group,
         sync_user_primary_promo_group,
     )
 
@@ -99,69 +112,84 @@ async def maybe_assign_promo_group_by_total_spent(
         logger.debug('Не удалось найти пользователя для автовыдачи промогруппы', user_id=user_id)
         return None
 
+    # Блокируем строку пользователя для предотвращения гонок при конкурентных вебхуках
+    user = await lock_user_for_update(db, user)
+
     # Получаем текущую primary промогруппу
     old_group = user.get_primary_promo_group()
 
     total_spent = await get_user_total_spent_kopeks(db, user_id)
     if total_spent <= 0:
+        # Нечего менять: снимаем FOR UPDATE, иначе строка пользователя остаётся заблокированной
+        # до конца внешней сессии (вебхук), и параллельные записи по ней ждут до таймаута.
+        await db.commit()
         return None
 
     previous_threshold = user.auto_promo_group_threshold_kopeks or 0
 
-    target_group = await _get_best_group_for_spending(
-        db,
-        total_spent,
-        min_threshold_kopeks=previous_threshold,
-    )
+    # Находим группу, соответствующую текущим тратам (без порогового фильтра,
+    # чтобы промокод-группы всегда очищались при покупке)
+    target_group = await _get_best_group_for_spending(db, total_spent)
     if not target_group:
+        await db.commit()  # снимаем FOR UPDATE, см. выше
         return None
 
     try:
         target_threshold = target_group.auto_assign_total_spent_kopeks or 0
 
-        if target_threshold <= previous_threshold:
-            logger.debug(
-                "Порог промогруппы '' не превышает ранее назначенный для пользователя",
-                target_group_name=target_group.name,
-                target_threshold=target_threshold,
-                previous_threshold=previous_threshold,
-                telegram_id=user.telegram_id,
-            )
-            return None
+        # Фаза 1: Удаляем старые auto/promocode группы, отличные от целевой
+        current_groups = await get_user_promo_groups(db, user_id)
+        removed_any = False
+        for upg in current_groups:
+            if upg.promo_group_id != target_group.id and upg.assigned_by in ('auto', 'promocode'):
+                await remove_user_from_promo_group(db, user_id, upg.promo_group_id, commit=False)
+                removed_any = True
+                logger.info(
+                    'Удалена старая промогруппа перед автоназначением',
+                    telegram_id=user.telegram_id,
+                    old_group_name=upg.promo_group.name if upg.promo_group else upg.promo_group_id,
+                    old_assigned_by=upg.assigned_by,
+                )
 
-        # Проверяем, есть ли уже эта группа у пользователя
+        if removed_any:
+            await db.flush()
+            await db.refresh(user)
+
+        # Проверяем, есть ли уже целевая группа у пользователя
         already_has_group = await has_user_promo_group(db, user_id, target_group.id)
 
-        if user.auto_promo_group_assigned and already_has_group:
+        if user.auto_promo_group_assigned and already_has_group and not removed_any:
             logger.debug(
-                "Пользователь уже имеет промогруппу '', повторная выдача не требуется",
+                'Пользователь уже имеет промогруппу, повторная выдача не требуется',
                 telegram_id=user.telegram_id,
                 target_group_name=target_group.name,
             )
-            await sync_user_primary_promo_group(db, user_id)
             if target_threshold > previous_threshold:
                 user.auto_promo_group_threshold_kopeks = target_threshold
                 user.updated_at = datetime.now(UTC)
-                await db.commit()
-                await db.refresh(user)
+            await db.commit()
+            await db.refresh(user)
             return target_group
 
         user.auto_promo_group_assigned = True
-        user.auto_promo_group_threshold_kopeks = target_threshold
+        if target_threshold > previous_threshold:
+            user.auto_promo_group_threshold_kopeks = target_threshold
         user.updated_at = datetime.now(UTC)
 
+        newly_added = False
         if not already_has_group:
-            # Добавляем новую промогруппу к существующим
-            await add_user_to_promo_group(db, user_id, target_group.id, assigned_by='auto')
+            await add_user_to_promo_group(db, user_id, target_group.id, assigned_by='auto', commit=False)
+            newly_added = True
             logger.info(
-                "🤖 Пользователю добавлена промогруппа '' за траты ₽",
+                'Пользователю назначена промогруппа за траты',
                 telegram_id=user.telegram_id,
                 target_group_name=target_group.name,
                 total_spent=total_spent / 100,
             )
         else:
+            await sync_user_primary_promo_group(db, user_id)
             logger.info(
-                "🤖 Пользователь уже имеет промогруппу '', отмечаем автоприсвоение",
+                'Пользователь уже имеет промогруппу, синхронизировано',
                 telegram_id=user.telegram_id,
                 target_group_name=target_group.name,
             )
@@ -169,7 +197,7 @@ async def maybe_assign_promo_group_by_total_spent(
         await db.commit()
         await db.refresh(user)
 
-        if not already_has_group:
+        if newly_added and notify_admins:
             await _notify_admins_about_auto_assignment(
                 db,
                 user,
@@ -177,6 +205,8 @@ async def maybe_assign_promo_group_by_total_spent(
                 target_group,
                 total_spent,
             )
+        if newly_added and notify_user:
+            await notify_user_about_auto_assignment(user, target_group, total_spent)
 
         return target_group
     except Exception as exc:

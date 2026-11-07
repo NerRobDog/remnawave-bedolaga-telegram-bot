@@ -155,8 +155,8 @@ class HeleketService:
 
     def verify_webhook_signature(self, payload: dict[str, Any]) -> bool:
         if not self.is_configured:
-            logger.warning('Heleket сервис не настроен, подпись пропускается')
-            return True
+            logger.error('Heleket сервис не настроен, отклоняем webhook')
+            return False
 
         if not isinstance(payload, dict):
             logger.error('Heleket webhook payload не dict', payload=payload)
@@ -175,7 +175,5 @@ class HeleketService:
         is_valid = hmac.compare_digest(expected, str(signature))
 
         if not is_valid:
-            logger.error(
-                'Неверная подпись Heleket webhook: ожидается , получено', expected=expected, signature=signature
-            )
+            logger.error('Неверная подпись Heleket webhook', expected=expected, signature=signature)
         return is_valid

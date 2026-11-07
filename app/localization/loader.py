@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import tempfile
 from functools import cache
@@ -36,17 +37,33 @@ def _resolve_user_locales_dir() -> Path:
     return path
 
 
+def _locale_path(directory: Path, language: str, extension: str) -> Path | None:
+    """Resolve a locale file without allowing names or symlinks to escape its directory."""
+    if not isinstance(language, str) or not re.fullmatch(r'[a-zA-Z0-9_-]+', language):
+        return None
+    root = directory.resolve()
+    candidate = os.path.realpath(root / f'{language}{extension}')
+    # Include the separator so a sibling like locales-backup is never accepted.
+    if not candidate.startswith(str(root).rstrip(os.sep) + os.sep):
+        return None
+    return Path(candidate)
+
+
 def _locale_file_exists(language: str) -> bool:
     code = _normalize_language_code(language)
     if not code:
         return False
 
-    default_candidate = _DEFAULT_LOCALES_DIR / f'{code}.json'
-    if default_candidate.exists():
+    default_candidate = _locale_path(_DEFAULT_LOCALES_DIR, code, '.json')
+    if default_candidate is not None and default_candidate.exists():
         return True
 
     user_dir = _resolve_user_locales_dir()
-    return any((user_dir / f'{code}{extension}').exists() for extension in ('.json', '.yml', '.yaml'))
+    return any(
+        candidate is not None and candidate.exists()
+        for extension in ('.json', '.yml', '.yaml')
+        for candidate in [_locale_path(user_dir, code, extension)]
+    )
 
 
 def _select_fallback_language(available_map: dict[str, str]) -> str:
@@ -105,24 +122,24 @@ def _determine_default_language() -> str:
 
         if _locale_file_exists(normalized_configured):
             _logger.warning(
-                "Configured default language '' is not listed in AVAILABLE_LANGUAGES. Falling back to ''.",
+                'Configured default language is not listed in AVAILABLE_LANGUAGES — falling back',
                 configured=configured,
                 FALLBACK_LANGUAGE=_FALLBACK_LANGUAGE,
             )
         else:
             _logger.warning(
-                "Configured default language '' is not available. Falling back to ''.",
+                'Configured default language is not available — falling back',
                 configured=configured,
                 FALLBACK_LANGUAGE=_FALLBACK_LANGUAGE,
             )
     else:
-        _logger.debug("DEFAULT_LANGUAGE is not set. Falling back to ''.", FALLBACK_LANGUAGE=_FALLBACK_LANGUAGE)
+        _logger.debug('DEFAULT_LANGUAGE is not set — falling back', FALLBACK_LANGUAGE=_FALLBACK_LANGUAGE)
 
     fallback_language = _select_fallback_language(available_map)
 
     if _normalize_language_code(fallback_language) != _normalize_language_code(_FALLBACK_LANGUAGE):
         _logger.warning(
-            "Fallback language '' is not available. Using '' instead.",
+            'Fallback language is not available — using a different fallback instead',
             FALLBACK_LANGUAGE=_FALLBACK_LANGUAGE,
             fallback_language=fallback_language,
         )
@@ -182,7 +199,7 @@ def _directory_is_writable(directory: Path) -> bool:
         )
     except OSError as error:
         _logger.warning(
-            'Unable to prepare locale directory for writing: . Configure LOCALES_PATH to a writable path.',
+            'Unable to prepare locale directory for writing. Configure LOCALES_PATH to a writable path.',
             directory=directory,
             user_hint=user_hint,
             error=error,
@@ -215,7 +232,7 @@ def ensure_locale_templates() -> None:
         try:
             shutil.copyfile(source, target)
         except Exception as error:
-            _logger.warning('Failed to copy default locale to', source=source, target=target, error=error)
+            _logger.warning('Failed to copy default locale', source=source, target=target, error=error)
 
     if not destination_has_files:
         for template in _DEFAULT_LOCALES_DIR.iterdir():
@@ -232,15 +249,15 @@ def ensure_locale_templates() -> None:
             continue
 
         if not source_path.exists():
-            _logger.debug('Default locale template is missing at', locale_code=locale_code, source_path=source_path)
+            _logger.debug('Default locale template is missing', locale_code=locale_code, source_path=source_path)
             continue
 
         _copy_locale(source_path, target_path)
 
 
 def _load_default_locale(language: str) -> dict[str, Any]:
-    default_path = _DEFAULT_LOCALES_DIR / f'{language}.json'
-    if not default_path.exists():
+    default_path = _locale_path(_DEFAULT_LOCALES_DIR, language, '.json')
+    if default_path is None or not default_path.exists():
         return {}
     return _normalize_locale_dict(_load_locale_file(default_path))
 
@@ -248,8 +265,8 @@ def _load_default_locale(language: str) -> dict[str, Any]:
 def _load_user_locale(language: str) -> dict[str, Any]:
     user_dir = _resolve_user_locales_dir()
     for extension in ('.json', '.yml', '.yaml'):
-        candidate = user_dir / f'{language}{extension}'
-        if candidate.exists():
+        candidate = _locale_path(user_dir, language, extension)
+        if candidate is not None and candidate.exists():
             return _normalize_locale_dict(_load_locale_file(candidate))
     return {}
 
@@ -271,7 +288,7 @@ def _load_locale_file(path: Path) -> dict[str, Any]:
         _logger.warning('Failed to parse locale file', path=path, error=error)
         return {}
 
-    _logger.warning('Unsupported locale format for', path=path)
+    _logger.warning('Unsupported locale format', path=path)
     return {}
 
 
@@ -294,7 +311,7 @@ def load_locale(language: str) -> dict[str, Any]:
 
     if not merged and language != DEFAULT_LANGUAGE:
         _logger.warning(
-            'Locale not found. Falling back to default language .', language=language, DEFAULT_LANGUAGE=DEFAULT_LANGUAGE
+            'Locale not found — falling back to default language', language=language, DEFAULT_LANGUAGE=DEFAULT_LANGUAGE
         )
         return load_locale(DEFAULT_LANGUAGE)
     return merged
