@@ -16,6 +16,7 @@
 | `SUPPORT_ASSIST_AUTO_ASK_ENABLED` | `false` | Автовопрос клиенту на голое первое сообщение (фиксированный набор вопросов, один раз на тикет). |
 | `SUPPORT_ASSIST_SEND_BUTTONS_ENABLED` | `false` | Кнопки владельца «Отправить / Править / Пропустить» под карточкой. |
 | `ANTHROPIC_API_KEY` | пусто | Ключ Anthropic API. Пусто: карточки без модели. |
+| `SUPPORT_ASSIST_PROXY_URL` | пусто | SOCKS-прокси для Anthropic API: с российских IP API отвечает 403. Пусто: `PROXY_URL`. |
 | `SUPPORT_ASSIST_MODEL` | `claude-opus-5-5` | Модель карточки. |
 | `SUPPORT_ASSIST_TIMEOUT_SECONDS` | `90` | Таймаут запроса к модели. Весь вызов (с повторной попыткой SDK, `max_retries=1`) дополнительно ограничен этим значением плюс 10 с: по истечении рисуется карточка без модели, слот конвейера свободен. |
 | `SUPPORT_ASSIST_EFFORT` | `medium` | Глубина размышления модели: `low`, `medium`, `high`, `xhigh`, `max`. Неизвестное значение читается как `medium`. |
