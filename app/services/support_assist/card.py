@@ -10,7 +10,7 @@ import json
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 import anthropic
 import structlog
@@ -25,12 +25,32 @@ _HERE = Path(__file__).parent
 MAX_FACTS = 7
 FALLBACKS_BETA = 'server-side-fallback-2026-07-01'
 
-# Цены Opus 5.5, $ за 1M токенов.
-PRICE_INPUT = Decimal(4)
-PRICE_OUTPUT = Decimal(20)
-PRICE_CACHE_READ = Decimal('0.20')
-PRICE_CACHE_WRITE = Decimal(5)  # 1.25x от входа (кэш на 5 минут)
 _MILLION = Decimal(1_000_000)
+
+
+class ModelPrice(NamedTuple):
+    """$ за 1M токенов: вход, выход, чтение кэша, запись кэша (кэш на 5 минут)."""
+
+    input: Decimal
+    output: Decimal
+    cache_read: Decimal
+    cache_write: Decimal
+
+
+# Цены из таблицы моделей скилла claude-api (срез 2026-10-06). Чтение кэша у Opus 5.5 — $0.20, у Fable 5.1 — $0.25;
+# у остальных 0.1 от входа, запись 1.25 от входа (общее правило из документации по кэшу).
+PRICES: dict[str, ModelPrice] = {
+    'claude-opus-5-5': ModelPrice(Decimal(4), Decimal(20), Decimal('0.20'), Decimal(5)),
+    'claude-opus-5': ModelPrice(Decimal(5), Decimal(25), Decimal('0.50'), Decimal('6.25')),
+    'claude-opus-4-8': ModelPrice(Decimal(5), Decimal(25), Decimal('0.50'), Decimal('6.25')),
+    'claude-sonnet-5-5': ModelPrice(Decimal(2), Decimal(10), Decimal('0.20'), Decimal('2.50')),
+    'claude-fable-5-1': ModelPrice(Decimal(10), Decimal(50), Decimal('0.25'), Decimal('12.50')),
+}
+# Модель, цену которой берём, когда настроенной нет в таблице.
+DEFAULT_PRICE_MODEL = 'claude-opus-5-5'
+
+EFFORT_LEVELS = frozenset({'low', 'medium', 'high', 'xhigh', 'max'})
+DEFAULT_EFFORT = 'medium'
 
 MAX_OUTPUT_TOKENS = 16000
 
@@ -62,6 +82,8 @@ class CardResult:
     output_tokens: int | None = None
     cache_read_tokens: int | None = None
     cost_usd: Decimal | None = None
+    # Цена посчитана по тарифу настроенной модели, а ответила другая, которой нет в таблице: порядок величины, не счёт.
+    cost_is_estimate: bool = False
     error: str | None = None
 
 
@@ -97,14 +119,31 @@ def _system_blocks() -> list[dict[str, Any]]:
     ]
 
 
-def _cost(input_tokens: int, output_tokens: int, cache_read: int, cache_write: int) -> Decimal:
+def _prices_for(model: str | None) -> tuple[ModelPrice, bool]:
+    """Тариф ответившей модели; нет в таблице — тариф настроенной, и если ответила не она, это оценка."""
+    if model in PRICES:
+        return PRICES[model], False
+    configured = PRICES.get(settings.SUPPORT_ASSIST_MODEL)
+    estimate = configured is None or (model is not None and model != settings.SUPPORT_ASSIST_MODEL)
+    return configured or PRICES[DEFAULT_PRICE_MODEL], estimate
+
+
+def _cost(price: ModelPrice, input_tokens: int, output_tokens: int, cache_read: int, cache_write: int) -> Decimal:
     total = (
-        PRICE_INPUT * input_tokens
-        + PRICE_OUTPUT * output_tokens
-        + PRICE_CACHE_READ * cache_read
-        + PRICE_CACHE_WRITE * cache_write
+        price.input * input_tokens
+        + price.output * output_tokens
+        + price.cache_read * cache_read
+        + price.cache_write * cache_write
     )
     return total / _MILLION
+
+
+def _effort() -> str:
+    effort = str(settings.SUPPORT_ASSIST_EFFORT or '').strip().lower()
+    if effort in EFFORT_LEVELS:
+        return effort
+    logger.warning('support_assist.unknown_effort', effort=effort, used=DEFAULT_EFFORT)
+    return DEFAULT_EFFORT
 
 
 async def generate_card(
@@ -122,20 +161,22 @@ async def generate_card(
                 'text': 'Результат автопроверок (JSON):\n' + json.dumps(payload, ensure_ascii=False),
             },
         ]
-        response = await client.beta.messages.create(
-            model=settings.SUPPORT_ASSIST_MODEL,
-            max_tokens=MAX_OUTPUT_TOKENS,
-            thinking={'type': 'adaptive'},
-            output_config={
-                'effort': 'medium',
+        request: dict[str, Any] = {
+            'model': settings.SUPPORT_ASSIST_MODEL,
+            'max_tokens': MAX_OUTPUT_TOKENS,
+            'thinking': {'type': 'adaptive'},
+            'output_config': {
+                'effort': _effort(),
                 'format': {'type': 'json_schema', 'schema': _card_schema()},
             },
-            system=_system_blocks(),
-            messages=[{'role': 'user', 'content': user_content}],
-            betas=[FALLBACKS_BETA],
-            fallbacks='default',
-            timeout=settings.SUPPORT_ASSIST_TIMEOUT_SECONDS,
-        )
+            'system': _system_blocks(),
+            'messages': [{'role': 'user', 'content': user_content}],
+            'timeout': settings.SUPPORT_ASSIST_TIMEOUT_SECONDS,
+        }
+        if settings.SUPPORT_ASSIST_FALLBACKS_ENABLED:
+            request['betas'] = [FALLBACKS_BETA]
+            request['fallbacks'] = 'default'
+        response = await client.beta.messages.create(**request)
     except Exception as exc:
         logger.warning('support_assist.card_request_failed', error=str(exc))
         return CardResult(card=None, error=f'{type(exc).__name__}: {exc}')
@@ -145,13 +186,22 @@ async def generate_card(
     out_tok = int(getattr(usage, 'output_tokens', 0) or 0)
     cache_read = int(getattr(usage, 'cache_read_input_tokens', 0) or 0)
     cache_write = int(getattr(usage, 'cache_creation_input_tokens', 0) or 0)
+    answered_by = getattr(response, 'model', None)
+    price, estimate = _prices_for(answered_by)
+    if estimate:
+        logger.warning(
+            'support_assist.cost_estimated',
+            answered_by=answered_by,
+            configured=settings.SUPPORT_ASSIST_MODEL,
+        )
     result = CardResult(
         card=None,
-        model=getattr(response, 'model', None),
+        model=answered_by,
         input_tokens=in_tok,
         output_tokens=out_tok,
         cache_read_tokens=cache_read,
-        cost_usd=_cost(in_tok, out_tok, cache_read, cache_write),
+        cost_usd=_cost(price, in_tok, out_tok, cache_read, cache_write),
+        cost_is_estimate=estimate,
     )
     if response.stop_reason == 'refusal':
         result.error = 'refusal'

@@ -131,6 +131,10 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ''
     SUPPORT_ASSIST_MODEL: str = 'claude-opus-5-5'
     SUPPORT_ASSIST_TIMEOUT_SECONDS: int = 90
+    # Глубина размышления модели (low | medium | high | xhigh | max); неизвестное значение читается как medium.
+    SUPPORT_ASSIST_EFFORT: str = 'medium'
+    # Серверный запасной ход: при отказе классификатора API повторяет запрос на другой модели (цена — по ответившей).
+    SUPPORT_ASSIST_FALLBACKS_ENABLED: bool = True
     SUPPORT_ASSIST_RECOMPUTE_MINUTES: int = 10
     # Обязательная анкета перед тикетом (бот и кабинет). Включать после утверждения текстов вариантов
     # и после выката кабинета с формой: старый клиент API без анкеты получит 422.
