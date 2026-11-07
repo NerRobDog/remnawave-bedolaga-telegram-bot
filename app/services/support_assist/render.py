@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+from dataclasses import dataclass
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -11,6 +12,9 @@ from app.services.support_assist.flags import Flag
 
 
 TELEGRAM_LIMIT = 4096
+
+# Строка под карточкой, когда черновик не поместился: «Отправить» в таком случае не рисуется.
+TRUNCATED_DRAFT_NOTICE = '⚠️ Черновик слишком длинный и не поместился в карточку целиком. Нажмите «Править».'
 
 _SEV_ICON = {'high': '🔴', 'mid': '⚠️', 'low': '✅', 'info': '✅', 'unknown': '❓'}
 
@@ -52,19 +56,30 @@ def _cut(value: str, excess: int) -> str:
     return value[:keep].rstrip() + ('…' if keep else '')
 
 
-def render_card(card: Card | None, flags: list[Flag], ticket_id: int, limit: int = TELEGRAM_LIMIT) -> str:
-    """HTML карточки не длиннее ``limit`` знаков (по умолчанию лимит Telegram).
+@dataclass(frozen=True, slots=True)
+class RenderedCard:
+    """Готовая карточка и признак, что черновик ответа в неё не влез целиком.
 
-    Меньший ``limit`` оставляет место под строку решения, которую владелец потом дописывает.
+    «Отправить» уходит клиенту черновик как есть, поэтому её можно показывать только тогда, когда
+    владелец увидел весь черновик: ``draft_truncated`` нужен и клавиатуре, и обработчику кнопки.
     """
+
+    text: str
+    draft_truncated: bool
+
+
+def _fit(card: Card | None, flags: list[Flag], ticket_id: int, limit: int) -> tuple[str, bool]:
+    """Текст карточки не длиннее ``limit`` знаков и признак «черновик урезан или выброшен целиком»."""
     if card is None:
         facts = [(_SEV_ICON[f.sev], f.text) for f in flags]
         cause = owner_action = draft = None
         ask: list[str] = []
+        original_draft = ''
     else:
         facts = [(f.icon, f.text) for f in card.facts]
         cause, owner_action, draft = card.cause, card.owner_action, card.draft
         ask = list(card.ask_client)
+        original_draft = card.draft or ''
 
     def build() -> str:
         return _compose(ticket_id, facts, cause, owner_action, ask, draft, no_model=card is None)
@@ -93,15 +108,44 @@ def render_card(card: Card | None, flags: list[Flag], ticket_id: int, limit: int
         elif cause:
             cause = _cut(cause, excess) or None
         else:
-            return text[:limit]
+            text = text[:limit]
+            break
         text = build()
-    return text
+    return text, bool(original_draft) and draft != original_draft
 
 
-def build_card_keyboard(card_id: int, show_send: bool) -> InlineKeyboardMarkup:
+def render_card_checked(
+    card: Card | None,
+    flags: list[Flag],
+    ticket_id: int,
+    limit: int = TELEGRAM_LIMIT,
+    *,
+    truncation_notice: str | None = None,
+) -> RenderedCard:
+    """HTML карточки не длиннее ``limit`` знаков (по умолчанию лимит Telegram) и признак урезанного черновика.
+
+    Меньший ``limit`` оставляет место под строку решения, которую владелец потом дописывает.
+    ``truncation_notice`` дописывается в конец, только если черновик не влез; место под него берётся из ``limit``.
+    """
+    text, truncated = _fit(card, flags, ticket_id, limit)
+    if truncated and truncation_notice:
+        suffix = f'\n\n{_e(truncation_notice)}'
+        text, truncated = _fit(card, flags, ticket_id, limit - len(suffix))
+        text += suffix
+    return RenderedCard(text=text, draft_truncated=truncated)
+
+
+def render_card(card: Card | None, flags: list[Flag], ticket_id: int, limit: int = TELEGRAM_LIMIT) -> str:
+    """HTML карточки не длиннее ``limit`` знаков (по умолчанию лимит Telegram)."""
+    return render_card_checked(card, flags, ticket_id, limit).text
+
+
+def build_card_keyboard(card_id: int, show_send: bool, *, draft_truncated: bool = False) -> InlineKeyboardMarkup:
+    """«Отправить» нет, если черновик урезан в карточке: владелец не видел его целиком, остаётся «Править»."""
     row: list[InlineKeyboardButton] = []
     if show_send:
-        row.append(InlineKeyboardButton(text='Отправить', callback_data=f'sa:send:{card_id}'))
+        if not draft_truncated:
+            row.append(InlineKeyboardButton(text='Отправить', callback_data=f'sa:send:{card_id}'))
         row.append(InlineKeyboardButton(text='Править', callback_data=f'sa:edit:{card_id}'))
     row.append(InlineKeyboardButton(text='Пропустить', callback_data=f'sa:skip:{card_id}'))
     return InlineKeyboardMarkup(inline_keyboard=[row])

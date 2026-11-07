@@ -14,6 +14,12 @@
 своей правки; текст ответом на другой запрос не принимается. Так ответ, написанный для одного клиента, не уходит
 другому (отправку не отозвать).
 
+Запрос правки живёт ``EDIT_TTL_SECONDS`` (30 минут) от нажатия: позже текст не отправляется, состояние снимается,
+карточка остаётся 'shown'. Текст, начинающийся с «/», клиенту не уходит никогда: это команда, а не ответ.
+
+«Отправить» шлёт клиенту черновик как есть, поэтому работает только для черновика, который поместился в карточку
+целиком (``render_card_checked``): урезанного текста владелец не видел. Для длинного черновика остаётся «Править».
+
 Отправка и там, и там — ``send_admin_reply`` из ``tickets.py``, та же последовательность, что у ручного
 ответа. Гонку нажатий решает ``claim_card_decision`` (один условный UPDATE): клиент получает ровно одно
 сообщение. Если запись ответа упала после захвата, карточка возвращается в 'shown'.
@@ -21,6 +27,7 @@
 
 import contextlib
 import html
+import time
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -38,7 +45,7 @@ from app.database.models import TicketStatus
 from app.handlers.admin.tickets import send_admin_reply
 from app.services.support_assist.card import Card
 from app.services.support_assist.flags import Flag
-from app.services.support_assist.render import TELEGRAM_LIMIT, render_card
+from app.services.support_assist.render import TELEGRAM_LIMIT, render_card, render_card_checked
 from app.services.support_settings_service import SupportSettingsService
 from app.states import SupportAssistStates
 from app.utils.ticket_text import TICKET_MESSAGE_MAX_LENGTH
@@ -55,6 +62,14 @@ NO_ACCESS = 'Нет доступа'
 SEND_DISABLED = 'Отправка из карточки выключена'
 STALE_BUTTON = 'Кнопка устарела'
 STALE_PROMPT = 'Запрос правки устарел.'
+EDIT_EXPIRED = (
+    'Время правки истекло (больше 30 минут), текст не отправлен. '
+    'Нажмите «Править» под карточкой ещё раз: карточка не тронута.'
+)
+COMMAND_NOT_REPLY = (
+    'Команда клиенту не отправляется. Пришлите ответ обычным текстом (не с «/» в начале) '
+    'или нажмите «Отмена» под черновиком.'
+)
 FOREIGN_REPLY = (
     'Это ответ на другое сообщение, текст не отправлен. Пришлите его обычным сообщением '
     'или ответом на последний запрос «Правка ответа по тикету».'
@@ -66,6 +81,13 @@ KEY_CHAT_ID = 'sa_chat_id'
 KEY_MESSAGE_ID = 'sa_message_id'
 # Сообщение-запрос правки в личке (на нём «Отмена»): по нему отличаем актуальный запрос от заменённого.
 KEY_PROMPT_ID = 'sa_prompt_id'
+# Когда админ нажал «Править» (секунды с начала эпохи): по нему запрос правки протухает.
+KEY_STARTED_AT = 'edit_started_at'
+
+# Сколько запрос правки ждёт текст. Дольше — риск, что админ уже забыл, о каком клиенте речь.
+EDIT_TTL_SECONDS = 30 * 60
+# Допуск на расхождение часов: время старта из будущего дальше этого считается порчей данных.
+CLOCK_SKEW_SECONDS = 60
 
 # Потолок текста сообщения Telegram и запас на обвязку запроса правки (заголовок, подсказка).
 PROMPT_LIMIT = 4096
@@ -90,6 +112,7 @@ class Verdict(StrEnum):
     CLOSED = 'closed'
     NO_TEXT = 'no_text'
     TOO_LONG = 'too_long'
+    DRAFT_NOT_SHOWN = 'draft_not_shown'
     FAILED = 'failed'
 
 
@@ -100,6 +123,9 @@ _VERDICT_TEXT = {
     Verdict.CLOSED: 'Тикет закрыт, ответ не отправлен. Нажмите «Пропустить» или откройте тикет вручную.',
     Verdict.NO_TEXT: 'В карточке нет черновика',
     Verdict.TOO_LONG: f'Текст длиннее {TICKET_MESSAGE_MAX_LENGTH} знаков: нажмите «Править» и сократите его',
+    Verdict.DRAFT_NOT_SHOWN: (
+        'Черновик не поместился в карточку целиком, владелец его не видел: нажмите «Править» и пришлите текст'
+    ),
     Verdict.FAILED: 'Не удалось отправить, карточка осталась на месте. Попробуйте ещё раз.',
 }
 
@@ -185,6 +211,20 @@ def _card_text(view: _CardView, line: str) -> str | None:
         return None
 
 
+def _draft_fully_shown(view: _CardView) -> bool:
+    """Весь ли черновик был в сообщении карточки (карточка собирается так же, как её собрал конвейер).
+
+    Не удалось собрать карточку заново — доказать нечем, считаем, что не весь.
+    """
+    try:
+        card = Card.model_validate(view.card)
+        flags = [Flag(**f) for f in view.flags]
+        return not render_card_checked(card, flags, view.ticket_id).draft_truncated
+    except Exception:
+        logger.warning('support_assist.draft_visibility_check_failed', card_id=view.id, exc_info=True)
+        return False
+
+
 async def _mark_card_message(bot: Bot, view: _CardView, chat_id: int, message_id: int, status: str) -> None:
     """Снять кнопки с карточки и дописать, что решено. Сбой правки решения не отменяет."""
     text = _card_text(view, DECISION_LINE[status])
@@ -230,6 +270,9 @@ async def _decide_and_send(
         return _Decision(Verdict.NO_TEXT, view)
     if len(body) > TICKET_MESSAGE_MAX_LENGTH:
         return _Decision(Verdict.TOO_LONG, view)
+    # Черновик уходит клиенту как есть: он должен был целиком лежать в карточке. Свой текст админ видел сам.
+    if text is None and not _draft_fully_shown(view):
+        return _Decision(Verdict.DRAFT_NOT_SHOWN, view)
 
     ticket = await TicketCRUD.get_ticket_by_id(db, view.ticket_id, load_messages=False, load_user=True)
     if ticket is None:
@@ -316,7 +359,7 @@ def _edit_prompt(view: _CardView) -> str:
         f'✏️ <b>Правка ответа по тикету #{view.ticket_id}</b>\n\n'
         f'Черновик:\n{draft}\n\n'
         'Пришлите одним сообщением текст, который нужно отправить клиенту. '
-        'Он уйдёт сразу и без изменений.'
+        'Он уйдёт сразу и без изменений. Запрос действует 30 минут.'
     )
 
 
@@ -398,10 +441,20 @@ async def handle_edit(callback: types.CallbackQuery, state: FSMContext, bot: Bot
             KEY_CHAT_ID: message.chat.id,
             KEY_MESSAGE_ID: message.message_id,
             KEY_PROMPT_ID: getattr(prompt, 'message_id', None),
+            KEY_STARTED_AT: time.time(),
         },
     )
     in_private = getattr(message.chat, 'type', None) == 'private'
     await callback.answer(None if in_private else 'Черновик отправлен вам в личные сообщения')
+
+
+def _edit_expired(data: dict) -> bool:
+    """Запрос правки протух (или не доказать, что свежий): нет времени старта, оно мусорное или из далёкого будущего."""
+    started = data.get(KEY_STARTED_AT)
+    if isinstance(started, bool) or not isinstance(started, int | float):
+        return True
+    age = time.time() - started
+    return not (-CLOCK_SKEW_SECONDS <= age <= EDIT_TTL_SECONDS)
 
 
 async def handle_edit_text(message: types.Message, state: FSMContext, bot: Bot, db: AsyncSession, db_user):
@@ -418,6 +471,11 @@ async def handle_edit_text(message: types.Message, state: FSMContext, bot: Bot, 
         await message.answer(STALE_BUTTON)
         return
 
+    if _edit_expired(data):
+        await state.clear()
+        await message.answer(EDIT_EXPIRED)
+        return
+
     # Ответом (reply) на запрос, который уже заменён, текст не принимаем: он мог быть написан для другого клиента.
     prompt_id = data.get(KEY_PROMPT_ID)
     replied_to = getattr(getattr(message, 'reply_to_message', None), 'message_id', None)
@@ -428,6 +486,10 @@ async def handle_edit_text(message: types.Message, state: FSMContext, bot: Bot, 
     text = (message.text or '').strip()
     if not text:
         await message.answer('Пришлите ответ текстом или нажмите «Отмена» под черновиком.')
+        return
+    if text.startswith('/'):
+        # Команда, а не ответ: клиенту её слать нельзя. Состояние остаётся, админ пришлёт обычный текст.
+        await message.answer(COMMAND_NOT_REPLY)
         return
     if len(text) > TICKET_MESSAGE_MAX_LENGTH:
         await message.answer(
