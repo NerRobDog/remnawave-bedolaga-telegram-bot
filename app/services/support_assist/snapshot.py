@@ -225,7 +225,8 @@ async def _fetch_history(api: RemnaWaveAPI, panel_id: int) -> tuple[int | None, 
         if _dt(r.get('requestAt'))
     ]
     total = resp.get('total')
-    return (int(total) if total is not None else len(records)), records
+    # Нет числа от панели — «неизвестно», а не «ноль»: иначе флаги заявят «ни разу не забирала».
+    return (total if isinstance(total, int) and not isinstance(total, bool) else None), records
 
 
 async def _fetch_devices(api: RemnaWaveAPI, panel_id: int) -> list[dict]:

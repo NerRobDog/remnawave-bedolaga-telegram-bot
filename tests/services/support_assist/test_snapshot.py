@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.external.remnawave_api import RemnaWaveAPIError
+from app.services.support_assist import flags
 from app.services.support_assist import snapshot as snap
 
 
@@ -103,6 +104,26 @@ async def test_history_failure_goes_to_missing_not_empty(monkeypatch):
     s = await snap.collect_snapshot(AsyncMock(), api, MagicMock(user_id=7, id=1), NOW)
     assert 'sub_requests' in s.missing
     assert s.sub_requests_total is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('response', [{'records': []}, {'total': None, 'records': []}, {'total': 'many', 'records': []}])
+async def test_history_without_a_usable_total_is_unknown_not_zero(monkeypatch, response):
+    """Панель не прислала число — «ни разу не забирала» утверждать нельзя: total остаётся None."""
+    _patch_bot(monkeypatch)
+    api = _api()
+    orig = api._make_request.side_effect
+
+    async def no_total(method, endpoint, *a, **kw):
+        if endpoint.endswith('subscription-request-history'):
+            return {'response': response}
+        return await orig(method, endpoint, *a, **kw)
+
+    api._make_request = AsyncMock(side_effect=no_total)
+    s = await snap.collect_snapshot(AsyncMock(), api, MagicMock(user_id=7, id=1), NOW)
+    assert s.sub_requests_total is None
+    assert s.sub_requests == []
+    assert 'never_fetched' not in {f.code for f in flags.compute_flags(s)}
 
 
 @pytest.mark.asyncio
