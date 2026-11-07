@@ -135,6 +135,9 @@ def _sends_a_date_itself(path: pathlib.Path) -> bool:
 #: payload. Каждый обязан не звать запись в панель (test_snapshot_stores_never_write_to_the_panel).
 _SNAPSHOT_STORES = {
     'app/services/grace_access_codec.py': 'снимки грейса (биллинг, панель, оверлей) в строке сессии',
+    'app/services/support_assist/snapshot.py': (
+        'ассистент поддержки только читает панель: словарь со status и expire_at — снимок для карточки, не запрос'
+    ),
 }
 
 
