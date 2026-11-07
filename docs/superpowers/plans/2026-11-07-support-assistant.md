@@ -291,8 +291,49 @@ Read the claude-api skill files for Python (`python/` messages, structured outpu
 
 ---
 
+### Task 10: Mandatory ticket form — backend and bot
+
+Added 2026-11-07 (owner requirement, spec section «Обязательная анкета перед тикетом»). Runs after Tasks 1–9.
+
+**Files:**
+- Create: `app/services/support_assist/ticket_form.py`
+- Create: `migrations/alembic/versions/0143_ticket_diagnostics.py` (`revision = '0143'`, `down_revision = '0142'`)
+- Modify: `app/database/models.py` (`Ticket`: `diagnostics = Column(JSON, nullable=True)`), `app/config.py` (`SUPPORT_TICKET_FORM_REQUIRED: bool = False`)
+- Modify: `app/handlers/tickets.py` (FSM steps before the text step in the ticket-creation flow), `app/cabinet/routes/tickets.py` (`create_ticket` request schema accepts `diagnostics`; required only when the flag is on), `app/services/admin_notification_service.py` (ticket notification shows the answers)
+- Modify: `app/services/support_assist/payload.py` (add `diagnostics` to the allowlist), `questions.py` (`pick_questions` drops questions the form answered: platform→device, app→app, network→network, symptom→sites, since→since_when)
+- Modify: locales ru/en (keys `TICKET_FORM_<FIELD>_<OPTION>`, `TICKET_FORM_<FIELD>_PROMPT`)
+- Test: `tests/services/support_assist/test_ticket_form.py`, extend `test_payload.py`, `test_questions.py`
+
+**Interfaces — Produces:**
+- `FORM_FIELDS: dict[str, tuple[str, ...]]` = {'platform': ('ios','android','windows','macos','router','other'), 'app': ('clash_mi','happ','rabbit_hole','flclash_x','other'), 'network': ('mobile','wifi','both'), 'symptom': ('nothing','specific_site','slow','no_connect'), 'since': ('today','days','always','after_update')}
+- `validate_diagnostics(raw: dict | None) -> dict` → raises `ValueError` on a missing field or unknown option; `other` may carry `<field>_other: str` (≤100 chars, stripped).
+- `render_diagnostics(d: dict, lang: str) -> str` for the admin notification and the card.
+
+- [ ] **Step 1:** Write the tests:
+  - `validate_diagnostics` with all fields → returned as is.
+  - A missing field → ValueError.
+  - An unknown option → ValueError.
+  - An `other` text of 300 chars → truncated to 100.
+  - `pick_questions` with `diagnostics` containing platform+app+network → none of device/app/network.
+  - The payload includes `diagnostics` and still passes the forbidden-keys walker.
+  - Cabinet `create_ticket`: flag on + no diagnostics → 422; flag off + no diagnostics → created as before.
+  - Bot FSM: the flag on → the first step after «создать тикет» asks for the platform; the flag off → the old flow is unchanged.
+- [ ] **Step 2:** Run → FAIL.
+- [ ] **Step 3:** Implement. The bot FSM uses inline buttons with the existing string-prefix callbacks (`app/handlers/tickets.py:1154-1189` pattern), prefix `tf:`.
+- [ ] **Step 4:** Run the new tests plus `uv run pytest tests -k "ticket or support" -q` → PASS. Check `alembic upgrade head --sql` for 0143.
+- [ ] **Step 5:** Commit `feat(support): mandatory diagnostics form before opening a ticket`.
+
+### Task 11: Mandatory ticket form — cabinet frontend
+
+Repo `~/dev/bedolaga-cabinet` (separate repo). Base it on the branch that prod cabinet runs (check `/opt/remnawave/bedolaga-cabinet` on polite read-only). The bare-complaint filter branch `feat/support-reject-bare-complaint` (`~/dev/bedolaga-cabinet-support-quality`, uncommitted) overlaps: build on top of it, or reconcile — the form makes most of the filter redundant. Report which.
+
+- [ ] **Step 1:** Add the five required selectors to the ticket creation form (`src/` ticket create page). Labels come from i18n ru/en. «Другое» opens a short text input. Submit is disabled until every field is answered. Send `diagnostics` in the create request.
+- [ ] **Step 2:** Run the component test, or add one if the repo has a test setup: submit is disabled with a missing field, and the payload contains `diagnostics`. Run `npm run build` → OK.
+- [ ] **Step 3:** Commit `feat(support): diagnostics form on ticket creation` in the cabinet repo (no AI attribution).
+
 ## After the plan (not tasks)
 
+- The owner approves the ticket form option texts (Task 10 locales) before `SUPPORT_TICKET_FORM_REQUIRED` is turned on; cabinet frontend (Task 11) ships before or with the flag.
 - The owner approves the client question texts (Task 5 locales) and the KB (`kb.md`).
 - One paid eval run on the 15 scenarios (≈ $0.50, estimate) with the owner's OK. It measures the real cost per ticket.
 - Rollout of phase 1 (shadow: flags ENABLED=true, SEND_BUTTONS=false, AUTO_ASK=false) via bedolaga-prod-update, after the owner's «да», coordinated by «Пахан».
