@@ -76,11 +76,15 @@ def test_system_blocks_contain_client_knowledge():
     assert clients in blocks[-1]['text']
 
 
-def test_global_mode_is_not_described_as_full_vpn():
-    # Live 2026-11-07: GLOBAL group defaults to DIRECT in Clash Mi and FlClashX.
+def test_global_mode_is_server_pick_via_vpn():
+    # Since 2026-11-08 the subscription templates carry their own GLOBAL group:
+    # only the servers, first one by default. Global = VPN with a manual server pick.
     text = '\n'.join(b['text'] for b in card._system_blocks())
-    assert 'весь трафик через VPN' not in text
-    assert 'everything via VPN' not in text
+    assert 'мимо VPN' not in text
+    assert 'DIRECT by default' not in text
+    assert 'Never advise Global' not in text
+    assert 'выбрать конкретный сервер' in text
+    assert 'обновить подписку' in text
     assert 'GLOBAL' in GENERATED.read_text(encoding='utf-8')
 
 
