@@ -15,9 +15,9 @@
 
 facts:
   # Cross-app facts confirmed on a live device. Rendered at the top of kb_clients.md.
-  - text: 'В Clash Mi и FlClash(X) в группе GLOBAL по умолчанию выбран DIRECT (видно в приложении: Прокси → GLOBAL). Режим «Глобально» / «Глобальный» шлёт весь трафик через GLOBAL, значит без VPN. Не советовать «Глобально» как исправление; держать «Правила» / «По правилам».'
-    evidence: 'Clash Mi 1.0.31 Android: Прокси → GLOBAL = DIRECT; FlClashX 0.4.2 Android после переключения на «Глобальный» во вкладке Прокси появилась группа GLOBAL = DIRECT (evidence/*-android-*/ ru-12, ru-09); config/mihomo/default.template.yaml в Ansible_Servers не задаёт группу GLOBAL, поэтому mihomo ставит первым DIRECT (2026-11-07)'
-  - text: 'Группа «Остальные сайты» предлагает выбрать не сервер, а пул: «Зарубежные серверы (баланс)» или «Обход блокировок РФ (авто)»; в FlClashX есть ещё «Напрямую» (DIRECT, без VPN, не советовать). Конкретную страну или сервер клиент в ней не выбирает.'
+  - text: 'Режим «Глобально» (Clash Mi) / «Глобальный» (FlClash(X)) — способ выбрать конкретный сервер: весь трафик, включая российские сайты, идёт через VPN на сервер, выбранный в Прокси → GLOBAL. В GLOBAL только серверы подписки, по умолчанию первый. Основной режим остаётся «Правила» / «По правилам»: там российские сайты идут напрямую. Если в GLOBAL выбран DIRECT или видны группы вместо серверов — подписка старая, нужно обновить подписку.'
+    evidence: 'Своя группа GLOBAL выкачена в шаблоны Default и Abroad 2026-11-08 (Ansible_Servers PR #117, run 42424532556). Живые подписки ci_canary_mihomo_gate и abroad_test в mihomo: GLOBAL = только серверы, по умолчанию первый. Выбор сервера в GLOBAL проверен в Clash Mi 1.0.22 macOS на демо-профиле; на живой подписке в приложении и в FlClash(X) не проверялся. До выката GLOBAL = DIRECT (Clash Mi 1.0.31 и FlClashX 0.4.2 Android, 2026-11-07)'
+  - text: 'Группа «Остальные сайты» предлагает выбрать не сервер, а пул: «Зарубежные серверы (баланс)» или «Обход блокировок РФ (авто)»; в FlClashX есть ещё «Напрямую» (DIRECT, без VPN, не советовать). Конкретную страну или сервер в ней не выбрать — для этого режим «Глобально».'
     evidence: 'Clash Mi 1.0.31 и FlClashX 0.4.2 на Android (Clash Mi ru-11, FlClashX ru-08) (2026-11-07)'
   - text: 'Каждое приложение на одном телефоне считается отдельным устройством. При превышении лимита приложение получает подписку с сервером-заглушкой «Слишком дофига устройств подключено к подписке»; Happ ещё пишет «Достигнут лимит подключённых устройств в подписке». Решение: удалить лишние устройства (мини-апп или кабинет → Подписка) и в приложении обновить подписку.'
     evidence: 'Galaxy A52, подписка с hwidDeviceLimit 1 (панель, /api/users/by-username): FlClashX получает полный конфиг (flclashx ru-07), Clash Mi (clashmi ru-12) и Happ (happ ru-01) на том же телефоне получают заглушку. Путь удаления устройств взят из kb.md, вживую не проверялся (2026-11-07)'
@@ -76,7 +76,7 @@ apps:
           add_subscription: 'My Profiles → "+" → "Import From Clipboard" (link copied first) or "Add Profile Link"'
           update_subscription: 'My Profiles → cloud-with-arrow icon (all), or "⋮" → "Update" (one profile)'
           share_subscription: 'My Profiles → "⋮" → "QR Code" or "Copy Link"'
-          mode: 'main screen: "Rule" (default, keep it). "Global" sends everything through the GLOBAL group, which is DIRECT by default (no VPN at all); "Direct" is no VPN. Never advise Global as a fix.'
+          mode: 'main screen: "Rule" (default, RU sites direct). "Global" sends everything, RU sites too, through VPN to the server picked in Proxies → GLOBAL (servers only, first by default); use it to pick a specific server. "Direct" is no VPN.'
       connected:
         status: verified
         evidence_dir: docs/support-kb/evidence/clashmi-macos-1.0.22-ru/
