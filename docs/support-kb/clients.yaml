@@ -282,6 +282,109 @@ apps:
           update_subscription_ru: 'круговые стрелки в блоке подписки на главном экране (значок виден, нажатие не проверялось)'
 
   # Listed on the subscription page, not checked yet.
+  - app: INCY
+    platform: ios
+    version: "2.7.2"
+    ui_language: ru
+    verified_at: "2026-11-08"
+    verified_by: live read on iPhone 13 Pro, iOS 27.0.1 (WebDriverAgent, Russian UI forced for the run; connect and server pick tested)
+    evidence: docs/support-kb/evidence/incy-ios-2.7.2-ru/
+    note: 'Приложения нет на странице подписки WatchDog. Подписка приходит списком серверов (Xray, 4 сервера Watchdog), групп и режимов «Правила/Глобально» здесь нет.'
+    states:
+      disconnected:
+        status: verified
+        screens:
+          main:
+            path: нижняя вкладка «Подключение»
+            items_ru: ["большая кнопка питания", "Нажмите для подключения", "глобус (сайт INCY)", "ТЕКУЩИЙ ПРОВАЙДЕР", "Watchdog",
+                       "значок обновления", "молния (проверка пинга)", "… (меню провайдера)", "Осталось N дней", "Поддержка", "Сайт",
+                       "Добавить", "Вставить", "значок QR", "вкладки: Подключение, Серверы, Настройки"]
+            evidence: ru-01-main.jpg
+          servers:
+            path: нижняя вкладка «Серверы»
+            items_ru: ["N серверов • N подписка", "значок обновления", "молния", "+", "Развернуть все / Свернуть все", "Watchdog",
+                       "список серверов после разворота", "Добавить", "Вставить", "значок QR"]
+            evidence: [ru-02-servers.jpg, ru-03-servers-expanded.jpg]
+          provider_menu:
+            path: Подключение → «…» справа от Watchdog
+            items_ru: ["Настройки", "Поделиться", "Копировать URL", "QR-код", "Отправить на TV", "Удалить"]
+            evidence: ru-05-provider-menu.jpg
+          add_sheet:
+            path: Подключение → «Добавить»
+            items_ru: ["Добавить", "поле vless://... или https://...", "вставить из буфера", "файл", "QR", "кнопка «Добавить»",
+                       "ДОБАВИТЬ СЕРВЕР: SSTP, OpenConnect"]
+            evidence: ru-06-add-sheet.jpg
+          provider_sheet:
+            path: Подключение → «…» → «Настройки»
+            items_ru: ["Название", "Показывать на главной", "Не сворачивать", "Ссылки: Поддержка", "Интервал обновления", "Свой интервал", "Сохранить"]
+            evidence: ru-07-provider-sheet.jpg
+          settings:
+            path: нижняя вкладка «Настройки»
+            items_ru: ["Оформление", "Соединение", "Туннель", "Настройки провайдеров", "Настройки пинга", "О приложении", "Схемы URL-адресов",
+                       "Команды и автоматизации", "Резервное копирование", "Оценить приложение", "Расширенные настройки",
+                       "Отключать при блокировке", "Мониторинг памяти", "Логи туннеля", "Сбросить настройки"]
+            evidence: ru-18-settings.jpg
+          appearance:
+            path: Настройки → Оформление
+            items_ru: ["Тема", "Стиль подключения", "Язык (Как в системе)", "Иконка приложения", "Готово"]
+            evidence: ru-09-appearance.jpg
+          connection_settings:
+            path: Настройки → Соединение
+            items_ru: ["Автоподключение", "Аварийное отключение", "Разрешить LAN подключения", "Доступ через хотспот", "LAN через прокси",
+                       "Прокси APNs", "Синхронизация iCloud", "Живая активность"]
+            evidence: ru-10-connection.jpg
+          tunnel_settings:
+            path: Настройки → Туннель
+            items_ru: ["Профили маршрутизации", "Маршрутизация", "Модули", "Правила On-Demand", "Фрагментирование", "Мультиплексирование (Mux)",
+                       "Тип IP", "VPN DNS", "SOCKS5 авторизация"]
+            evidence: ru-11-tunnel.jpg
+          provider_settings:
+            path: Настройки → Настройки провайдеров
+            items_ru: ["Авто обновления", "Интервал (ч.)", "Уведомлять", "Обновить при открытии", "Пинг при запуске", "Пинг при обновлении",
+                       "Отправить HWID (включено на этом телефоне)", "USER-AGENT: INCY/2.7.2/ios", "Список серверов: Без сортировки, По пингу, По имени"]
+            evidence: ru-08-provider-settings.jpg
+          ping_settings:
+            path: Настройки → Настройки пинга
+            items_ru: ["INCY Ping", "TCP (рекомендуется)", "HTTP GET", "HTTP HEAD", "ICMP", "Google", "Cloudflare", "Apple", "Таймаут", "Способ отображения"]
+            evidence: ru-12-ping.jpg
+          about:
+            path: Настройки → О приложении
+            items_ru: ["Где мне взять сервера?", "Рекомендованные приложения", "Версия Xray", "Версия IncyCore", "Версия приложения",
+                       "Условия использования", "Политика конфиденциальности", "Лицензии третьих сторон", "Эл. почта", "Telegram", "Версия ОС", "Название модели"]
+            evidence: ru-13-about.jpg
+          url_schemes:
+            path: Настройки → Схемы URL-адресов
+            items: ["incy://connect", "incy://open", "incy://disconnect", "incy://close", "incy://toggle", "incy://import/{base64}", "incy://add/{url}",
+                    "incy://routing/add/{base64}", "incy://routing/onadd/{base64}"]
+            evidence: ru-14-url-schemes.jpg
+          backup:
+            path: Настройки → Резервное копирование
+            items_ru: ["Создать резервную копию", "Пароль (опционально)", "Экспортировать", "Восстановить", "Выбрать файл"]
+            evidence: ru-15-backup.jpg
+          advanced:
+            path: Настройки → Расширенные настройки
+            items_ru: ["Лимит памяти Xray", "Режим No Limit", "Таймаут простоя", "TCP соединений", "UDP соединений", "Анализ трафика", "Снифинг только для маршрутов",
+                       "MTU туннеля", "Скрыть значок VPN", "Исключённые маршруты", "Информация о системе", "Таблица маршрутов"]
+            evidence: ru-16-advanced.jpg
+          tunnel_logs:
+            path: Настройки → Логи туннеля
+            items_ru: ["Изменить", "Все", "Обновить", "Копировать", "Экспорт всех", "Удалить"]
+            evidence: ru-17-tunnel-logs.jpg
+        tasks:
+          add_subscription_ru: 'Скопировать ссылку подписки, затем Подключение → «Вставить». Либо «Добавить» → вставить ссылку в поле → «Добавить». Сам шаг добавления не выполнялся: подписка уже была в приложении.'
+          update_subscription_ru: 'Подключение → значок обновления справа от Watchdog (кнопка найдена, не нажималась)'
+          choose_server_ru: 'Серверы → «Развернуть все» → нажать нужный сервер, затем на вкладке «Подключение» нажать кнопку питания. Проверено: после выбора Germany-3 подключилось к нему.'
+          connect_ru: 'Подключение → большая кнопка питания'
+          hwid_ru: 'Настройки → Настройки провайдеров → «Отправить HWID»'
+          language_ru: 'Настройки → Оформление → Язык'
+      connected:
+        status: verified
+        screens:
+          main:
+            items_ru: ["кнопка питания", "скорость и таймер вверху", "имя сервера под кнопкой (например 🇩🇪 Germany-3)", "Проверить", "блок провайдера без изменений"]
+            evidence: ru-04-connected.jpg
+        tasks:
+          disconnect_ru: 'Подключение → большая кнопка питания'
   - {app: Clash Mi, platform: ios, status: unverified}
   - {app: Clash Mi, platform: windows, status: unverified}
   - {app: RabbitHole, platform: ios, status: unverified}
