@@ -16,7 +16,7 @@
 facts:
   # Cross-app facts confirmed on a live device. Rendered at the top of kb_clients.md.
   - text: 'Режим «Глобально» (Clash Mi) / «Глобальный» (FlClash(X)) — способ выбрать конкретный сервер: весь трафик, включая российские сайты, идёт через VPN на сервер, выбранный в Прокси → GLOBAL. В GLOBAL только серверы подписки, по умолчанию первый. Основной режим остаётся «Правила» / «По правилам»: там российские сайты идут напрямую. Если в GLOBAL выбран DIRECT или видны группы вместо серверов — подписка старая, нужно обновить подписку.'
-    evidence: 'Своя группа GLOBAL выкачена в шаблоны Default и Abroad 2026-11-08 (Ansible_Servers PR #117, run 42424532556). Живые подписки ci_canary_mihomo_gate и abroad_test в mihomo: GLOBAL = только серверы, по умолчанию первый. Выбор сервера в GLOBAL проверен в Clash Mi 1.0.22 macOS на демо-профиле; на живой подписке в приложении и в FlClash(X) не проверялся. До выката GLOBAL = DIRECT (Clash Mi 1.0.31 и FlClashX 0.4.2 Android, 2026-11-07)'
+    evidence: 'Своя группа GLOBAL выкачена в шаблоны Default и Abroad 2026-11-08 (Ansible_Servers PR #117, run 42424532556). Живые подписки ci_canary_mihomo_gate и abroad_test в mihomo: GLOBAL = только серверы, по умолчанию первый. Выбор сервера в GLOBAL проверен в Clash Mi 1.0.22 macOS на демо-профиле; на живой подписке подтверждён список в Clash Mi 1.0.31 на iPhone (2026-11-08: GLOBAL -> Germany-3, 4 сервера, без групп и DIRECT; выбор другого сервера там не нажимался); в FlClash(X) не проверялся. До выката GLOBAL = DIRECT (Clash Mi 1.0.31 и FlClashX 0.4.2 Android, 2026-11-07)'
   - text: 'Группа «Остальные сайты» предлагает выбрать не сервер, а пул: «Зарубежные серверы (баланс)» или «Обход блокировок РФ (авто)»; в FlClashX есть ещё «Напрямую» (DIRECT, без VPN, не советовать). Конкретную страну или сервер в ней не выбрать — для этого режим «Глобально».'
     evidence: 'Clash Mi 1.0.31 и FlClashX 0.4.2 на Android (Clash Mi ru-11, FlClashX ru-08) (2026-11-07)'
   - text: 'Каждое приложение на одном телефоне считается отдельным устройством. При превышении лимита приложение получает подписку с сервером-заглушкой «Слишком дофига устройств подключено к подписке»; Happ ещё пишет «Достигнут лимит подключённых устройств в подписке». Решение: удалить лишние устройства (мини-апп или кабинет → Подписка) и в приложении обновить подписку.'
@@ -385,7 +385,83 @@ apps:
             evidence: ru-04-connected.jpg
         tasks:
           disconnect_ru: 'Подключение → большая кнопка питания'
-  - {app: Clash Mi, platform: ios, status: unverified}
+  - app: Clash Mi
+    platform: ios
+    version: "1.0.31"
+    ui_language: ru
+    verified_at: "2026-11-08"
+    verified_by: live read on iPhone 13 Pro, iOS 27.0.1 (WebDriverAgent; connected in Global mode on a live subscription)
+    evidence: docs/support-kb/evidence/clashmi-ios-1.0.31-ru/
+    note: 'Язык включается в самом приложении (Настройки приложения → Язык). После принудительного закрытия приложения на подключённом VPN следующее подключение несколько раз не проходило (кнопка крутилась и возвращалась в «Отключено»), затем прошло само; причина не установлена.'
+    states:
+      disconnected:
+        status: verified
+        screens:
+          main:
+            items_ru: ["Отключено (тумблер справа)", "Правила", "Глобально", "Напрямую", "Профили (+ и >)", "Настройки приложения", "Настройки ядра",
+                       "Журнал ядра", "Резервное копирование и синхронизация", "Помощь", "О приложении"]
+            evidence: ru-01-main.jpg
+          my_profiles:
+            path: главный экран → «Профили» (>)
+            items_ru: ["облако со стрелкой вверху справа: обновить все", "+ вверху справа", "⋮ рядом с профилем"]
+            evidence: ru-03-profiles.jpg
+          add_profile_sheet:
+            path: Профили → «+»
+            items_ru: ["Закрыть", "Получить профиль", "Добавление подписки", "Импорт из буфера обмена", "Сканировать QR-код", "Импорт файла конфигурации", "Вход"]
+            evidence: ru-04-add-sheet.jpg
+          profile_menu:
+            path: Профили → «⋮» рядом с профилем
+            items_ru: ["Закрыть", "Просмотр", "Обновить", "Скопировать ссылку", "QR-код", "Редактирование профилей", "Удалить"]
+            evidence: ru-04b-profile-menu.jpg
+          app_settings:
+            path: главный экран → Настройки приложения
+            items_ru: ["Перезагрузить", "Язык", "Тема", "Оформление главного экрана", "Следовать за поворотом экрана", "Уровень журнала", "UserAgent",
+                       "URL-адрес теста задержки", "Время ожидания теста задержки (мс)", "Использование онлайн-панели", "Порт локальной панели", "VPN всегда включен"]
+            evidence: ru-05-app-settings.jpg
+          core_settings:
+            path: главный экран → Настройки ядра
+            items_ru: ["Перезагрузить", "external-controller", "secret", "mixed-port", "log-level", "Pprof", "unified-delay", "ipv6", "tun",
+                       "Шаблон сортировки пациентов (так в приложении)", "tcp-concurrent", "Доступ к локальной сети устройства"]
+            evidence: ru-06-core-settings.jpg
+          tun:
+            path: Настройки ядра → tun
+            items_ru: ["Переопределить", "enable", "Диапазон IPv4-адресов", "stack", "MTU", "dns-hijack", "strict-route", "Маршрут по умолчанию", "disable-icmp-forwarding"]
+            evidence: ru-07-tun.jpg
+          backup:
+            path: главный экран → Резервное копирование и синхронизация
+            items_ru: ["iCloud", "Webdav", "Синхронизация по локальной сети"]
+            evidence: ru-09-backup.jpg
+          help:
+            path: главный экран → Помощь
+            items_ru: ["Скачать", "Руководство", "Часто задаваемые вопросы (FAQ)", "Telegram", "документ"]
+            evidence: ru-10-help.jpg
+          core_log:
+            path: главный экран → Журнал ядра
+            items_ru: ["Больше"]
+            evidence: ru-08-core-log.jpg
+        tasks:
+          add_subscription: 'Профили → «+» → «Импорт из буфера обмена» (ссылка скопирована заранее) или «Добавление подписки». Сам шаг не выполнялся: подписка уже была.'
+          update_subscription: 'Профили → облако со стрелкой (все) или «⋮» → «Обновить» (один профиль); кнопки найдены, не нажимались'
+          connect: 'главный экран → тумблер справа от «Отключено»; при первом включении система может запросить разрешение VPN (здесь уже было выдано)'
+          language: 'Настройки приложения → Язык → Русский'
+      connected:
+        status: verified
+        screens:
+          main:
+            items_ru: ["Подключено (счётчики трафика и скорости)", "Правила", "Глобально", "Напрямую", "Профили", "Прокси (GLOBAL -> сервер, задержка)",
+                       "Панель", "Конфигурация времени выполнения", "Проверка сети"]
+            evidence: ru-02-connected.jpg
+          proxies:
+            path: главный экран → Прокси
+            note: снято в английском интерфейсе, экран называется Proxy
+            items: ["группы подписки: GLOBAL, RU сайты, Telegram, Остальные сайты, Ушедшие из РФ, Игры, Напрямую, Cloudflare WARP, WARP-ноды"]
+            evidence: en-12-proxies.jpg
+          global_group:
+            path: главный экран → Прокси → GLOBAL
+            items: ["список серверов подписки, выбранный подсвечен; групп и DIRECT нет"]
+            evidence: en-13-global-group.jpg
+        tasks:
+          choose_server_global: 'режим «Глобально» → Прокси → GLOBAL → нажать сервер (список проверен, выбор другого сервера не нажимался)'
   - {app: Clash Mi, platform: windows, status: unverified}
   - {app: RabbitHole, platform: ios, status: unverified}
   - {app: RabbitHole, platform: macos, status: unverified, note: "1.3.2 installed on the owner's Mac"}

@@ -1,0 +1,3 @@
+iPhone 13 Pro (iPhone14,2), iOS 27.0.1, Clash Mi 1.0.31.1703.
+Read 2026-11-08 through WebDriverAgent over Wi-Fi. App language switched to Russian for the capture and back to English after; en-* files were taken in English.
+ru-03, ru-04 and ru-04b are cropped to leave out another profile on the phone.
