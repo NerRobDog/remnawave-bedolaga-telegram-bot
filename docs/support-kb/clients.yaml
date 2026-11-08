@@ -496,7 +496,10 @@ apps:
       update_subscription_ru: 'Профили → ↻ вверху (все) или Панель → Профиль → ↻'
       language_ru: 'Инструменты → Язык'
     evidence_more: [03-profiles.jpg, 04-profiles-add-menu.jpg, 05-tools.jpg]
-  - {app: FlClashX, platform: macos, status: unverified, note: "fork of FlClash; check its own labels"}
+  - app: FlClashX
+    platform: macos
+    status: unverified
+    note: 'Вживую не проверено: сборка 0.4.2 (FlClashX-macos-arm64.dmg) подписана отозванным сертификатом (spctl 2026-11-08: CSSMERR_TP_CERT_REVOKED), приложение не запускалось. Подписи FlClash и FlClashX различаются: в intl_ru.arb FlClashX v0.4.2 и FlClash v0.9.3 из 266 общих ключей отличаются 122 (dashboard: «Главная» и «Панель»; tools: «Настройки» и «Инструменты»; rule: «По правилам» и «Правило»; sync: «Обновление» и «Синхронизация»). Подписи FlClash для FlClashX не использовать.'
   - {app: Koala Clash, platform: [macos, windows], status: unverified}
   - {app: Flowvy, platform: [macos, windows], status: unverified}
   - {app: Prizrak-Box, platform: [macos, windows], status: unverified}
