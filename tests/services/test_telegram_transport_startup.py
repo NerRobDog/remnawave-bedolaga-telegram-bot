@@ -109,6 +109,7 @@ async def _run_polling(enabled=True, delete_error=None):
                 'dp': dp,
                 'timeline': SimpleNamespace(stage=stage),
                 'asyncio': SimpleNamespace(create_task=create_task),
+                'start_polling_with_retry': lambda dispatcher, bot, **kwargs: dispatcher.start_polling(bot, **kwargs),
             },
         )
         if tasks:
