@@ -8,8 +8,11 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from aiogram.exceptions import TelegramUnauthorizedError
+from aiogram.methods import DeleteWebhook
 
 from app.config import settings
+from app.utils.telegram_polling import delete_webhook_or_stop
 
 
 def _main_body():
@@ -110,6 +113,8 @@ async def _run_polling(enabled=True, delete_error=None):
                 'timeline': SimpleNamespace(stage=stage),
                 'asyncio': SimpleNamespace(create_task=create_task),
                 'start_polling_with_retry': lambda dispatcher, bot, **kwargs: dispatcher.start_polling(bot, **kwargs),
+                'delete_webhook_or_stop': delete_webhook_or_stop,
+                'killer': SimpleNamespace(exit=False),
             },
         )
         if tasks:
@@ -136,6 +141,7 @@ async def test_webhook_mode_does_not_delete_webhook_or_start_polling():
 
 
 @pytest.mark.asyncio
-async def test_webhook_deletion_failure_aborts_startup():
-    with pytest.raises(OSError, match='Telegram unavailable'):
-        await _run_polling(delete_error=OSError('Telegram unavailable'))
+async def test_fatal_webhook_deletion_error_aborts_startup():
+    error = TelegramUnauthorizedError(method=DeleteWebhook(), message='Telegram rejected the token')
+    with pytest.raises(TelegramUnauthorizedError, match='rejected the token'):
+        await _run_polling(delete_error=error)

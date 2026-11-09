@@ -15,7 +15,9 @@ import os
 import signal
 from collections.abc import AsyncGenerator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
 import aiohttp
 import aiohttp_socks
@@ -33,7 +35,7 @@ from aiogram.types import User
 from aiogram.utils.backoff import BackoffConfig
 
 from app.utils import telegram_polling
-from app.utils.telegram_polling import start_polling_with_retry, wait_for_telegram_or_stop
+from app.utils.telegram_polling import delete_webhook_or_stop, start_polling_with_retry, wait_for_telegram_or_stop
 
 
 FAST_BACKOFF = BackoffConfig(min_delay=0.001, max_delay=0.002, factor=1.5, jitter=0.0)
@@ -304,3 +306,49 @@ async def test_real_sigterm_reaches_handler_installed_before_polling() -> None:
         for sig, handler in previous.items():
             loop.remove_signal_handler(sig)
             signal.signal(sig, handler)
+
+
+def _webhook_bot(*effects: Any) -> SimpleNamespace:
+    return SimpleNamespace(delete_webhook=AsyncMock(side_effect=list(effects)))
+
+
+@pytest.mark.asyncio
+async def test_webhook_delete_survives_network_error_and_keeps_pending_updates() -> None:
+    bot = _webhook_bot(TelegramNetworkError(method=GET_ME, message='reset'), OSError('reset'), True)
+
+    assert await asyncio.wait_for(delete_webhook_or_stop(bot, lambda: False, FAST_BACKOFF), 2)
+
+    assert bot.delete_webhook.await_count == 3
+    bot.delete_webhook.assert_awaited_with(drop_pending_updates=False)
+
+
+@pytest.mark.asyncio
+async def test_webhook_delete_keeps_invalid_token_fatal() -> None:
+    bot = _webhook_bot(TelegramUnauthorizedError(method=GET_ME, message='bad token'))
+
+    with pytest.raises(TelegramUnauthorizedError):
+        await asyncio.wait_for(delete_webhook_or_stop(bot, lambda: False, FAST_BACKOFF), 2)
+
+    assert bot.delete_webhook.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_webhook_delete_stops_during_long_backoff() -> None:
+    slow = BackoffConfig(min_delay=30.0, max_delay=60.0, factor=2.0, jitter=0.0)
+    bot = _webhook_bot(TelegramNetworkError(method=GET_ME, message='reset'))
+    stop = False
+
+    task = asyncio.create_task(delete_webhook_or_stop(bot, lambda: stop, slow, poll_interval=0.01))
+    await asyncio.sleep(0.05)
+    stop = True
+
+    assert await asyncio.wait_for(task, 2) is False
+
+
+def test_main_deletes_webhook_through_retry_before_polling() -> None:
+    source = Path('main.py').read_text(encoding='utf-8')
+
+    assert 'delete_webhook_or_stop(bot, lambda: killer.exit)' in source
+    assert source.index('delete_webhook_or_stop(bot, lambda: killer.exit)') < source.index(
+        'start_polling_with_retry(dp'
+    )

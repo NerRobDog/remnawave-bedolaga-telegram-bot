@@ -14,7 +14,7 @@ polling, а за ним и весь процесс. Поэтому личнос�
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable, Coroutine
 from typing import Any, Final
 
 import aiohttp_socks
@@ -42,12 +42,12 @@ _TRANSIENT_ERRORS: Final[tuple[type[Exception], ...]] = (
 )
 
 
-async def wait_for_telegram(bot: Bot, backoff_config: BackoffConfig = STARTUP_BACKOFF) -> None:
-    """Повторяет ``bot.me()``, пока Telegram не ответит; фатальные ошибки пробрасывает."""
+async def _retry_transient(call: Callable[[], Awaitable[Any]], backoff_config: BackoffConfig) -> None:
+    """Повторяет вызов Telegram при сетевом сбое; фатальные ошибки пробрасывает."""
     backoff = Backoff(config=backoff_config)
     while True:
         try:
-            await bot.me()
+            await call()
             return
         except TelegramRetryAfter as error:
             delay = float(error.retry_after)
@@ -64,19 +64,9 @@ async def wait_for_telegram(bot: Bot, backoff_config: BackoffConfig = STARTUP_BA
         await asyncio.sleep(delay)
 
 
-async def wait_for_telegram_or_stop(
-    bot: Bot,
-    should_stop: Callable[[], bool],
-    backoff_config: BackoffConfig = STARTUP_BACKOFF,
-    *,
-    poll_interval: float = 0.2,
-) -> bool:
-    """``wait_for_telegram``, которую можно прервать; False значит «просили остановиться».
-
-    Обработчик сигнала только ставит флаг, а повторы бесконечны: без проверки флага
-    ``docker stop`` при недоступном Telegram дожидался бы SIGKILL.
-    """
-    waiter = asyncio.create_task(wait_for_telegram(bot, backoff_config))
+async def _run_or_stop(work: Coroutine[Any, Any, None], should_stop: Callable[[], bool], poll_interval: float) -> bool:
+    """Выполняет работу, пока не запрошена остановка; False значит «прервано»."""
+    waiter = asyncio.create_task(work)
     while not waiter.done():
         if should_stop():
             waiter.cancel()
@@ -85,6 +75,40 @@ async def wait_for_telegram_or_stop(
         await asyncio.wait({waiter}, timeout=poll_interval)
     waiter.result()  # фатальная ошибка, например неверный токен
     return True
+
+
+async def wait_for_telegram(bot: Bot, backoff_config: BackoffConfig = STARTUP_BACKOFF) -> None:
+    """Повторяет ``bot.me()``, пока Telegram не ответит."""
+    await _retry_transient(bot.me, backoff_config)
+
+
+async def wait_for_telegram_or_stop(
+    bot: Bot,
+    should_stop: Callable[[], bool],
+    backoff_config: BackoffConfig = STARTUP_BACKOFF,
+    *,
+    poll_interval: float = 0.2,
+) -> bool:
+    """``wait_for_telegram``, которую можно прервать сигналом остановки."""
+    return await _run_or_stop(wait_for_telegram(bot, backoff_config), should_stop, poll_interval)
+
+
+async def delete_webhook_or_stop(
+    bot: Bot,
+    should_stop: Callable[[], bool],
+    backoff_config: BackoffConfig = STARTUP_BACKOFF,
+    *,
+    poll_interval: float = 0.2,
+) -> bool:
+    """Снимает webhook перед polling, сохраняя накопившиеся обновления.
+
+    Сетевой сбой здесь повторяется, иначе процесс завершится и вместе с ним API кабинета.
+    """
+
+    async def delete_webhook() -> None:
+        await bot.delete_webhook(drop_pending_updates=False)
+
+    return await _run_or_stop(_retry_transient(delete_webhook, backoff_config), should_stop, poll_interval)
 
 
 async def start_polling_with_retry(
