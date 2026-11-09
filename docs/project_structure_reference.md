@@ -2502,6 +2502,9 @@
 - `app/utils/telegram_html.py` — Python-модуль
   Классы: нет
   Функции: `html_to_telegram`, `info_page_faq_to_telegram`, `stored_html_to_telegram_pages` — Сохранённый HTML страницы → куски, которые Telegram согласится разобрать., `trim_broken_markup` — Обрезает незакрытый тег или неполную HTML-сущность в конце куска., `split_telegram_text`
+- `app/utils/telegram_polling.py` — Python-модуль
+  Классы: нет
+  Функции: `wait_for_telegram` — Повторяет ``bot.me()``, пока Telegram не ответит; фатальные ошибки пробрасывает., `wait_for_telegram_or_stop` — ``wait_for_telegram``, которую можно прервать; False значит «просили остановиться»., `start_polling_with_retry` — ``dp.start_polling``, не завершающийся из-за временного сбоя сети на старте.
 - `app/utils/telegram_webapp.py` — Python-модуль
   Классы: `TelegramWebAppAuthError`
   Функции: `parse_webapp_init_data` — Validate and parse Telegram WebApp init data.
@@ -2883,9 +2886,73 @@
 
 #### docs/support-kb/evidence
 
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/`
+- `docs/support-kb/evidence/clashmi-ios-1.0.31-ru/`
 - `docs/support-kb/evidence/clashmi-macos-1.0.22/`
 - `docs/support-kb/evidence/clashmi-macos-1.0.22-ru/`
 - `docs/support-kb/evidence/flclash-macos-0.9.3-ru/`
+- `docs/support-kb/evidence/flclashx-android-0.4.2-ru/`
+- `docs/support-kb/evidence/flclashx-linux-0.4.2-ru/`
+- `docs/support-kb/evidence/happ-android-4.9.0-ru/`
+- `docs/support-kb/evidence/incy-ios-2.7.2-ru/`
+
+##### docs/support-kb/evidence/clashmi-android-1.0.31-ru
+
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/device.txt` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-01-main.jpg` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-01-main.xml` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-02-profiles.jpg` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-02-profiles.xml` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-03-profile-menu.jpg` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-03-profile-menu.xml` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-04-add-sheet.jpg` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-04-add-sheet.xml` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-05-app-settings.jpg` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-05-app-settings.xml` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-06-app-settings-bottom.jpg` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-06-app-settings-bottom.xml` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-06b-app-settings-bottom2.jpg` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-06b-app-settings-bottom2.xml` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-07-core-settings-redacted.xml` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-08-core-settings-bottom.jpg` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-08-core-settings-bottom.xml` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-09-main-connected.jpg` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-10-proxies-d1.jpg` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-10-proxies-d1.xml` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-10-proxies-d2.jpg` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-10-proxies-d2.xml` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-10-proxies-d3.jpg` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-10-proxies-d3.xml` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-10-proxies-d4.jpg` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-10-proxies-d4.xml` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-10-proxies-p1.jpg` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-10-proxies-p2.jpg` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-10-proxies-p3.jpg` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-10-proxies-p4.jpg` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-10-proxies.jpg` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-11-group-servers.jpg` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-12-global-options.jpg` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-12-global-options.xml` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-14-network-check.jpg` — файл
+- `docs/support-kb/evidence/clashmi-android-1.0.31-ru/ru-14-network-check.xml` — файл
+
+##### docs/support-kb/evidence/clashmi-ios-1.0.31-ru
+
+- `docs/support-kb/evidence/clashmi-ios-1.0.31-ru/device.txt` — файл
+- `docs/support-kb/evidence/clashmi-ios-1.0.31-ru/en-12-proxies.jpg` — файл
+- `docs/support-kb/evidence/clashmi-ios-1.0.31-ru/en-13-global-group.jpg` — файл
+- `docs/support-kb/evidence/clashmi-ios-1.0.31-ru/ru-01-main.jpg` — файл
+- `docs/support-kb/evidence/clashmi-ios-1.0.31-ru/ru-02-connected.jpg` — файл
+- `docs/support-kb/evidence/clashmi-ios-1.0.31-ru/ru-03-profiles.jpg` — файл
+- `docs/support-kb/evidence/clashmi-ios-1.0.31-ru/ru-04-add-sheet.jpg` — файл
+- `docs/support-kb/evidence/clashmi-ios-1.0.31-ru/ru-04b-profile-menu.jpg` — файл
+- `docs/support-kb/evidence/clashmi-ios-1.0.31-ru/ru-05-app-settings.jpg` — файл
+- `docs/support-kb/evidence/clashmi-ios-1.0.31-ru/ru-06-core-settings.jpg` — файл
+- `docs/support-kb/evidence/clashmi-ios-1.0.31-ru/ru-07-tun.jpg` — файл
+- `docs/support-kb/evidence/clashmi-ios-1.0.31-ru/ru-08-core-log.jpg` — файл
+- `docs/support-kb/evidence/clashmi-ios-1.0.31-ru/ru-09-backup.jpg` — файл
+- `docs/support-kb/evidence/clashmi-ios-1.0.31-ru/ru-10-help.jpg` — файл
+- `docs/support-kb/evidence/clashmi-ios-1.0.31-ru/ru-11-about.jpg` — файл
 
 ##### docs/support-kb/evidence/clashmi-macos-1.0.22
 
@@ -2921,6 +2988,79 @@
 - `docs/support-kb/evidence/flclash-macos-0.9.3-ru/04-profiles-add-menu.jpg` — файл
 - `docs/support-kb/evidence/flclash-macos-0.9.3-ru/05-tools.jpg` — файл
 - `docs/support-kb/evidence/flclash-macos-0.9.3-ru/06-panel-stopped.jpg` — файл
+
+##### docs/support-kb/evidence/flclashx-android-0.4.2-ru
+
+- `docs/support-kb/evidence/flclashx-android-0.4.2-ru/device.txt` — файл
+- `docs/support-kb/evidence/flclashx-android-0.4.2-ru/ru-00-battery-dialog.jpg` — файл
+- `docs/support-kb/evidence/flclashx-android-0.4.2-ru/ru-00-battery-dialog.xml` — файл
+- `docs/support-kb/evidence/flclashx-android-0.4.2-ru/ru-01-main.jpg` — файл
+- `docs/support-kb/evidence/flclashx-android-0.4.2-ru/ru-01-main.xml` — файл
+- `docs/support-kb/evidence/flclashx-android-0.4.2-ru/ru-02-profiles.jpg` — файл
+- `docs/support-kb/evidence/flclashx-android-0.4.2-ru/ru-02-profiles.xml` — файл
+- `docs/support-kb/evidence/flclashx-android-0.4.2-ru/ru-03-settings.jpg` — файл
+- `docs/support-kb/evidence/flclashx-android-0.4.2-ru/ru-03-settings.xml` — файл
+- `docs/support-kb/evidence/flclashx-android-0.4.2-ru/ru-04-add-profile.jpg` — файл
+- `docs/support-kb/evidence/flclashx-android-0.4.2-ru/ru-04-add-profile.xml` — файл
+- `docs/support-kb/evidence/flclashx-android-0.4.2-ru/ru-05-profile-menu.jpg` — файл
+- `docs/support-kb/evidence/flclashx-android-0.4.2-ru/ru-05-profile-menu.xml` — файл
+- `docs/support-kb/evidence/flclashx-android-0.4.2-ru/ru-06-main-connected.jpg` — файл
+- `docs/support-kb/evidence/flclashx-android-0.4.2-ru/ru-07-proxies-tree.jpg` — файл
+- `docs/support-kb/evidence/flclashx-android-0.4.2-ru/ru-07-proxies-tree.xml` — файл
+- `docs/support-kb/evidence/flclashx-android-0.4.2-ru/ru-07-proxies.jpg` — файл
+- `docs/support-kb/evidence/flclashx-android-0.4.2-ru/ru-08-group-open.jpg` — файл
+- `docs/support-kb/evidence/flclashx-android-0.4.2-ru/ru-09-proxies-global-mode.jpg` — файл
+- `docs/support-kb/evidence/flclashx-android-0.4.2-ru/ru-10-main-stopped.jpg` — файл
+
+##### docs/support-kb/evidence/flclashx-linux-0.4.2-ru
+
+- `docs/support-kb/evidence/flclashx-linux-0.4.2-ru/01-admin-password.jpg` — файл
+- `docs/support-kb/evidence/flclashx-linux-0.4.2-ru/02-disclaimer.jpg` — файл
+- `docs/support-kb/evidence/flclashx-linux-0.4.2-ru/03-home-empty.jpg` — файл
+- `docs/support-kb/evidence/flclashx-linux-0.4.2-ru/04-profiles-empty.jpg` — файл
+- `docs/support-kb/evidence/flclashx-linux-0.4.2-ru/05-settings.jpg` — файл
+- `docs/support-kb/evidence/flclashx-linux-0.4.2-ru/06-settings-bottom.jpg` — файл
+- `docs/support-kb/evidence/flclashx-linux-0.4.2-ru/07-add-profile.jpg` — файл
+- `docs/support-kb/evidence/flclashx-linux-0.4.2-ru/08-url-dialog.jpg` — файл
+- `docs/support-kb/evidence/flclashx-linux-0.4.2-ru/09-profile-menu.jpg` — файл
+- `docs/support-kb/evidence/flclashx-linux-0.4.2-ru/10-rule-mode-prod-global-no-proxies-tab.jpg` — файл
+- `docs/support-kb/evidence/flclashx-linux-0.4.2-ru/11-rule-mode-with-override.jpg` — файл
+- `docs/support-kb/evidence/flclashx-linux-0.4.2-ru/12-global-mode-with-override.jpg` — файл
+- `docs/support-kb/evidence/flclashx-linux-0.4.2-ru/device.txt` — файл
+
+##### docs/support-kb/evidence/happ-android-4.9.0-ru
+
+- `docs/support-kb/evidence/happ-android-4.9.0-ru/device.txt` — файл
+- `docs/support-kb/evidence/happ-android-4.9.0-ru/ru-00-update-prompt.jpg` — файл
+- `docs/support-kb/evidence/happ-android-4.9.0-ru/ru-00-update-prompt.xml` — файл
+- `docs/support-kb/evidence/happ-android-4.9.0-ru/ru-01-main.jpg` — файл
+- `docs/support-kb/evidence/happ-android-4.9.0-ru/ru-02-settings.jpg` — файл
+- `docs/support-kb/evidence/happ-android-4.9.0-ru/ru-02-settings.xml` — файл
+- `docs/support-kb/evidence/happ-android-4.9.0-ru/ru-03-settings-bottom.jpg` — файл
+- `docs/support-kb/evidence/happ-android-4.9.0-ru/ru-03-settings-bottom.xml` — файл
+- `docs/support-kb/evidence/happ-android-4.9.0-ru/ru-04-add.jpg` — файл
+
+##### docs/support-kb/evidence/incy-ios-2.7.2-ru
+
+- `docs/support-kb/evidence/incy-ios-2.7.2-ru/device.txt` — файл
+- `docs/support-kb/evidence/incy-ios-2.7.2-ru/ru-01-main.jpg` — файл
+- `docs/support-kb/evidence/incy-ios-2.7.2-ru/ru-02-servers.jpg` — файл
+- `docs/support-kb/evidence/incy-ios-2.7.2-ru/ru-03-servers-expanded.jpg` — файл
+- `docs/support-kb/evidence/incy-ios-2.7.2-ru/ru-04-connected.jpg` — файл
+- `docs/support-kb/evidence/incy-ios-2.7.2-ru/ru-05-provider-menu.jpg` — файл
+- `docs/support-kb/evidence/incy-ios-2.7.2-ru/ru-06-add-sheet.jpg` — файл
+- `docs/support-kb/evidence/incy-ios-2.7.2-ru/ru-07-provider-sheet.jpg` — файл
+- `docs/support-kb/evidence/incy-ios-2.7.2-ru/ru-08-provider-settings.jpg` — файл
+- `docs/support-kb/evidence/incy-ios-2.7.2-ru/ru-09-appearance.jpg` — файл
+- `docs/support-kb/evidence/incy-ios-2.7.2-ru/ru-10-connection.jpg` — файл
+- `docs/support-kb/evidence/incy-ios-2.7.2-ru/ru-11-tunnel.jpg` — файл
+- `docs/support-kb/evidence/incy-ios-2.7.2-ru/ru-12-ping.jpg` — файл
+- `docs/support-kb/evidence/incy-ios-2.7.2-ru/ru-13-about.jpg` — файл
+- `docs/support-kb/evidence/incy-ios-2.7.2-ru/ru-14-url-schemes.jpg` — файл
+- `docs/support-kb/evidence/incy-ios-2.7.2-ru/ru-15-backup.jpg` — файл
+- `docs/support-kb/evidence/incy-ios-2.7.2-ru/ru-16-advanced.jpg` — файл
+- `docs/support-kb/evidence/incy-ios-2.7.2-ru/ru-17-tunnel-logs.jpg` — файл
+- `docs/support-kb/evidence/incy-ios-2.7.2-ru/ru-18-settings.jpg` — файл
 
 #### docs/support-kb/source
 
@@ -3528,6 +3668,9 @@
 - `tests/test_tariff_promo_group_eligibility.py` — Python-модуль
   Классы: нет
   Функции: `test_tariff_promo_group_authorization`, `test_stale_telegram_button_denied_before_checkout`, `test_api_purchase_denied_without_group`
+- `tests/test_telegram_polling.py` — Python-модуль
+  Классы: `ScriptedSession` (4 методов), `HangingSession` (1 методов)
+  Функции: `test_transient_error_at_polling_start_is_retried`, `test_invalid_token_stays_fatal`, `test_network_error_during_get_updates_does_not_end_polling` — Страховка на обновление aiogram: сейчас этот участок он повторяет сам., `recorded_sleeps`, `test_retry_after_waits_as_long_as_telegram_asked`, `test_backoff_grows_and_is_capped`, `test_shutdown_cancels_retry_wait`, `test_main_starts_polling_through_retry_wrapper`, `test_main_waits_for_telegram_before_startup_calls`, `test_startup_wait_survives_network_error_and_caches_identity`, `test_startup_wait_keeps_invalid_token_fatal`, `test_startup_wait_stops_during_long_backoff` — docker stop, пока Telegram недоступен: ждать конца минутной паузы нельзя., `test_startup_wait_stops_during_hung_request`, `test_real_sigterm_reaches_handler_installed_before_polling` — Без handle_signals=False aiogram забирает SIGTERM, и главный цикл его не видит.
 - `tests/test_ticket_notification_keyboard.py` — Python-модуль
   Классы: нет
   Функции: `test_admin_gets_full_set_including_user_manage`, `test_moderator_omits_user_manage_but_keeps_actions`, `test_user_manage_uses_db_id_not_telegram_id`, `test_user_manage_hidden_when_no_db_id_even_for_admin`, `test_url_buttons_present_for_username_and_telegram_id`, `test_username_with_at_prefix_is_stripped`, `test_no_username_hides_dm_keeps_profile`, `test_email_user_without_telegram_id_has_no_url_buttons_but_keeps_callbacks`, `test_non_numeric_telegram_id_dropped_from_profile_url`, `test_blocked_user_shows_unblock_not_block_controls`, `test_closed_ticket_hides_reply_and_close`, `test_notification_keyboard_never_has_back_button`, `test_group_keyboard_omits_fsm_buttons_keeps_reliable`, `test_group_keyboard_omits_user_manage`, `test_group_keyboard_blocked_shows_unblock`, `test_group_keyboard_closed_ticket_leaves_only_block_forever`, `service_factory` — Build an AdminNotificationService with patched permission helpers., `test_role_admin`, `test_role_moderator`, `test_role_admin_takes_precedence_over_moderator`, `test_role_outsider_private_chat_is_none`, `test_role_group_or_channel_is_group`, `test_role_zero_chat_id_is_none`, `test_role_none_chat_id_is_none`, `test_role_string_username_chat_is_none`, `test_role_numeric_string_chat_id_is_resolved`, `cabinet_settings` — Configure settings for the cabinet deep-link button., `test_cabinet_button_none_when_not_cabinet_mode`, `test_cabinet_button_private_is_webapp_to_admin_ticket_path`, `test_cabinet_button_private_none_without_custom_url`, `test_cabinet_button_group_is_startapp_deeplink`, `test_cabinet_button_group_none_without_short_name`, `test_cabinet_button_group_none_without_bot_username`, `test_keyboard_places_cabinet_button_on_top`
@@ -6063,7 +6206,7 @@
   Функции: `test_platforms_keep_config_order_then_router_and_other`, `test_apps_per_platform_dedup_keep_order_and_append_happ`, `test_router_and_other_get_the_union_of_all_apps_plus_happ`, `test_locations_are_static`, `test_bad_entries_in_the_config_are_skipped`, `test_unusable_config_gives_the_fallback`, `test_loader_exception_gives_the_fallback`, `test_options_are_cached_for_five_minutes`, `test_pure_fallback_is_cached_for_30_seconds` — Лежащий Remnawave не дёргаем на каждое открытие страницы, но и не ждём 5 минут., `test_remnawave_failure_keeps_serving_the_last_good_config`, `test_lookup_helpers`
 - `tests/services/support_assist/test_kb_clients.py` — Python-модуль
   Классы: нет
-  Функции: `test_generated_file_is_up_to_date`, `test_no_refuted_label_text_in_output`, `test_no_unverified_markers_or_happ_buttons`, `test_size_cap`, `test_system_blocks_contain_client_knowledge`, `test_prompt_has_client_app_rule`
+  Функции: `test_generated_file_is_up_to_date`, `test_no_refuted_label_text_in_output`, `test_no_unverified_markers_or_happ_buttons`, `test_size_cap`, `test_system_blocks_contain_client_knowledge`, `test_global_mode_is_server_pick_via_vpn`, `test_live_android_entries_present`, `test_prompt_has_client_app_rule`
 - `tests/services/support_assist/test_payload.py` — Python-модуль
   Классы: нет
   Функции: `test_forbidden_keys_cover_the_privacy_list`, `test_walker_finds_nested_forbidden_keys`, `test_payload_has_no_forbidden_keys`, `test_every_scenario_payload_is_clean_and_json_serialisable`, `test_payload_keeps_device_model_and_flags`, `test_dates_are_iso_strings`, `test_transactions_keep_only_type_status_at`, `test_account_and_subscription_drop_identifiers`, `test_past_tickets_have_no_ticket_id`, `test_sub_requests_keep_time_and_app_only`, `test_usage_by_day_keeps_only_dates_with_numeric_values`, `test_cabinet_action_path_loses_opaque_segments` — Числовые id кабинет сворачивает сам, а hwid устройства в пути остаётся: прятать надо здесь., `test_missing_sections_stay_none_or_empty`, `test_flag_text_built_from_leaky_snapshot_carries_no_marker`, `test_payload_includes_the_form_answers_and_stays_clean`, `test_payload_diagnostics_is_none_without_a_form`, `test_payload_diagnostics_is_an_allowlist` — Лишние ключи и значения вне списка вариантов в нагрузку не попадают, даже если лежат в тикете., `test_payload_diagnostics_keeps_the_short_other_text_only_when_other_was_chosen`, `test_payload_diagnostics_carries_location_app_name_and_config_platform`, `test_payload_diagnostics_drops_malformed_names_and_locations`, `test_payload_diagnostics_survives_garbage_in_the_column`, `test_restrictions_in_payload_and_flag_text_are_kinds_only` — Даже если в снимок попал текст причины (@ник, id), в нагрузку к LLM уходят только виды запретов.
@@ -6117,7 +6260,7 @@
   Функции: нет
 - `tests/utils/test_chat_menu_button.py` — Python-модуль
   Классы: нет
-  Функции: `test_disabled_does_not_touch_menu_button`, `test_enabled_sets_webapp_menu_button`, `test_falls_back_to_miniapp_custom_url`, `test_non_https_url_is_skipped`, `test_empty_text_defaults`
+  Функции: `test_disabled_does_not_touch_menu_button`, `test_enabled_sets_webapp_menu_button`, `test_falls_back_to_miniapp_custom_url`, `test_non_https_url_is_skipped`, `test_empty_text_defaults`, `test_network_error_does_not_break_startup`
 - `tests/utils/test_display_mode.py` — Python-модуль
   Классы: нет
   Функции: `test_normalize_display_mode_known_values`, `test_normalize_display_mode_fallback_to_both`, `test_visibility_matrix`, `test_next_display_mode_cycles_through_all_modes`, `test_display_mode_label_known_for_all_modes`, `test_config_defaults_are_both`, `test_settings_registered_in_info_pages_category`
