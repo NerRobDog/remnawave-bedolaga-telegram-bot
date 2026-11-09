@@ -49,6 +49,7 @@ from app.services.web_api_token_service import ensure_default_web_api_token
 from app.utils.log_handlers import ExcludePaymentFilter, LevelFilterHandler
 from app.utils.payment_logger import configure_payment_logger
 from app.utils.startup_timeline import StartupTimeline
+from app.utils.telegram_polling import delete_webhook_or_stop, start_polling_with_retry, wait_for_telegram_or_stop
 from app.webapi.server import WebAPIServer
 from app.webserver.unified_app import create_unified_app
 
@@ -354,7 +355,13 @@ async def main():
             bot, dp = await setup_bot()
             stage.log('Кеш и FSM подготовлены')
 
-        bot_user = await bot.get_me()
+        # Сетевой сбой здесь не должен завершать процесс: Docker перезапустит
+        # контейнер, и сбой превратится в цикл рестартов.
+        if not await wait_for_telegram_or_stop(bot, lambda: killer.exit):
+            logger.info('Остановка запрошена, пока Telegram был недоступен')
+            return
+
+        bot_user = await bot.me()
         if bot_user.username and not settings.BOT_USERNAME:
             settings.BOT_USERNAME = bot_user.username
             logger.info('BOT_USERNAME auto-detected', bot_username=bot_user.username)
@@ -791,9 +798,11 @@ async def main():
             if polling_enabled:
                 # A webhook survives process restarts and prevents getUpdates.
                 # Keep queued updates when changing the transport to polling.
-                await bot.delete_webhook(drop_pending_updates=False)
-                polling_task = asyncio.create_task(dp.start_polling(bot, skip_updates=False))
-                stage.log('skip_updates=False — накопившиеся обновления будут обработаны')
+                if await delete_webhook_or_stop(bot, lambda: killer.exit):
+                    polling_task = asyncio.create_task(start_polling_with_retry(dp, bot, skip_updates=False))
+                    stage.log('skip_updates=False — накопившиеся обновления будут обработаны')
+                else:
+                    stage.skip('Остановка запрошена, пока Telegram был недоступен')
             else:
                 polling_task = None
                 stage.skip('Polling отключен режимом работы')
