@@ -48,6 +48,7 @@ from app.services.web_api_token_service import ensure_default_web_api_token
 from app.utils.log_handlers import ExcludePaymentFilter, LevelFilterHandler
 from app.utils.payment_logger import configure_payment_logger
 from app.utils.startup_timeline import StartupTimeline
+from app.utils.telegram_polling import start_polling_with_retry
 from app.webapi.server import WebAPIServer
 from app.webserver.unified_app import create_unified_app
 
@@ -761,7 +762,7 @@ async def main():
             success_message='Aiogram polling запущен',
         ) as stage:
             if polling_enabled:
-                polling_task = asyncio.create_task(dp.start_polling(bot, skip_updates=False))
+                polling_task = asyncio.create_task(start_polling_with_retry(dp, bot, skip_updates=False))
                 stage.log('skip_updates=False — накопившиеся обновления будут обработаны')
             else:
                 polling_task = None
