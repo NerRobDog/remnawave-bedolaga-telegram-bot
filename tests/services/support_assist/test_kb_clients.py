@@ -12,7 +12,7 @@ from app.services.support_assist import card
 ROOT = Path(__file__).resolve().parents[3]
 KB_DIR = ROOT / 'docs' / 'support-kb'
 GENERATED = ROOT / 'app' / 'services' / 'support_assist' / 'kb_clients.md'
-SIZE_CAP = 20_000  # ~6-7k tokens, sits in the cached system block
+SIZE_CAP = 30_000  # ~9-10k tokens, sits in the cached system block
 
 
 def _builder():

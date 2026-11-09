@@ -16,7 +16,9 @@
 facts:
   # Cross-app facts confirmed on a live device. Rendered at the top of kb_clients.md.
   - text: 'Режим «Глобально» (Clash Mi) / «Глобальный» (FlClash(X)) — способ выбрать конкретный сервер: весь трафик, включая российские сайты, идёт через VPN на сервер, выбранный в Прокси → GLOBAL. В GLOBAL только серверы подписки, по умолчанию первый. Основной режим остаётся «Правила» / «По правилам»: там российские сайты идут напрямую. Если в GLOBAL выбран DIRECT или видны группы вместо серверов — подписка старая, нужно обновить подписку.'
-    evidence: 'Своя группа GLOBAL выкачена в шаблоны Default и Abroad 2026-11-08 (Ansible_Servers PR #117, run 42424532556). Живые подписки ci_canary_mihomo_gate и abroad_test в mihomo: GLOBAL = только серверы, по умолчанию первый. Выбор сервера в GLOBAL проверен в Clash Mi 1.0.22 macOS на демо-профиле; на живой подписке в приложении и в FlClash(X) не проверялся. До выката GLOBAL = DIRECT (Clash Mi 1.0.31 и FlClashX 0.4.2 Android, 2026-11-07)'
+    evidence: 'Своя группа GLOBAL выкачена в шаблоны Default и Abroad 2026-11-08 (Ansible_Servers PR #117). Две живые тестовые подписки в mihomo: GLOBAL = только серверы, по умолчанию первый. Выбор сервера в GLOBAL проверен в Clash Mi 1.0.22 macOS на демо-профиле; на живой подписке подтверждён список в Clash Mi 1.0.31 на iPhone (2026-11-08: GLOBAL -> Germany-3, 4 сервера, без групп и DIRECT; выбор другого сервера там не нажимался); в FlClashX 0.4.2 Linux на демо-профиле той же формы: GLOBAL в режиме «Глобальный» показывает только серверы; в FlClash не проверялся. До выката GLOBAL = DIRECT (Clash Mi 1.0.31 и FlClashX 0.4.2 Android, 2026-11-07)'
+  - text: 'Если в FlClashX в режиме «По правилам» нет вкладки «Прокси» — попросить обновить подписку (Профили → ↻). Если вкладка не появилась, результат не обещать и передать вопрос в поддержку. Конкретный сервер выбирается в режиме «Глобальный»: Прокси → GLOBAL.'
+    evidence: 'FlClashX 0.4.2 Linux в контейнере, демо-профиль в форме шаблона (2026-11-08): evidence/flclashx-linux-0.4.2-ru/10-rule-mode-prod-global-no-proxies-tab.jpg. Причина в коде: lib/clash/core.dart берёт группы из GLOBAL.all, а в нашем GLOBAL только серверы. С опцией flclashx-override: true на GLOBAL вкладка возвращается (11-rule-mode-with-override.jpg); опция выкачена в шаблоны Default и Abroad 2026-11-08 (Ansible_Servers PR #122), в двух живых тестовых подписках ключ есть. Вкладка в FlClashX на настоящей подписке, Android и macOS вживую не проверена.'
   - text: 'Группа «Остальные сайты» предлагает выбрать не сервер, а пул: «Зарубежные серверы (баланс)» или «Обход блокировок РФ (авто)»; в FlClashX есть ещё «Напрямую» (DIRECT, без VPN, не советовать). Конкретную страну или сервер в ней не выбрать — для этого режим «Глобально».'
     evidence: 'Clash Mi 1.0.31 и FlClashX 0.4.2 на Android (Clash Mi ru-11, FlClashX ru-08) (2026-11-07)'
   - text: 'Каждое приложение на одном телефоне считается отдельным устройством. При превышении лимита приложение получает подписку с сервером-заглушкой «Слишком дофига устройств подключено к подписке»; Happ ещё пишет «Достигнут лимит подключённых устройств в подписке». Решение: удалить лишние устройства (мини-апп или кабинет → Подписка) и в приложении обновить подписку.'
@@ -282,7 +284,186 @@ apps:
           update_subscription_ru: 'круговые стрелки в блоке подписки на главном экране (значок виден, нажатие не проверялось)'
 
   # Listed on the subscription page, not checked yet.
-  - {app: Clash Mi, platform: ios, status: unverified}
+  - app: INCY
+    platform: ios
+    version: "2.7.2"
+    ui_language: ru
+    verified_at: "2026-11-08"
+    verified_by: live read on iPhone 13 Pro, iOS 27.0.1 (WebDriverAgent, Russian UI forced for the run; connect and server pick tested)
+    evidence: docs/support-kb/evidence/incy-ios-2.7.2-ru/
+    note: 'Приложения нет на странице подписки WatchDog. Подписка приходит списком серверов (Xray, 4 сервера Watchdog), групп и режимов «Правила/Глобально» здесь нет.'
+    states:
+      disconnected:
+        status: verified
+        screens:
+          main:
+            path: нижняя вкладка «Подключение»
+            items_ru: ["большая кнопка питания", "Нажмите для подключения", "глобус (сайт INCY)", "ТЕКУЩИЙ ПРОВАЙДЕР", "Watchdog",
+                       "значок обновления", "молния (проверка пинга)", "… (меню провайдера)", "Осталось N дней", "Поддержка", "Сайт",
+                       "Добавить", "Вставить", "значок QR", "вкладки: Подключение, Серверы, Настройки"]
+            evidence: ru-01-main.jpg
+          servers:
+            path: нижняя вкладка «Серверы»
+            items_ru: ["N серверов • N подписка", "значок обновления", "молния", "+", "Развернуть все / Свернуть все", "Watchdog",
+                       "список серверов после разворота", "Добавить", "Вставить", "значок QR"]
+            evidence: [ru-02-servers.jpg, ru-03-servers-expanded.jpg]
+          provider_menu:
+            path: Подключение → «…» справа от Watchdog
+            items_ru: ["Настройки", "Поделиться", "Копировать URL", "QR-код", "Отправить на TV", "Удалить"]
+            evidence: ru-05-provider-menu.jpg
+          add_sheet:
+            path: Подключение → «Добавить»
+            items_ru: ["Добавить", "поле vless://... или https://...", "вставить из буфера", "файл", "QR", "кнопка «Добавить»",
+                       "ДОБАВИТЬ СЕРВЕР: SSTP, OpenConnect"]
+            evidence: ru-06-add-sheet.jpg
+          provider_sheet:
+            path: Подключение → «…» → «Настройки»
+            items_ru: ["Название", "Показывать на главной", "Не сворачивать", "Ссылки: Поддержка", "Интервал обновления", "Свой интервал", "Сохранить"]
+            evidence: ru-07-provider-sheet.jpg
+          settings:
+            path: нижняя вкладка «Настройки»
+            items_ru: ["Оформление", "Соединение", "Туннель", "Настройки провайдеров", "Настройки пинга", "О приложении", "Схемы URL-адресов",
+                       "Команды и автоматизации", "Резервное копирование", "Оценить приложение", "Расширенные настройки",
+                       "Отключать при блокировке", "Мониторинг памяти", "Логи туннеля", "Сбросить настройки"]
+            evidence: ru-18-settings.jpg
+          appearance:
+            path: Настройки → Оформление
+            items_ru: ["Тема", "Стиль подключения", "Язык (Как в системе)", "Иконка приложения", "Готово"]
+            evidence: ru-09-appearance.jpg
+          connection_settings:
+            path: Настройки → Соединение
+            items_ru: ["Автоподключение", "Аварийное отключение", "Разрешить LAN подключения", "Доступ через хотспот", "LAN через прокси",
+                       "Прокси APNs", "Синхронизация iCloud", "Живая активность"]
+            evidence: ru-10-connection.jpg
+          tunnel_settings:
+            path: Настройки → Туннель
+            items_ru: ["Профили маршрутизации", "Маршрутизация", "Модули", "Правила On-Demand", "Фрагментирование", "Мультиплексирование (Mux)",
+                       "Тип IP", "VPN DNS", "SOCKS5 авторизация"]
+            evidence: ru-11-tunnel.jpg
+          provider_settings:
+            path: Настройки → Настройки провайдеров
+            items_ru: ["Авто обновления", "Интервал (ч.)", "Уведомлять", "Обновить при открытии", "Пинг при запуске", "Пинг при обновлении",
+                       "Отправить HWID (включено на этом телефоне)", "USER-AGENT: INCY/2.7.2/ios", "Список серверов: Без сортировки, По пингу, По имени"]
+            evidence: ru-08-provider-settings.jpg
+          ping_settings:
+            path: Настройки → Настройки пинга
+            items_ru: ["INCY Ping", "TCP (рекомендуется)", "HTTP GET", "HTTP HEAD", "ICMP", "Google", "Cloudflare", "Apple", "Таймаут", "Способ отображения"]
+            evidence: ru-12-ping.jpg
+          about:
+            path: Настройки → О приложении
+            items_ru: ["Где мне взять сервера?", "Рекомендованные приложения", "Версия Xray", "Версия IncyCore", "Версия приложения",
+                       "Условия использования", "Политика конфиденциальности", "Лицензии третьих сторон", "Эл. почта", "Telegram", "Версия ОС", "Название модели"]
+            evidence: ru-13-about.jpg
+          url_schemes:
+            path: Настройки → Схемы URL-адресов
+            items: ["incy://connect", "incy://open", "incy://disconnect", "incy://close", "incy://toggle", "incy://import/{base64}", "incy://add/{url}",
+                    "incy://routing/add/{base64}", "incy://routing/onadd/{base64}"]
+            evidence: ru-14-url-schemes.jpg
+          backup:
+            path: Настройки → Резервное копирование
+            items_ru: ["Создать резервную копию", "Пароль (опционально)", "Экспортировать", "Восстановить", "Выбрать файл"]
+            evidence: ru-15-backup.jpg
+          advanced:
+            path: Настройки → Расширенные настройки
+            items_ru: ["Лимит памяти Xray", "Режим No Limit", "Таймаут простоя", "TCP соединений", "UDP соединений", "Анализ трафика", "Снифинг только для маршрутов",
+                       "MTU туннеля", "Скрыть значок VPN", "Исключённые маршруты", "Информация о системе", "Таблица маршрутов"]
+            evidence: ru-16-advanced.jpg
+          tunnel_logs:
+            path: Настройки → Логи туннеля
+            items_ru: ["Изменить", "Все", "Обновить", "Копировать", "Экспорт всех", "Удалить"]
+            evidence: ru-17-tunnel-logs.jpg
+        tasks:
+          add_subscription_ru: 'Скопировать ссылку подписки, затем Подключение → «Вставить». Либо «Добавить» → вставить ссылку в поле → «Добавить». Сам шаг добавления не выполнялся: подписка уже была в приложении.'
+          update_subscription_ru: 'Подключение → значок обновления справа от Watchdog (кнопка найдена, не нажималась)'
+          choose_server_ru: 'Серверы → «Развернуть все» → нажать нужный сервер, затем на вкладке «Подключение» нажать кнопку питания. Проверено: после выбора Germany-3 подключилось к нему.'
+          connect_ru: 'Подключение → большая кнопка питания'
+          hwid_ru: 'Настройки → Настройки провайдеров → «Отправить HWID»'
+          language_ru: 'Настройки → Оформление → Язык'
+      connected:
+        status: verified
+        screens:
+          main:
+            items_ru: ["кнопка питания", "скорость и таймер вверху", "имя сервера под кнопкой (например 🇩🇪 Germany-3)", "Проверить", "блок провайдера без изменений"]
+            evidence: ru-04-connected.jpg
+        tasks:
+          disconnect_ru: 'Подключение → большая кнопка питания'
+  - app: Clash Mi
+    platform: ios
+    version: "1.0.31"
+    ui_language: ru
+    verified_at: "2026-11-08"
+    verified_by: live read on iPhone 13 Pro, iOS 27.0.1 (WebDriverAgent; connected in Global mode on a live subscription)
+    evidence: docs/support-kb/evidence/clashmi-ios-1.0.31-ru/
+    note: 'Язык включается в самом приложении (Настройки приложения → Язык). После принудительного закрытия приложения на подключённом VPN следующее подключение несколько раз не проходило (кнопка крутилась и возвращалась в «Отключено»), затем прошло само; причина не установлена.'
+    states:
+      disconnected:
+        status: verified
+        screens:
+          main:
+            items_ru: ["Отключено (тумблер справа)", "Правила", "Глобально", "Напрямую", "Профили (+ и >)", "Настройки приложения", "Настройки ядра",
+                       "Журнал ядра", "Резервное копирование и синхронизация", "Помощь", "О приложении"]
+            evidence: ru-01-main.jpg
+          my_profiles:
+            path: главный экран → «Профили» (>)
+            items_ru: ["облако со стрелкой вверху справа: обновить все", "+ вверху справа", "⋮ рядом с профилем"]
+            evidence: ru-03-profiles.jpg
+          add_profile_sheet:
+            path: Профили → «+»
+            items_ru: ["Закрыть", "Получить профиль", "Добавление подписки", "Импорт из буфера обмена", "Сканировать QR-код", "Импорт файла конфигурации", "Вход"]
+            evidence: ru-04-add-sheet.jpg
+          profile_menu:
+            path: Профили → «⋮» рядом с профилем
+            items_ru: ["Закрыть", "Просмотр", "Обновить", "Скопировать ссылку", "QR-код", "Редактирование профилей", "Удалить"]
+            evidence: ru-04b-profile-menu.jpg
+          app_settings:
+            path: главный экран → Настройки приложения
+            items_ru: ["Перезагрузить", "Язык", "Тема", "Оформление главного экрана", "Следовать за поворотом экрана", "Уровень журнала", "UserAgent",
+                       "URL-адрес теста задержки", "Время ожидания теста задержки (мс)", "Использование онлайн-панели", "Порт локальной панели", "VPN всегда включен"]
+            evidence: ru-05-app-settings.jpg
+          core_settings:
+            path: главный экран → Настройки ядра
+            items_ru: ["Перезагрузить", "external-controller", "secret", "mixed-port", "log-level", "Pprof", "unified-delay", "ipv6", "tun",
+                       "Шаблон сортировки пациентов (так в приложении)", "tcp-concurrent", "Доступ к локальной сети устройства"]
+            evidence: ru-06-core-settings.jpg
+          tun:
+            path: Настройки ядра → tun
+            items_ru: ["Переопределить", "enable", "Диапазон IPv4-адресов", "stack", "MTU", "dns-hijack", "strict-route", "Маршрут по умолчанию", "disable-icmp-forwarding"]
+            evidence: ru-07-tun.jpg
+          backup:
+            path: главный экран → Резервное копирование и синхронизация
+            items_ru: ["iCloud", "Webdav", "Синхронизация по локальной сети"]
+            evidence: ru-09-backup.jpg
+          help:
+            path: главный экран → Помощь
+            items_ru: ["Скачать", "Руководство", "Часто задаваемые вопросы (FAQ)", "Telegram", "документ"]
+            evidence: ru-10-help.jpg
+          core_log:
+            path: главный экран → Журнал ядра
+            items_ru: ["Больше"]
+            evidence: ru-08-core-log.jpg
+        tasks:
+          add_subscription: 'Профили → «+» → «Импорт из буфера обмена» (ссылка скопирована заранее) или «Добавление подписки». Сам шаг не выполнялся: подписка уже была.'
+          update_subscription: 'Профили → облако со стрелкой (все) или «⋮» → «Обновить» (один профиль); кнопки найдены, не нажимались'
+          connect: 'главный экран → тумблер справа от «Отключено»; при первом включении система может запросить разрешение VPN (здесь уже было выдано)'
+          language: 'Настройки приложения → Язык → Русский'
+      connected:
+        status: verified
+        screens:
+          main:
+            items_ru: ["Подключено (счётчики трафика и скорости)", "Правила", "Глобально", "Напрямую", "Профили", "Прокси (GLOBAL -> сервер, задержка)",
+                       "Панель", "Конфигурация времени выполнения", "Проверка сети"]
+            evidence: ru-02-connected.jpg
+          proxies:
+            path: главный экран → Прокси
+            note: снято в английском интерфейсе, экран называется Proxy
+            items: ["группы подписки: GLOBAL, RU сайты, Telegram, Остальные сайты, Ушедшие из РФ, Игры, Напрямую, Cloudflare WARP, WARP-ноды"]
+            evidence: en-12-proxies.jpg
+          global_group:
+            path: главный экран → Прокси → GLOBAL
+            items: ["список серверов подписки, выбранный подсвечен; групп и DIRECT нет"]
+            evidence: en-13-global-group.jpg
+        tasks:
+          choose_server_global: 'режим «Глобально» → Прокси → GLOBAL → нажать сервер (список проверен, выбор другого сервера не нажимался)'
   - {app: Clash Mi, platform: windows, status: unverified}
   - {app: RabbitHole, platform: ios, status: unverified}
   - {app: RabbitHole, platform: macos, status: unverified, note: "1.3.2 installed on the owner's Mac"}
@@ -317,7 +498,43 @@ apps:
       update_subscription_ru: 'Профили → ↻ вверху (все) или Панель → Профиль → ↻'
       language_ru: 'Инструменты → Язык'
     evidence_more: [03-profiles.jpg, 04-profiles-add-menu.jpg, 05-tools.jpg]
-  - {app: FlClashX, platform: macos, status: unverified, note: "fork of FlClash; check its own labels"}
+  - app: FlClashX
+    platform: macos
+    status: unverified
+    note: 'Вживую не проверено: сборка 0.4.2 (FlClashX-macos-arm64.dmg) подписана отозванным сертификатом (spctl 2026-11-08: CSSMERR_TP_CERT_REVOKED), приложение не запускалось. Подписи FlClash и FlClashX различаются: в intl_ru.arb FlClashX v0.4.2 и FlClash v0.9.3 из 266 общих ключей отличаются 122 (dashboard: «Главная» и «Панель»; tools: «Настройки» и «Инструменты»; rule: «По правилам» и «Правило»; sync: «Обновление» и «Синхронизация»). Подписи FlClash для FlClashX не использовать.'
+  - app: FlClashX
+    platform: linux
+    version: "0.4.2"
+    ui_language: ru
+    verified_at: "2026-11-08"
+    verified_by: live run of the linux-arm64 release in a network-less container with a fictional demo profile, window 450x900
+    evidence: docs/support-kb/evidence/flclashx-linux-0.4.2-ru/
+    note: 'Основные подписи как в FlClashX Android, не как в FlClash. Состояние «подключено» не проверено: кнопка ▶ нажималась, статус остался «Остановлено»; пароль администратора не вводился. Пароль спрашивался на старте, после добавления профиля и при смене режима; Esc закрывает окно. На Linux в контейнере; для macOS годится только как ориентир.'
+    states:
+      disconnected:
+        status: verified
+        screens:
+          first_launch_ru: ["«Пожалуйста, введите пароль администратора» (Отправить)", "«Отказ от ответственности»: Выход / Согласен"]
+          main:
+            items_ru: ["строка окна: Остановлено", "без профиля: «Добавить профиль»", "карточка профиля: Трафик, Истекает, значок ↻",
+                       "По правилам", "Глобальный", "Прямой", "кнопка ▶ внизу",
+                       "вкладки снизу: Главная, Прокси (только если есть группы), Профили, Настройки"]
+          my_profiles:
+            path_ru: вкладка Профили
+            items_ru: ["без профиля: «Профиль отсутствует. Пожалуйста, добавьте профиль»", "вверху: ↻, Σ, сортировка", "⋮ на карточке", "+ внизу справа"]
+          add_profile:
+            path_ru: Профили → «+»
+            items_ru: ["QR-код", "Файл", "URL"]
+          url_dialog:
+            path_ru: Профили → «+» → URL
+            items_ru: ["Импорт из URL", "поле URL", "Вставить", "Отправить"]
+          profile_menu:
+            path_ru: Профили → «⋮» на карточке
+            items_ru: ["Редактировать", "Обновление", "Переопределение", "Экспорт файла", "Удалить"]
+          settings:
+            path_ru: вкладка Настройки
+            items_ru: ["Подключения", "Ресурсы", "Язык", "Тема", "Резервное копирование и восстановление", "Горячие клавиши",
+                       "Конфигурация ядра", "Настройки приложения", "Текущая конфигурация", "Отказ от ответственности", "О программе", "Перезапустить ядро"]
   - {app: Koala Clash, platform: [macos, windows], status: unverified}
   - {app: Flowvy, platform: [macos, windows], status: unverified}
   - {app: Prizrak-Box, platform: [macos, windows], status: unverified}

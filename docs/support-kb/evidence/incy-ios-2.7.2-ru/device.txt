@@ -1,0 +1,3 @@
+iPhone 13 Pro (iPhone14,2), iOS 27.0.1, INCY 2.7.2 (9511261030), Xray Ferrum 26.10.28, IncyCore 2.4.5-ferrum.11.
+Read 2026-11-08 through WebDriverAgent over Wi-Fi. App launched with -AppleLanguages (ru) for the run only; phone language stays English.
+Subscription was already added in the app (provider Watchdog, 4 servers).

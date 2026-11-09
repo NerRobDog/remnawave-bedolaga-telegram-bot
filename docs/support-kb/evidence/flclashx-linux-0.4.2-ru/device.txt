@@ -1,0 +1,5 @@
+FlClashX 0.4.2 linux-arm64 (.deb from the GitHub release, sha256 matched the published value), ubuntu:24.04 container on Apple Silicon.
+Xvfb 1400x1000, --network none, --cap-drop ALL, no mounts, default locale ru_RU.UTF-8.
+Profile: fictional demo config served on loopback inside the container (servers 127.0.0.x); no real subscription.
+Admin password prompts dismissed with Esc, no password entered. Start was pressed once, status stayed "Остановлено".
+Captured 2026-11-08.
