@@ -76,7 +76,8 @@ logger = structlog.get_logger(__name__)
 router = APIRouter(prefix='/gift', tags=['Cabinet Gift'])
 
 # Подарок оплачивается как гостевая покупка (create_guest_payment); у этих способов гостевой оплаты нет.
-_METHODS_WITHOUT_GUEST_PAYMENT = frozenset({'antarctic'})
+# Tribute привязывает платёж к Telegram-аккаунту: им пополняют баланс, а подарок потом берут с баланса.
+_METHODS_WITHOUT_GUEST_PAYMENT = frozenset({'antarctic', 'tribute'})
 
 _EMAIL_RE = re.compile(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$')
 _TELEGRAM_RE = re.compile(r'^@?[a-zA-Z][a-zA-Z0-9_]{4,31}$')
